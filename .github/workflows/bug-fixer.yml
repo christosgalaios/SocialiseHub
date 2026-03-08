@@ -1,0 +1,349 @@
+name: Bug Fixer Agent
+
+on:
+  issues:
+    types: [labeled]
+
+# Only one fixer per issue at a time; cancel if re-labeled
+concurrency:
+  group: bug-fixer-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+
+jobs:
+  validate-issue:
+    # Only run when the 'bug' label is added
+    if: github.event.label.name == 'bug'
+    runs-on: ubuntu-latest
+    outputs:
+      is_valid: ${{ steps.check.outputs.is_valid }}
+    steps:
+      - name: Validate issue structure
+        id: check
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body || '';
+
+            // Reject issues without the required structured fields
+            const requiredSections = [
+              'Steps to Reproduce',
+              'Expected Behavior',
+              'Actual Behavior',
+              'Affected Area'
+            ];
+
+            const missingSections = requiredSections.filter(s => !body.includes(s));
+
+            if (missingSections.length > 0) {
+              core.info(`Issue missing required sections: ${missingSections.join(', ')}`);
+              core.setOutput('is_valid', 'false');
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `**Bug fixer agent skipped** — this issue is missing required fields: ${missingSections.join(', ')}.\n\nPlease use the [bug report template](../../issues/new?template=bug_report.yml) to file a properly structured report.`
+              });
+
+              // Remove bug label to prevent re-trigger
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                name: 'bug'
+              }).catch(() => {});
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['needs-triage']
+              });
+
+              return;
+            }
+
+            // Basic abuse detection: reject if body looks like a feature request
+            const featureRequestPatterns = [
+              /it would be nice if/i,
+              /can we add/i,
+              /there should be a/i,
+              /please implement/i,
+              /add support for/i,
+              /new feature/i,
+              /feature request/i,
+              /enhancement/i
+            ];
+
+            const isFeatureRequest = featureRequestPatterns.some(p => p.test(body));
+
+            if (isFeatureRequest) {
+              core.info('Issue appears to be a feature request, not a bug');
+              core.setOutput('is_valid', 'false');
+
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `**Bug fixer agent skipped** — this issue appears to describe a feature request or enhancement, not a bug in existing behavior.\n\nThe automated bug fixer only handles broken existing functionality. If this is actually a bug, please rephrase to describe what existing behavior is broken.`
+              });
+
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                name: 'bug'
+              }).catch(() => {});
+
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: ['not-a-bug']
+              });
+
+              return;
+            }
+
+            core.setOutput('is_valid', 'true');
+            core.info('Issue structure is valid');
+
+  fix-bug:
+    needs: validate-issue
+    if: needs.validate-issue.outputs.is_valid == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@v6
+        with:
+          ref: development
+          fetch-depth: 0
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create fix branch
+        run: |
+          git checkout -b claude/fix-issue-${{ github.event.issue.number }}
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      - name: Comment on issue — agent started
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.issue.number,
+              body: '**Bug fixer agent started.** Analyzing the issue and attempting a fix...'
+            });
+
+      - name: Run Claude Code bug fixer
+        id: claude-fix
+        timeout-minutes: 10
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          claude -p --verbose "
+          You are the bug-fixer agent for Socialise Hub — an AI-powered event management and business scaling tool.
+
+          Read CLAUDE.md for project context (architecture, conventions, data models).
+
+          A bug has been reported as GitHub Issue #${ISSUE_NUMBER}:
+
+          **Title:** ${ISSUE_TITLE}
+
+          **Body:**
+          ${ISSUE_BODY}
+
+          YOUR TASK:
+          1. Parse the issue to understand the reported bug
+          2. Search the codebase to locate the relevant code
+          3. Validate that this is a real bug in existing behavior (NOT a feature request)
+          4. If it IS a bug: fix it with the minimal change, add a regression test, run lint and tests
+          5. If it is NOT a bug or you cannot fix it: exit with code 1 and explain why
+
+          CRITICAL RULES:
+          - You may ONLY fix existing broken behavior. Do NOT add new features, endpoints, or components.
+          - Maximum 5 files changed (excluding tests). Maximum 100 lines added/modified.
+          - If the fix touches auth code, requires migrations, or needs new dependencies: exit with code 1.
+          - Do NOT modify workflow files, .env files, config files, or CLAUDE.md.
+          - Run 'npm run lint' and 'npm test -- --run' before finishing. All must pass.
+
+          If you successfully fix the bug:
+          - Commit with message: 'fix: <description> (closes #${ISSUE_NUMBER})'
+          - Exit with code 0
+
+          If you cannot fix the bug or it's not a real bug:
+          - Print a clear explanation of why
+          - Exit with code 1
+          " 2>&1 | tee /tmp/claude-output.txt
+
+          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+
+      - name: Push fix branch and create PR
+        if: steps.claude-fix.outputs.exit_code == '0'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            const issueNumber = context.payload.issue.number;
+
+            // Check if there are actual commits to push
+            const diff = execSync('git diff development --name-only').toString().trim();
+            if (!diff) {
+              core.setFailed('No changes were made by the agent');
+              return;
+            }
+
+            // Verify scope limits: max 5 non-test files changed
+            const changedFiles = diff.split('\n').filter(f => !f.includes('.test.'));
+            if (changedFiles.length > 5) {
+              core.setFailed(`Agent changed ${changedFiles.length} non-test files (limit: 5). Escalating.`);
+              return;
+            }
+
+            // Verify no forbidden files were touched
+            const forbiddenPatterns = [
+              /^\.github\/workflows\//,
+              /^\.claude\//,
+              /^\.env/,
+              /^package\.json$/,
+              /^package-lock\.json$/,
+              /^tsconfig.*\.json$/,
+              /^eslint\.config\./,
+              /^CLAUDE\.md$/,
+            ];
+
+            const forbiddenFiles = changedFiles.filter(f =>
+              forbiddenPatterns.some(p => p.test(f))
+            );
+
+            if (forbiddenFiles.length > 0) {
+              core.setFailed(`Agent modified forbidden files: ${forbiddenFiles.join(', ')}. Escalating.`);
+              return;
+            }
+
+            // Push the fix branch
+            execSync(`git push -u origin claude/fix-issue-${issueNumber}`);
+
+            // Create PR
+            const { data: pr } = await github.rest.pulls.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `fix: ${context.payload.issue.title}`,
+              head: `claude/fix-issue-${issueNumber}`,
+              base: 'development',
+              body: `## Automated Bug Fix\n\n**Issue:** #${issueNumber}\n\nThis fix was generated by the bug-fixer agent. It targets only the root cause of the reported bug with minimal changes.\n\nFixes #${issueNumber}\n\n---\n*Automated by bug-fixer agent. Review carefully before merging.*`
+            });
+
+            // Label the PR
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              labels: ['automated-fix']
+            });
+
+            // Comment on the issue
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `**Bug fixer agent created a fix:** #${pr.number}\n\nThe PR will go through automated validation (lint, tests, build) before merging.`
+            });
+
+            core.info(`PR #${pr.number} created for issue #${issueNumber}`);
+
+      - name: Handle agent failure
+        if: steps.claude-fix.outputs.exit_code != '0'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const fs = require('fs');
+            const issueNumber = context.payload.issue.number;
+
+            // Read agent output for failure reason
+            let reason = 'The agent could not validate or fix this bug.';
+            try {
+              const output = fs.readFileSync('/tmp/claude-output.txt', 'utf8');
+              // Extract last 500 chars as summary
+              const tail = output.slice(-500).trim();
+              if (tail) {
+                reason = `The agent could not fix this bug. Output summary:\n\n\`\`\`\n${tail}\n\`\`\``;
+              }
+            } catch (e) {
+              // Fall through with default reason
+            }
+
+            // Label for human triage
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: ['needs-triage']
+            });
+
+            // Remove bug label to prevent re-trigger
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              name: 'bug'
+            }).catch(() => {});
+
+            // Comment explaining failure
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `**Bug fixer agent could not resolve this issue.** It has been escalated for human triage.\n\n${reason}`
+            });
+
+            core.info(`Issue #${issueNumber} escalated to human triage`);
+
+      - name: Handle scope violation
+        if: failure()
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const issueNumber = context.payload.issue.number;
+
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              labels: ['needs-triage']
+            });
+
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              name: 'bug'
+            }).catch(() => {});
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: '**Bug fixer agent was blocked** — the attempted fix violated scope limits (too many files changed or touched forbidden files). This issue needs human attention.'
+            });
