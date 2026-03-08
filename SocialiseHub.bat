@@ -15,13 +15,6 @@ if not exist "node_modules" (
   echo.
 )
 
-:: Build the frontend if not built yet
-if not exist "dist-client" (
-  echo  Building frontend...
-  call npx vite build client
-  echo.
-)
-
 :: Build the backend if not built yet
 if not exist "dist" (
   echo  Building backend...
@@ -29,12 +22,23 @@ if not exist "dist" (
   echo.
 )
 
-echo  Starting SocialiseHub on http://localhost:3000
-echo  (Press Ctrl+C to stop)
+:: Build the frontend if not built yet
+if not exist "dist-client" (
+  echo  Building frontend...
+  call npx vite build client
+  echo.
+)
+
+:: Build the Electron main process if not built yet
+if not exist "dist-electron" (
+  echo  Building Electron...
+  call npx tsc -p electron/tsconfig.json
+  echo.
+)
+
+echo  Launching SocialiseHub desktop app...
+echo  (Close the window to stop)
 echo.
 
-:: Open browser after a short delay
-start "" http://localhost:3000
-
-:: Start the server
-node dist/index.js
+:: Launch Electron desktop app (Express runs inside Electron)
+npx electron .

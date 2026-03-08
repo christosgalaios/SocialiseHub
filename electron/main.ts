@@ -1,16 +1,28 @@
-import { app, BrowserWindow, session, shell, dialog, ipcMain, clipboard } from 'electron';
-import { join } from 'path';
-import { existsSync, readFileSync, writeFileSync } from 'fs';
-import type { Server } from 'http';
+import { app, BaseWindow, WebContentsView, session, shell, dialog, ipcMain, clipboard } from 'electron';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { homedir } from 'node:os';
+import type { Server } from 'node:http';
 
-const isDev = !app.isPackaged;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const isDev = !!process.env.ELECTRON_DEV;
 const CONFIG_PATH = join(app.getPath('userData'), 'config.json');
+
+// Claude Chrome extension ID on the Chrome Web Store
+const CLAUDE_EXTENSION_ID = 'fcoeoabgfenejglbffodgkkbkcdhcgfn';
+
+// Default Claude side panel width in pixels
+const DEFAULT_PANEL_WIDTH = 420;
 
 // ── Config persistence ──────────────────────────────────
 
 interface AppConfig {
   claudeExtensionPath?: string;
   windowBounds?: { width: number; height: number; x?: number; y?: number };
+  claudePanelOpen?: boolean;
+  claudePanelWidth?: number;
 }
 
 function loadConfig(): AppConfig {
@@ -34,7 +46,7 @@ let server: Server | null = null;
 const PORT = 3000;
 
 async function startExpressServer(): Promise<number> {
-  // Dynamic import of the ESM Express app from our CJS Electron main
+  // Dynamic import of the ESM Express app
   const { createApp } = await import('../dist/app.js' as string);
   const expressApp = createApp();
 
@@ -47,43 +59,216 @@ async function startExpressServer(): Promise<number> {
   });
 }
 
-// ── Chrome extension loading ────────────────────────────
+// ── Chrome extension auto-detection ─────────────────────
 
-async function loadChromeExtension(config: AppConfig): Promise<void> {
-  const extPath = config.claudeExtensionPath;
-  if (!extPath || !existsSync(extPath)) {
-    console.log('Claude Chrome extension not configured — using claude.ai directly');
-    return;
+/**
+ * Finds the Claude Chrome extension on the user's system.
+ * Checks Chrome's default extension directory on Windows, macOS, and Linux.
+ * Returns the path to the latest version, or null if not found.
+ */
+function findChromeExtension(): string | null {
+  const home = homedir();
+
+  // Platform-specific Chrome extension paths
+  const chromePaths: string[] = [];
+  if (process.platform === 'win32') {
+    chromePaths.push(
+      join(home, 'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'Default', 'Extensions', CLAUDE_EXTENSION_ID),
+      join(home, 'AppData', 'Local', 'Google', 'Chrome', 'User Data', 'Profile 1', 'Extensions', CLAUDE_EXTENSION_ID),
+    );
+  } else if (process.platform === 'darwin') {
+    chromePaths.push(
+      join(home, 'Library', 'Application Support', 'Google', 'Chrome', 'Default', 'Extensions', CLAUDE_EXTENSION_ID),
+      join(home, 'Library', 'Application Support', 'Google', 'Chrome', 'Profile 1', 'Extensions', CLAUDE_EXTENSION_ID),
+    );
+  } else {
+    chromePaths.push(
+      join(home, '.config', 'google-chrome', 'Default', 'Extensions', CLAUDE_EXTENSION_ID),
+      join(home, '.config', 'google-chrome', 'Profile 1', 'Extensions', CLAUDE_EXTENSION_ID),
+    );
+  }
+
+  for (const extDir of chromePaths) {
+    if (!existsSync(extDir)) continue;
+
+    try {
+      // Extension directory contains version subdirectories (e.g., "1.0.0_0")
+      const versions = readdirSync(extDir)
+        .filter((v) => !v.startsWith('.'))
+        .sort()
+        .reverse(); // Latest version first
+
+      if (versions.length > 0) {
+        const versionPath = join(extDir, versions[0]);
+        // Verify it has a manifest.json
+        if (existsSync(join(versionPath, 'manifest.json'))) {
+          return versionPath;
+        }
+      }
+    } catch { /* ignore */ }
+  }
+
+  return null;
+}
+
+// ── Extension loading ──────────────────────────────────
+
+let loadedExtensionId: string | null = null;
+
+/**
+ * Loads the Claude Chrome extension into Electron's session.
+ *
+ * Priority:
+ * 1. Manually configured path (from config)
+ * 2. Auto-detected from Chrome installation
+ * 3. No extension (graceful fallback)
+ */
+async function loadChromeExtension(config: AppConfig): Promise<boolean> {
+  // Try configured path first
+  let extPath = config.claudeExtensionPath;
+  if (extPath && existsSync(extPath) && existsSync(join(extPath, 'manifest.json'))) {
+    console.log(`Using configured extension path: ${extPath}`);
+  } else {
+    // Auto-detect from Chrome installation
+    extPath = findChromeExtension() ?? undefined;
+    if (extPath) {
+      console.log(`Auto-detected Claude extension at: ${extPath}`);
+      // Save for future launches
+      config.claudeExtensionPath = extPath;
+      saveConfig(config);
+    }
+  }
+
+  if (!extPath) {
+    console.log('Claude Chrome extension not found — install it in Chrome first');
+    return false;
   }
 
   try {
-    const ext = await session.defaultSession.loadExtension(extPath, {
-      allowFileAccess: true,
-    });
-    console.log(`Loaded Chrome extension: ${ext.name}`);
+    const ses = session.defaultSession;
+    // Use the newer extensions API (loadExtension on session is deprecated)
+    const loader = (ses as any).extensions?.loadExtension?.bind(ses.extensions)
+      ?? ses.loadExtension.bind(ses);
+    const ext = await loader(extPath, { allowFileAccess: true });
+    loadedExtensionId = ext.id;
+    console.log(`Loaded Chrome extension: ${ext.name} (${ext.version}) [${ext.id}]`);
+    return true;
   } catch (err) {
     console.warn('Failed to load Chrome extension:', err);
+    // Clear the saved path so we retry detection next launch
+    config.claudeExtensionPath = undefined;
+    saveConfig(config);
+    return false;
   }
+}
+
+// ── Window state ────────────────────────────────────────
+
+let mainWindow: BaseWindow | null = null;
+let appView: WebContentsView | null = null;
+let claudeView: WebContentsView | null = null;
+let claudePanelOpen = true;
+let claudeViewAttached = false;
+
+// ── Layout management ───────────────────────────────────
+
+/**
+ * Lays out the app view and Claude panel within the BaseWindow.
+ * When the panel is open, the app takes (width - panelWidth) and Claude takes panelWidth.
+ * When hidden, the app takes full width and the Claude view is detached (but stays alive).
+ */
+function layoutViews(win: BaseWindow, panelWidth: number): void {
+  if (!appView || !claudeView) return;
+
+  const { width, height } = win.getContentBounds();
+
+  if (claudePanelOpen) {
+    const appWidth = Math.max(400, width - panelWidth);
+    const actualPanelWidth = width - appWidth;
+    appView.setBounds({ x: 0, y: 0, width: appWidth, height });
+    claudeView.setBounds({ x: appWidth, y: 0, width: actualPanelWidth, height });
+
+    if (!claudeViewAttached) {
+      win.contentView.addChildView(claudeView);
+      claudeViewAttached = true;
+    }
+  } else {
+    appView.setBounds({ x: 0, y: 0, width, height });
+
+    if (claudeViewAttached) {
+      win.contentView.removeChildView(claudeView);
+      claudeViewAttached = false;
+    }
+  }
+}
+
+function togglePanel(config: AppConfig): boolean {
+  if (!mainWindow) return false;
+
+  claudePanelOpen = !claudePanelOpen;
+  config.claudePanelOpen = claudePanelOpen;
+  saveConfig(config);
+
+  layoutViews(mainWindow, config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH);
+  return claudePanelOpen;
+}
+
+function focusPanel(config: AppConfig): void {
+  if (!mainWindow || !claudeView) return;
+
+  if (!claudePanelOpen) {
+    claudePanelOpen = true;
+    config.claudePanelOpen = true;
+    saveConfig(config);
+    layoutViews(mainWindow, config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH);
+  }
+
+  claudeView.webContents.focus();
 }
 
 // ── Window creation ─────────────────────────────────────
 
-function createMainWindow(port: number, config: AppConfig): BrowserWindow {
+function createMainWindow(port: number, config: AppConfig, hasExtension: boolean): BaseWindow {
   const bounds = config.windowBounds ?? { width: 1400, height: 900 };
+  claudePanelOpen = config.claudePanelOpen ?? true;
+  const panelWidth = config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
 
-  const win = new BrowserWindow({
+  const win = new BaseWindow({
     ...bounds,
     minWidth: 900,
     minHeight: 600,
     title: 'SocialiseHub',
-    backgroundColor: '#FAFAF6',
+  });
+
+  mainWindow = win;
+
+  // ── App View (left panel — the SocialiseHub React app) ──
+  appView = new WebContentsView({
     webPreferences: {
       preload: join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      // Allow the Claude extension to work
       webviewTag: true,
     },
+  });
+
+  // ── Claude View (right panel — claude.ai chat) ──
+  claudeView = new WebContentsView({
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  // Add app view (always visible)
+  win.contentView.addChildView(appView);
+
+  // Set initial layout (adds claudeView if panel is open)
+  layoutViews(win, panelWidth);
+
+  // Handle window resize — recalculate layout
+  win.on('resize', () => {
+    layoutViews(win, config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH);
   });
 
   // Save window bounds on resize/move
@@ -96,36 +281,77 @@ function createMainWindow(port: number, config: AppConfig): BrowserWindow {
   win.on('resize', saveBounds);
   win.on('move', saveBounds);
 
-  // Open external links in the default browser
-  win.webContents.setWindowOpenHandler(({ url }) => {
-    // Allow OAuth callbacks to load internally
+  // ── App View: external link handling ──
+  appView.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(`http://localhost:${port}`)) {
       return { action: 'allow' };
     }
-    // Platform OAuth pages should also open internally so extensions can see them
     if (url.includes('meetup.com') || url.includes('eventbrite.com') || url.includes('headfirstbristol.co.uk')) {
+      return { action: 'allow' };
+    }
+    if (url.includes('claude.ai')) {
       return { action: 'allow' };
     }
     shell.openExternal(url);
     return { action: 'deny' };
   });
 
-  // Load the app
+  // ── Claude View: keep auth flows in-panel, open other links externally ──
+  claudeView.webContents.setWindowOpenHandler(({ url }) => {
+    if (
+      url.includes('claude.ai') ||
+      url.includes('anthropic.com') ||
+      url.includes('accounts.google.com') ||
+      url.includes('appleid.apple.com') ||
+      url.includes('login.microsoftonline.com')
+    ) {
+      return { action: 'allow' };
+    }
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+
+  // Load the SocialiseHub app
   if (isDev) {
-    // In dev mode, load from Vite dev server
-    win.loadURL('http://localhost:5173');
-    win.webContents.openDevTools({ mode: 'detach' });
+    appView.webContents.loadURL('http://localhost:5173');
+    appView.webContents.openDevTools({ mode: 'detach' });
   } else {
-    // In production, load from Express (which serves built frontend)
-    win.loadURL(`http://localhost:${port}`);
+    appView.webContents.loadURL(`http://localhost:${port}`);
   }
+
+  // Load Claude panel — always use claude.ai for maximum reliability.
+  // The extension's content scripts inject into appView for DOM access,
+  // while claude.ai in the right panel provides the chat interface.
+  claudeView.webContents.loadURL('https://claude.ai/new');
+  console.log('Claude panel: loading claude.ai');
+
+  // Log extension status once app is loaded
+  appView.webContents.on('did-finish-load', () => {
+    if (hasExtension) {
+      console.log('Claude extension content scripts injected into app view');
+    } else {
+      console.log(
+        '\n  ⚠ Claude Chrome extension not loaded.\n' +
+        '  Install it in Chrome first: https://chromewebstore.google.com/detail/claude/fcoeoabgfenejglbffodgkkbkcdhcgfn\n' +
+        '  Then restart SocialiseHub — it will be detected automatically.\n',
+      );
+    }
+  });
+
+  // Cleanup on window close
+  win.on('closed', () => {
+    appView = null;
+    claudeView = null;
+    mainWindow = null;
+    claudeViewAttached = false;
+  });
 
   return win;
 }
 
 // ── IPC handlers ────────────────────────────────────────
 
-function setupIpcHandlers(): void {
+function setupIpcHandlers(config: AppConfig): void {
   ipcMain.handle('open-external', async (_event, url: string) => {
     await shell.openExternal(url);
   });
@@ -137,6 +363,19 @@ function setupIpcHandlers(): void {
   ipcMain.handle('get-version', () => {
     return app.getVersion();
   });
+
+  // Claude panel controls
+  ipcMain.handle('toggle-claude-panel', () => {
+    return togglePanel(config);
+  });
+
+  ipcMain.handle('focus-claude-panel', () => {
+    focusPanel(config);
+  });
+
+  ipcMain.handle('get-claude-panel-state', () => {
+    return claudePanelOpen;
+  });
 }
 
 // ── App lifecycle ───────────────────────────────────────
@@ -144,23 +383,19 @@ function setupIpcHandlers(): void {
 app.whenReady().then(async () => {
   const config = loadConfig();
 
-  // Set up IPC handlers before creating windows
-  setupIpcHandlers();
+  setupIpcHandlers(config);
 
   try {
-    // Start Express server
     const port = await startExpressServer();
 
-    // Load Claude Chrome extension (if configured)
-    await loadChromeExtension(config);
+    // Load Claude extension (auto-detect from Chrome, or use saved path)
+    const hasExtension = await loadChromeExtension(config);
 
-    // Create the main window
-    const win = createMainWindow(port, config);
+    createMainWindow(port, config, hasExtension);
 
-    // On macOS, re-create window when dock icon clicked
     app.on('activate', () => {
-      if (BrowserWindow.getAllWindows().length === 0) {
-        createMainWindow(port, config);
+      if (!mainWindow) {
+        createMainWindow(port, config, hasExtension);
       }
     });
   } catch (err) {
@@ -174,7 +409,6 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  // On macOS, keep the app running until explicitly quit
   if (process.platform !== 'darwin') {
     app.quit();
   }
