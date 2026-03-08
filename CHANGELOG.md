@@ -16,3 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Hooks: auto-lint, block .env, rebase guard, changelog check
   - Agents: code-reviewer, security-auditor, test-coverage-analyzer, bug-fixer
   - Skills: /pr, /gen-test, /deploy, /release
+- Node.js project scaffolding (package.json, TypeScript, ESLint, Vitest)
+- Minimal `src/index.ts` entry point with version export
+- Initial unit test for entry point
+- `.gitignore` for node_modules, dist, env files
