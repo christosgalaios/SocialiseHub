@@ -1,0 +1,111 @@
+name: Bug Report
+description: Report a bug in Socialise Hub. An automated agent will validate and attempt to fix it.
+title: "[BUG] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Bug Report
+
+        Please fill out all required fields. An automated agent will pick this up, validate the issue, and attempt a fix.
+
+        **Important:** This form is for reporting bugs in existing behavior only. Feature requests, enhancements, and new functionality should use a different template. Reports that describe desired new behavior will be closed as `not-a-bug`.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Affected Area
+      description: Which part of the tool is broken?
+      options:
+        - AI Agent - Event Analysis
+        - AI Agent - Event Creation
+        - AI Agent - Learning/Scaling
+        - Platform Integration - Meetup
+        - Platform Integration - Headfirst
+        - Platform Integration - Other
+        - Image Management
+        - Social Media Management
+        - CLI / Interface
+        - Configuration / Settings
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity
+      description: How bad is it?
+      options:
+        - P1 - Critical (tool crashes, data loss, wrong events published)
+        - P2 - Major (feature broken, integration failing)
+        - P3 - Minor (edge case, formatting issue, typo)
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to Reproduce
+      description: Exact steps to trigger the bug. Be specific.
+      placeholder: |
+        1. Run the event creation mode
+        2. Provide event details for a Bristol meetup
+        3. Select Meetup as the target platform
+        4. Observe the error during publishing
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What SHOULD happen? Describe the correct existing behavior.
+      placeholder: "The event should be created on Meetup with the correct date and venue."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What ACTUALLY happens? Describe the broken behavior you observe.
+      placeholder: "The tool throws an API error and the event is not created."
+    validations:
+      required: true
+
+  - type: input
+    id: component
+    attributes:
+      label: Affected Component or File (optional)
+      description: If you know which file or component is involved, mention it here.
+      placeholder: "src/agents/event-creator.ts"
+    validations:
+      required: false
+
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots / Logs (optional)
+      description: Attach screenshots, error logs, or console output if available.
+    validations:
+      required: false
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional Context (optional)
+      description: Any other relevant info (platform API version, Node version, etc.)
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      description: Please confirm the following before submitting.
+      options:
+        - label: This is a bug in existing functionality, NOT a feature request or enhancement.
+          required: true
+        - label: I have searched existing issues and this bug has not been reported before.
+          required: true

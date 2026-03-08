@@ -1,0 +1,228 @@
+name: Auto Approve PRs
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    outputs:
+      mergeable: ${{ steps.check-mergeable.outputs.mergeable }}
+    steps:
+      - name: Block non-development PRs to production
+        if: github.event.pull_request.base.ref == 'production' && github.event.pull_request.head.ref != 'development'
+        run: |
+          echo "::error::PRs to production must come from development, not ${{ github.event.pull_request.head.ref }}"
+          exit 1
+
+      - name: Wait for mergeability check
+        uses: actions/github-script@v8
+        id: check-mergeable
+        with:
+          script: |
+            // GitHub needs a moment to compute mergeability after PR events.
+            // Transient API failures (fetch errors, 500s) are also retried.
+            let mergeable = null;
+            let attempts = 0;
+            const maxAttempts = 10;
+
+            while (mergeable === null && attempts < maxAttempts) {
+              try {
+                const { data: pr } = await github.rest.pulls.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  pull_number: context.payload.pull_request.number,
+                });
+
+                mergeable = pr.mergeable;
+              } catch (error) {
+                core.warning(`API request failed: ${error.message}`);
+              }
+
+              if (mergeable === null) {
+                attempts++;
+                core.info(`Mergeability not yet determined, retrying (${attempts}/${maxAttempts})...`);
+                await new Promise(r => setTimeout(r, 3000));
+              }
+            }
+
+            if (mergeable === null) {
+              core.setFailed('Could not determine mergeability after maximum retries');
+              return;
+            }
+
+            core.setOutput('mergeable', mergeable.toString());
+            core.info(`PR is mergeable: ${mergeable}`);
+
+      - name: Log conflict notice
+        if: steps.check-mergeable.outputs.mergeable == 'false'
+        run: echo "::warning::Auto-approve skipped — PR has merge conflicts. Resolve conflicts and push again."
+
+      - uses: actions/checkout@v6
+        if: steps.check-mergeable.outputs.mergeable == 'true'
+
+      - name: Setup Node
+        if: steps.check-mergeable.outputs.mergeable == 'true'
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.check-mergeable.outputs.mergeable == 'true'
+        run: npm ci
+
+      - name: Run linter
+        if: steps.check-mergeable.outputs.mergeable == 'true'
+        run: npm run lint
+
+      - name: Run tests
+        if: steps.check-mergeable.outputs.mergeable == 'true'
+        run: npm test -- --run
+
+      - name: Build
+        if: steps.check-mergeable.outputs.mergeable == 'true'
+        run: npm run build
+
+      - name: Check CHANGELOG.md updated for code changes
+        if: steps.check-mergeable.outputs.mergeable == 'true'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const { data: files } = await github.rest.pulls.listFiles({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              per_page: 100,
+            });
+
+            const codePatterns = [
+              /^src\//,
+              /^agents\//,
+              /^tools\//,
+              /^lib\//,
+              /^scripts\//,
+            ];
+
+            const touchesCode = files.some(f => codePatterns.some(p => p.test(f.filename)));
+            const touchesChangelog = files.some(f => f.filename === 'CHANGELOG.md');
+
+            if (touchesCode && !touchesChangelog) {
+              core.setFailed(
+                'This PR changes code in src/, agents/, tools/, lib/, or scripts/ but does not update CHANGELOG.md. ' +
+                'Add a changelog entry under [Unreleased] describing the change.'
+              );
+            } else if (touchesCode) {
+              core.info('CHANGELOG.md updated — good');
+            } else {
+              core.info('No code changes requiring changelog update');
+            }
+
+  auto-approve:
+    needs: validate
+    if: needs.validate.outputs.mergeable == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Approve PR
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              event: 'APPROVE',
+            });
+            core.info('PR approved successfully');
+
+      - name: Merge PR
+        id: merge
+        uses: actions/github-script@v8
+        with:
+          script: |
+            // Use regular merge for development -> production to preserve history sync.
+            // Squash merge for feature branches -> development to keep clean history.
+            const baseBranch = context.payload.pull_request.base.ref;
+            const mergeMethod = baseBranch === 'production' ? 'merge' : 'squash';
+            core.info(`Merging with method: ${mergeMethod} (base: ${baseBranch})`);
+
+            try {
+              await github.rest.pulls.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                merge_method: mergeMethod,
+              });
+              core.info('PR merged successfully');
+              core.setOutput('merged', 'true');
+            } catch (error) {
+              core.warning(`Merge failed: ${error.message}`);
+              core.setOutput('merged', 'false');
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: `**Auto-merge failed:** ${error.message}\n\nThe PR passed validation but could not be merged. This usually happens when another PR was merged first, changing the base branch. Please rebase and push again.`,
+              });
+            }
+
+      - name: Trigger deploy workflow
+        if: steps.merge.outputs.merged == 'true'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            // GITHUB_TOKEN merges don't trigger push events for other workflows.
+            // Explicitly dispatch the deploy workflow for the target branch.
+            const baseBranch = context.payload.pull_request.base.ref;
+            const workflowFile = baseBranch === 'production'
+              ? 'deploy-production.yml'
+              : baseBranch === 'development'
+              ? 'deploy-development.yml'
+              : null;
+
+            if (!workflowFile) {
+              core.info(`No deploy workflow for base branch: ${baseBranch}`);
+              return;
+            }
+
+            try {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: workflowFile,
+                ref: baseBranch,
+              });
+              core.info(`Triggered ${workflowFile} for ${baseBranch}`);
+            } catch (error) {
+              core.setFailed(`Failed to trigger deploy: ${error.message}. The PR was merged but the deploy workflow was not started. Manually trigger ${workflowFile} from the Actions tab.`);
+            }
+
+      - name: Delete branch
+        if: steps.merge.outputs.merged == 'true'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const branch = context.payload.pull_request.head.ref;
+            const protectedBranches = ['development', 'production'];
+
+            if (protectedBranches.includes(branch)) {
+              core.info(`Branch '${branch}' is a protected branch — skipping deletion`);
+              return;
+            }
+
+            try {
+              await github.rest.git.deleteRef({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                ref: `heads/${branch}`,
+              });
+              core.info(`Branch '${branch}' deleted successfully`);
+            } catch (error) {
+              core.warning(`Branch deletion failed (non-blocking): ${error.message}`);
+            }

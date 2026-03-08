@@ -1,0 +1,116 @@
+name: Dependabot Auto-Merge
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  auto-merge-dependabot:
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log update info
+        run: |
+          echo "Dependency: ${{ steps.metadata.outputs.dependency-names }}"
+          echo "Update type: ${{ steps.metadata.outputs.update-type }}"
+          echo "Package ecosystem: ${{ steps.metadata.outputs.package-ecosystem }}"
+
+      - uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linter
+        run: npm run lint
+
+      - name: Run tests
+        run: npm test -- --run
+
+      - name: Build
+        run: npm run build
+
+      - name: Auto-approve minor/patch updates
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.pulls.createReview({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.payload.pull_request.number,
+              event: 'APPROVE',
+              body: `Auto-approved: ${context.payload.pull_request.title} (${steps.metadata.outputs.update-type} update). All checks passed.`,
+            });
+
+      - name: Auto-merge minor/patch updates
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            try {
+              await github.rest.pulls.merge({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: context.payload.pull_request.number,
+                merge_method: 'squash',
+              });
+              core.info('Dependabot PR auto-merged successfully');
+            } catch (error) {
+              core.warning(`Auto-merge failed: ${error.message}`);
+            }
+
+      - name: Trigger deploy workflow after merge
+        if: steps.metadata.outputs.update-type != 'version-update:semver-major'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            const baseBranch = context.payload.pull_request.base.ref;
+            const workflowFile = baseBranch === 'development'
+              ? 'deploy-development.yml'
+              : null;
+
+            if (!workflowFile) {
+              core.info(`No deploy workflow for base branch: ${baseBranch}`);
+              return;
+            }
+
+            try {
+              await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: workflowFile,
+                ref: baseBranch,
+              });
+              core.info(`Triggered ${workflowFile} for ${baseBranch}`);
+            } catch (error) {
+              core.warning(`Deploy trigger failed (non-blocking): ${error.message}`);
+            }
+
+      - name: Comment on major updates
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+        uses: actions/github-script@v8
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body: `This is a **major version update** for \`${{ steps.metadata.outputs.dependency-names }}\`. All checks passed, but major updates require manual review before merging.\n\nPlease review the breaking changes and merge manually if everything looks good.`,
+            });
