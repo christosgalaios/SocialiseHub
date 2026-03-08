@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import { EventsPage } from './pages/EventsPage';
 import { EventDetailPage } from './pages/EventDetailPage';
 import { ServicesPage } from './pages/ServicesPage';
 import { EventGeneratorPage } from './pages/EventGeneratorPage';
+import { TerminalPanel } from './components/TerminalPanel';
 
 // Detect Electron environment
 const isElectron = !!(window as any).electronAPI?.isElectron;
@@ -20,11 +21,21 @@ const SIDEBAR_COLLAPSED = 64;
 export function App() {
   const [claudeOpen, setClaudeOpen] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const dragStartX = useRef(0);
+  const dragStartWidth = useRef(0);
+  const panelWidthRef = useRef(420);
+  const didDrag = useRef(false);
 
   useEffect(() => {
     if (isElectron) {
-      (window as any).electronAPI.isClaudePanelOpen().then((open: boolean) => {
+      const api = (window as any).electronAPI;
+      api.isClaudePanelOpen().then((open: boolean) => {
         setClaudeOpen(open);
+      });
+      api.getClaudePanelWidth().then((w: number) => {
+        panelWidthRef.current = w;
       });
     }
   }, []);
@@ -36,19 +47,59 @@ export function App() {
     }
   };
 
+  // ── Drag-to-resize the Claude panel ──
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    if (!claudeOpen) return;
+    e.preventDefault();
+    setDragging(true);
+    didDrag.current = false;
+    dragStartX.current = e.clientX;
+    dragStartWidth.current = panelWidthRef.current;
+  }, [claudeOpen]);
+
+  useEffect(() => {
+    if (!dragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      // Only count as drag if moved more than 4px (prevents accidental drag on click)
+      const delta = dragStartX.current - e.clientX;
+      if (Math.abs(delta) > 4) {
+        didDrag.current = true;
+      }
+      if (didDrag.current) {
+        const newWidth = dragStartWidth.current + delta;
+        panelWidthRef.current = newWidth;
+        (window as any).electronAPI?.resizeClaudePanel(newWidth);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setDragging(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [dragging]);
+
   const sidebarWidth = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED;
 
   return (
     <BrowserRouter>
       <div style={styles.layout}>
+        {/* Transparent overlay during drag to prevent iframe stealing mouse events */}
+        {dragging && <div style={styles.dragOverlay} />}
+
+        {/* ── Sidebar ── */}
         <nav style={{ ...styles.sidebar, width: sidebarWidth }}>
-          {/* Logo */}
           <div style={{ ...styles.logo, justifyContent: collapsed ? 'center' : 'flex-start', padding: collapsed ? '0 0 28px' : '0 24px 28px' }}>
             <span style={styles.logoIcon}>S</span>
             {!collapsed && <span style={styles.logoText}>SocialiseHub</span>}
           </div>
 
-          {/* Nav Links */}
           <div style={{ ...styles.navLinks, padding: collapsed ? '12px 8px' : '12px 12px' }}>
             {navItems.map((item) => (
               <NavLink
@@ -69,12 +120,29 @@ export function App() {
             ))}
           </div>
 
-          {/* Footer */}
           <div style={{ ...styles.sidebarFooter, padding: collapsed ? '16px 8px' : '16px 24px' }}>
-            {/* Claude toggle — Electron only */}
+            {/* Terminal toggle */}
             {isElectron && (
               <button
                 style={{
+                  ...styles.toggleBtn,
+                  ...styles.terminalToggle,
+                  justifyContent: collapsed ? 'center' : 'flex-start',
+                  padding: collapsed ? '10px 0' : '10px 14px',
+                }}
+                onClick={() => setTerminalOpen((o) => !o)}
+                title={terminalOpen ? 'Hide console' : 'Show console'}
+              >
+                <span style={{ fontSize: 14, fontFamily: 'monospace', fontWeight: 800 }}>{'>_'}</span>
+                {!collapsed && <span>{terminalOpen ? 'Hide Console' : 'Console'}</span>}
+              </button>
+            )}
+
+            {/* Claude toggle */}
+            {isElectron && (
+              <button
+                style={{
+                  ...styles.toggleBtn,
                   ...styles.claudeToggle,
                   justifyContent: collapsed ? 'center' : 'flex-start',
                   padding: collapsed ? '10px 0' : '10px 14px',
@@ -83,11 +151,10 @@ export function App() {
                 title={claudeOpen ? 'Hide Claude panel' : 'Show Claude panel'}
               >
                 <span style={{ fontSize: 15 }}>🤖</span>
-                {!collapsed && <span>{claudeOpen ? 'Hide Claude' : 'Show Claude'}</span>}
+                {!collapsed && <span>{claudeOpen ? 'Hide Claude' : 'Claude'}</span>}
               </button>
             )}
 
-            {/* Sidebar collapse toggle */}
             <button
               style={styles.collapseBtn}
               onClick={() => setCollapsed((c) => !c)}
@@ -99,15 +166,40 @@ export function App() {
             {!collapsed && <span style={styles.version}>v0.1.0</span>}
           </div>
         </nav>
-        <main style={styles.main}>
-          <Routes>
-            <Route path="/" element={<EventsPage />} />
-            <Route path="/events/new" element={<EventDetailPage />} />
-            <Route path="/events/:id" element={<EventDetailPage />} />
-            <Route path="/generator" element={<EventGeneratorPage />} />
-            <Route path="/services" element={<ServicesPage />} />
-          </Routes>
-        </main>
+
+        {/* ── Main content area (vertical stack: content + terminal) ── */}
+        <div style={styles.contentColumn}>
+          <main style={styles.main}>
+            <Routes>
+              <Route path="/" element={<EventsPage />} />
+              <Route path="/events/new" element={<EventDetailPage />} />
+              <Route path="/events/:id" element={<EventDetailPage />} />
+              <Route path="/generator" element={<EventGeneratorPage />} />
+              <Route path="/services" element={<ServicesPage />} />
+            </Routes>
+          </main>
+
+          {/* Terminal panel */}
+          {terminalOpen && isElectron && <TerminalPanel />}
+        </div>
+
+        {/* ── Claude panel resize handle + fold/unfold ── */}
+        {isElectron && (
+          <div
+            style={{
+              ...styles.panelHandle,
+              cursor: claudeOpen ? (dragging ? 'col-resize' : 'col-resize') : 'pointer',
+            }}
+            onMouseDown={handleDragStart}
+            onClick={() => {
+              // Only toggle if it was a pure click, not a drag gesture
+              if (!didDrag.current) handleToggleClaude();
+            }}
+            title={claudeOpen ? 'Drag to resize · Double-click to fold' : 'Click to unfold Claude panel'}
+          >
+            <span style={styles.handleArrow}>{claudeOpen ? '⋮' : '‹'}</span>
+          </div>
+        )}
       </div>
     </BrowserRouter>
   );
@@ -189,16 +281,14 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'stretch',
-    gap: 8,
+    gap: 6,
   },
-  claudeToggle: {
+  toggleBtn: {
     display: 'flex',
     alignItems: 'center',
     gap: 10,
     borderRadius: 10,
     border: '1px solid rgba(255,255,255,0.1)',
-    background: 'rgba(226,114,91,0.1)',
-    color: '#E2725B',
     fontSize: 13,
     fontWeight: 600,
     cursor: 'pointer',
@@ -206,6 +296,14 @@ const styles: Record<string, React.CSSProperties> = {
     width: '100%',
     transition: 'all 0.2s',
     whiteSpace: 'nowrap',
+  },
+  claudeToggle: {
+    background: 'rgba(226,114,91,0.1)',
+    color: '#E2725B',
+  },
+  terminalToggle: {
+    background: 'rgba(45,95,93,0.15)',
+    color: '#5dafaf',
   },
   collapseBtn: {
     background: 'none',
@@ -225,9 +323,48 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#555',
     textAlign: 'center',
   },
+
+  // Main content area (vertical flex for content + terminal)
+  contentColumn: {
+    flex: 1,
+    display: 'flex',
+    flexDirection: 'column',
+    overflow: 'hidden',
+  },
   main: {
     flex: 1,
     padding: '36px 44px',
     overflowY: 'auto' as const,
+  },
+
+  // Transparent overlay during drag to prevent iframe from stealing mouse events
+  dragOverlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 9999,
+    cursor: 'col-resize',
+  },
+
+  // Resizable panel handle (between app view and Claude panel)
+  panelHandle: {
+    width: 6,
+    background: '#0d0d1a',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    borderLeft: '1px solid rgba(255,255,255,0.06)',
+    borderRight: '1px solid rgba(255,255,255,0.06)',
+    userSelect: 'none',
+    transition: 'background 0.15s',
+  },
+  handleArrow: {
+    color: '#555',
+    fontSize: 12,
+    fontWeight: 700,
+    lineHeight: 1,
   },
 };

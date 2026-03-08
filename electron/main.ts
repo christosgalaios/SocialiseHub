@@ -1,9 +1,14 @@
 import { app, BaseWindow, WebContentsView, session, shell, dialog, ipcMain, clipboard } from 'electron';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { createRequire } from 'node:module';
 import { existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import type { Server } from 'node:http';
+
+// node-pty is a native CJS module — use createRequire for reliable ESM import
+const require = createRequire(import.meta.url);
+const pty = require('node-pty') as typeof import('node-pty');
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -169,6 +174,8 @@ let appView: WebContentsView | null = null;
 let claudeView: WebContentsView | null = null;
 let claudePanelOpen = true;
 let claudeViewAttached = false;
+// eslint-disable-next-line prefer-const -- reassigned in terminal handlers
+let ptyProcess: ReturnType<typeof pty.spawn> | null = null;
 
 // ── Layout management ───────────────────────────────────
 
@@ -376,6 +383,73 @@ function setupIpcHandlers(config: AppConfig): void {
   ipcMain.handle('get-claude-panel-state', () => {
     return claudePanelOpen;
   });
+
+  ipcMain.handle('get-claude-panel-width', () => {
+    return config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
+  });
+
+  ipcMain.handle('resize-claude-panel', (_event, width: number) => {
+    if (!mainWindow) return;
+    const bounds = mainWindow.getContentBounds();
+    // Clamp: min 280px, max 70% of window width
+    const clamped = Math.max(280, Math.min(width, Math.floor(bounds.width * 0.7)));
+    config.claudePanelWidth = clamped;
+    saveConfig(config);
+    layoutViews(mainWindow, clamped);
+    return clamped;
+  });
+
+  // ── Terminal (PTY) handlers ──
+
+  ipcMain.handle('terminal-create', () => {
+    if (ptyProcess) {
+      ptyProcess.kill();
+      ptyProcess = null;
+    }
+
+    const shellCmd = process.platform === 'win32' ? 'powershell.exe' : 'bash';
+    ptyProcess = pty.spawn(shellCmd, [], {
+      name: 'xterm-256color',
+      cols: 80,
+      rows: 24,
+      cwd: process.cwd(),
+      env: process.env as Record<string, string>,
+    });
+
+    ptyProcess.onData((data: string) => {
+      appView?.webContents.send('terminal-data', data);
+    });
+
+    ptyProcess.onExit(() => {
+      appView?.webContents.send('terminal-exit');
+      ptyProcess = null;
+    });
+  });
+
+  ipcMain.on('terminal-input', (_event, data: string) => {
+    ptyProcess?.write(data);
+  });
+
+  ipcMain.handle('terminal-resize', (_event, cols: number, rows: number) => {
+    ptyProcess?.resize(cols, rows);
+  });
+
+  ipcMain.handle('terminal-destroy', () => {
+    ptyProcess?.kill();
+    ptyProcess = null;
+  });
+
+  // ── Execute JavaScript in the app view ──
+
+  ipcMain.handle('execute-in-app', async (_event, code: string) => {
+    if (!appView) return { error: 'App view not available' };
+    try {
+      const result = await appView.webContents.executeJavaScript(code);
+      return { result: result !== undefined ? String(result) : 'undefined' };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
 }
 
 // ── App lifecycle ───────────────────────────────────────
@@ -415,6 +489,10 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  if (ptyProcess) {
+    ptyProcess.kill();
+    ptyProcess = null;
+  }
   if (server) {
     server.close();
     server = null;
