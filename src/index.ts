@@ -3,28 +3,24 @@
  *
  * Core capabilities:
  * 1. Event Analysis & Learning — analyse past events to identify patterns
- * 2. Event Creation — multi-platform publishing (Meetup, Headfirst, etc.)
+ * 2. Event Creation — multi-platform publishing (Meetup, Eventbrite, Headfirst, etc.)
  * 3. Social Media Management — (future) automated posting and scheduling
  */
 
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createApp, VERSION } from './app.js';
 
-export const VERSION = '0.1.0';
+export { VERSION };
 export const PORT = Number(process.env.PORT) || 3000;
 
-export function handleRequest(_req: IncomingMessage, res: ServerResponse) {
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ name: 'SocialiseHub', version: VERSION }));
-}
-
 export function main() {
-  const server = createServer(handleRequest);
-  server.listen(PORT, () => {
+  const app = createApp();
+  const server = app.listen(PORT, () => {
     console.log(`SocialiseHub v${VERSION} listening on http://localhost:${PORT}`);
   });
   return server;
 }
 
+/* v8 ignore next 3 */
 const isDirectRun = import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, '/')}`;
 if (isDirectRun) {
   main();
