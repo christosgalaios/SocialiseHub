@@ -9,6 +9,8 @@ import { HeadfirstClient } from './tools/headfirst.js';
 import { createEventsRouter } from './routes/events.js';
 import { createServicesRouter } from './routes/services.js';
 import { createAuthRouter } from './routes/auth.js';
+import { createGeneratorRouter } from './routes/generator.js';
+import { MarketAnalyzer } from './agents/market-analyzer.js';
 
 export const VERSION = '0.1.0';
 
@@ -57,8 +59,11 @@ export function createApp(deps?: AppDeps): express.Express {
   });
 
   const port = Number(process.env.PORT) || 3000;
+  const marketAnalyzer = new MarketAnalyzer(serviceStore);
+
   app.use('/api/events', createEventsRouter(eventStore, creator));
   app.use('/api/services', createServicesRouter(serviceStore));
+  app.use('/api/generator', createGeneratorRouter(eventStore, marketAnalyzer));
   app.use('/auth', createAuthRouter(serviceStore, port));
 
   // Serve built frontend — single-server setup

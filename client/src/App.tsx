@@ -2,9 +2,11 @@ import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import { EventsPage } from './pages/EventsPage';
 import { EventDetailPage } from './pages/EventDetailPage';
 import { ServicesPage } from './pages/ServicesPage';
+import { EventGeneratorPage } from './pages/EventGeneratorPage';
 
 const navItems = [
   { to: '/', label: 'Events', icon: '📅' },
+  { to: '/generator', label: 'Event Generator', icon: '💡' },
   { to: '/services', label: 'Services', icon: '🔗' },
 ];
 
@@ -42,6 +44,7 @@ export function App() {
             <Route path="/" element={<EventsPage />} />
             <Route path="/events/new" element={<EventDetailPage />} />
             <Route path="/events/:id" element={<EventDetailPage />} />
+            <Route path="/generator" element={<EventGeneratorPage />} />
             <Route path="/services" element={<ServicesPage />} />
           </Routes>
         </main>
