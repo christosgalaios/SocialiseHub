@@ -17,6 +17,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Agents: code-reviewer, security-auditor, test-coverage-analyzer, bug-fixer
   - Skills: /pr, /gen-test, /deploy, /release
 - Node.js project scaffolding (package.json, TypeScript, ESLint, Vitest)
-- Minimal `src/index.ts` entry point with version export
-- Initial unit test for entry point
+- Minimal `src/index.ts` entry point with version export and HTTP server on port 3000
+- Initial unit tests for entry point and request handler
+- `.claude/launch.json` dev server configuration
 - `.gitignore` for node_modules, dist, env files
