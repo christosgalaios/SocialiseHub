@@ -10,6 +10,9 @@ declare global {
       isElectron: boolean;
       openExternal: (url: string) => Promise<void>;
       copyToClipboard: (text: string) => Promise<void>;
+      toggleClaudePanel: () => Promise<boolean>;
+      focusClaudePanel: () => Promise<void>;
+      isClaudePanelOpen: () => Promise<boolean>;
     };
   }
 }
@@ -71,10 +74,9 @@ export function EventGeneratorPage() {
       }
       setCopied(true);
 
-      // Open Claude.ai — in Electron the embedded browser handles this,
-      // in web mode open a new tab
-      if (window.electronAPI?.openExternal) {
-        await window.electronAPI.openExternal('https://claude.ai/new');
+      // Focus the in-app Claude panel if in Electron, otherwise open a new tab
+      if (window.electronAPI?.focusClaudePanel) {
+        await window.electronAPI.focusClaudePanel();
       } else {
         window.open('https://claude.ai/new', '_blank');
       }
@@ -181,7 +183,7 @@ export function EventGeneratorPage() {
               <p style={styles.modalHint}>
                 {copied
                   ? '✅ Copied! Paste into Claude and hit Enter.'
-                  : 'This will copy the prompt and open Claude.ai'}
+                  : 'This will copy the prompt and open the Claude panel'}
               </p>
               <div style={styles.modalActions}>
                 <button
@@ -194,7 +196,7 @@ export function EventGeneratorPage() {
                   style={styles.sendBtn}
                   onClick={handleCopyAndSend}
                 >
-                  {copied ? '📋 Copied — Open Claude Again' : '📋 Copy & Open Claude'}
+                  {copied ? '📋 Copied — Focus Claude' : '📋 Copy & Open Claude'}
                 </button>
               </div>
             </div>

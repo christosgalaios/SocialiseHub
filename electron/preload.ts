@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, shell } from 'electron';
+import { contextBridge, ipcRenderer } from 'electron';
 
 /**
  * Preload script — exposes a safe API to the renderer (React app).
@@ -16,4 +16,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   /** Get app version */
   getVersion: () => ipcRenderer.invoke('get-version'),
+
+  /** Toggle the Claude side panel (show/hide). Returns new state. */
+  toggleClaudePanel: () => ipcRenderer.invoke('toggle-claude-panel'),
+
+  /** Show and focus the Claude side panel */
+  focusClaudePanel: () => ipcRenderer.invoke('focus-claude-panel'),
+
+  /** Check whether the Claude panel is currently open */
+  isClaudePanelOpen: () => ipcRenderer.invoke('get-claude-panel-state'),
 });
