@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { VERSION, PORT, handleRequest } from './index.js';
 import { IncomingMessage, ServerResponse } from 'node:http';
 import { Socket } from 'node:net';
@@ -20,15 +20,15 @@ describe('SocialiseHub', () => {
     const req = new IncomingMessage(new Socket());
     const res = new ServerResponse(req);
 
-    res.writeHead = (code: number, h?: any) => {
+    res.writeHead = (code: number, h?: Record<string, string>) => {
       statusCode = code;
       headers = h ?? {};
       return res;
     };
-    res.end = ((data?: any) => {
-      body = typeof data === 'string' ? data : '';
+    res.end = ((data?: string) => {
+      body = data ?? '';
       return res;
-    }) as any;
+    }) as ServerResponse['end'];
 
     handleRequest(req, res);
 
