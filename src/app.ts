@@ -8,6 +8,7 @@ import { EventbriteClient } from './tools/eventbrite.js';
 import { HeadfirstClient } from './tools/headfirst.js';
 import { createEventsRouter } from './routes/events.js';
 import { createServicesRouter } from './routes/services.js';
+import { createAuthRouter } from './routes/auth.js';
 
 export const VERSION = '0.1.0';
 
@@ -55,8 +56,10 @@ export function createApp(deps?: AppDeps): express.Express {
     res.json({ status: 'ok', version: VERSION });
   });
 
+  const port = Number(process.env.PORT) || 3000;
   app.use('/api/events', createEventsRouter(eventStore, creator));
   app.use('/api/services', createServicesRouter(serviceStore));
+  app.use('/auth', createAuthRouter(serviceStore, port));
 
   // Serve built frontend — single-server setup
   const clientDir = join(process.cwd(), 'dist-client');

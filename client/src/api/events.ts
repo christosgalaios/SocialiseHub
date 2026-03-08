@@ -5,6 +5,7 @@ import type {
   PublishResult,
   PlatformName,
   ServiceConnection,
+  ScrapedEvent,
 } from '@shared/types';
 
 const BASE = '/api';
@@ -106,4 +107,62 @@ export async function disconnectService(
   });
   const body = await json<{ data: ServiceConnection }>(res);
   return body.data;
+}
+
+// ── OAuth ──────────────────────────────────────────────
+
+export async function startOAuth(
+  platform: PlatformName,
+): Promise<{ authUrl: string }> {
+  const res = await fetch(`/auth/${platform}/start`, {
+    method: 'POST',
+  });
+  return json<{ authUrl: string }>(res);
+}
+
+/**
+ * Subscribes to an SSE stream that emits when OAuth completes.
+ * Returns a cleanup function to abort the connection.
+ */
+export function watchOAuthStatus(
+  platform: PlatformName,
+  onConnected: () => void,
+): () => void {
+  const es = new EventSource(`/auth/${platform}/status`);
+  es.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      if (data.connected) {
+        onConnected();
+        es.close();
+      }
+    } catch { /* ignore */ }
+  };
+  es.onerror = () => es.close();
+  return () => es.close();
+}
+
+// ── Event Generator ────────────────────────────────────
+
+export async function analyzeMarket(): Promise<ScrapedEvent[]> {
+  const res = await fetch(`${BASE}/generator/analyze`, { method: 'POST' });
+  const body = await json<{ data: ScrapedEvent[] }>(res);
+  return body.data;
+}
+
+export async function saveIdeaAsDraft(idea: {
+  title: string;
+  description: string;
+  venue?: string;
+  date?: string;
+}): Promise<SocialiseEvent> {
+  return createEvent({
+    title: idea.title,
+    description: idea.description,
+    venue: idea.venue ?? '',
+    date: idea.date ?? new Date().toISOString().split('T')[0],
+    time: '19:00',
+    price: 0,
+    capacity: 50,
+  });
 }

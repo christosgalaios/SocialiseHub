@@ -4,6 +4,8 @@ node_modules/
 # Build output
 dist/
 dist-client/
+dist-electron/
+release/
 
 # Runtime data (top-level only — not src/data/)
 /data/

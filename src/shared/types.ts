@@ -66,6 +66,40 @@ export interface PublishResult {
   error?: string;
 }
 
+// ── Event Generator ─────────────────────────────────────
+
+export interface ScrapedEvent {
+  title: string;
+  date: string;
+  venue: string;
+  category?: string;
+  price?: string;
+  attendees?: number;
+  platform: PlatformName;
+  url: string;
+}
+
+export interface EventIdea {
+  id: string;
+  title: string;
+  description: string;
+  rationale: string;
+  suggestedDate?: string;
+  suggestedVenue?: string;
+  estimatedAttendance?: number;
+  category: string;
+}
+
+// ── Auth ────────────────────────────────────────────────
+
+export type PlatformAuthType = 'oauth' | 'credentials';
+
+export const PLATFORM_AUTH_TYPES: Record<PlatformName, PlatformAuthType> = {
+  meetup: 'oauth',
+  eventbrite: 'oauth',
+  headfirst: 'credentials',
+};
+
 // ── API Responses ───────────────────────────────────────
 
 export interface ApiResponse<T> {
