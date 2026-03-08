@@ -4,6 +4,7 @@ import { EventsPage } from './pages/EventsPage';
 import { EventDetailPage } from './pages/EventDetailPage';
 import { ServicesPage } from './pages/ServicesPage';
 import { EventGeneratorPage } from './pages/EventGeneratorPage';
+import { AppTesterPage } from './pages/AppTesterPage';
 import { TerminalPanel } from './components/TerminalPanel';
 
 // Typed Electron API exposed via preload
@@ -25,6 +26,7 @@ const navItems = [
   { to: '/', label: 'Events', icon: '📅' },
   { to: '/generator', label: 'Event Generator', icon: '💡' },
   { to: '/services', label: 'Services', icon: '🔗' },
+  { to: '/tester', label: 'App Tester', icon: '🧪' },
 ];
 
 const SIDEBAR_EXPANDED = 240;
@@ -187,6 +189,7 @@ export function App() {
               <Route path="/events/:id" element={<EventDetailPage />} />
               <Route path="/generator" element={<EventGeneratorPage />} />
               <Route path="/services" element={<ServicesPage />} />
+              <Route path="/tester" element={<AppTesterPage />} />
             </Routes>
           </main>
 
@@ -344,6 +347,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   main: {
     flex: 1,
+    minHeight: 0,
     padding: '36px 44px',
     overflowY: 'auto' as const,
   },
