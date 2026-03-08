@@ -6,8 +6,20 @@ import { ServicesPage } from './pages/ServicesPage';
 import { EventGeneratorPage } from './pages/EventGeneratorPage';
 import { TerminalPanel } from './components/TerminalPanel';
 
+// Typed Electron API exposed via preload
+interface ElectronAPI {
+  isElectron: boolean;
+  toggleClaudePanel: () => Promise<boolean>;
+  focusClaudePanel: () => Promise<void>;
+  isClaudePanelOpen: () => Promise<boolean>;
+  getClaudePanelWidth: () => Promise<number>;
+  resizeClaudePanel: (width: number) => Promise<number>;
+  getExtensionStatus: () => Promise<{ loaded: boolean; error?: string; diagnosis?: string; fix?: string }>;
+}
+
 // Detect Electron environment
-const isElectron = !!(window as any).electronAPI?.isElectron;
+const electronAPI = (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
+const isElectron = !!electronAPI?.isElectron;
 
 const navItems = [
   { to: '/', label: 'Events', icon: '📅' },
@@ -29,20 +41,19 @@ export function App() {
   const didDrag = useRef(false);
 
   useEffect(() => {
-    if (isElectron) {
-      const api = (window as any).electronAPI;
-      api.isClaudePanelOpen().then((open: boolean) => {
+    if (isElectron && electronAPI) {
+      electronAPI.isClaudePanelOpen().then((open) => {
         setClaudeOpen(open);
       });
-      api.getClaudePanelWidth().then((w: number) => {
+      electronAPI.getClaudePanelWidth().then((w) => {
         panelWidthRef.current = w;
       });
     }
   }, []);
 
   const handleToggleClaude = async () => {
-    if (isElectron) {
-      const newState = await (window as any).electronAPI.toggleClaudePanel();
+    if (isElectron && electronAPI) {
+      const newState = await electronAPI.toggleClaudePanel();
       setClaudeOpen(newState);
     }
   };
@@ -69,7 +80,7 @@ export function App() {
       if (didDrag.current) {
         const newWidth = dragStartWidth.current + delta;
         panelWidthRef.current = newWidth;
-        (window as any).electronAPI?.resizeClaudePanel(newWidth);
+        electronAPI?.resizeClaudePanel(newWidth);
       }
     };
 

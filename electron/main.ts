@@ -118,7 +118,15 @@ function findChromeExtension(): string | null {
 
 // ── Extension loading ──────────────────────────────────
 
-let loadedExtensionId: string | null = null;
+interface ExtensionStatus {
+  loaded: boolean;
+  error?: string;
+  diagnosis?: string;
+  fix?: string;
+  extensionPath?: string;
+}
+
+let extensionStatus: ExtensionStatus = { loaded: false };
 
 /**
  * Loads the Claude Chrome extension into Electron's session.
@@ -126,7 +134,7 @@ let loadedExtensionId: string | null = null;
  * Priority:
  * 1. Manually configured path (from config)
  * 2. Auto-detected from Chrome installation
- * 3. No extension (graceful fallback)
+ * 3. No extension (graceful fallback with diagnostic info)
  */
 async function loadChromeExtension(config: AppConfig): Promise<boolean> {
   // Try configured path first
@@ -145,20 +153,48 @@ async function loadChromeExtension(config: AppConfig): Promise<boolean> {
   }
 
   if (!extPath) {
-    console.log('Claude Chrome extension not found — install it in Chrome first');
+    extensionStatus = {
+      loaded: false,
+      error: 'Claude Chrome extension not found on this system.',
+      diagnosis: 'The extension is not installed in Chrome, or Chrome is using a non-default profile path.',
+      fix: 'Install the Claude extension in Chrome:\n'
+        + '1. Open Chrome and go to: https://chromewebstore.google.com/detail/claude/fcoeoabgfenejglbffodgkkbkcdhcgfn\n'
+        + '2. Click "Add to Chrome"\n'
+        + '3. Restart SocialiseHub — it will be detected automatically.',
+    };
+    console.log(`Extension status: ${extensionStatus.error}`);
     return false;
   }
 
   try {
     const ses = session.defaultSession;
     // Use the newer extensions API (loadExtension on session is deprecated)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Electron types don't expose session.extensions yet
     const loader = (ses as any).extensions?.loadExtension?.bind(ses.extensions)
       ?? ses.loadExtension.bind(ses);
     const ext = await loader(extPath, { allowFileAccess: true });
-    loadedExtensionId = ext.id;
+    extensionStatus = { loaded: true, extensionPath: extPath };
     console.log(`Loaded Chrome extension: ${ext.name} (${ext.version}) [${ext.id}]`);
     return true;
   } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    extensionStatus = {
+      loaded: false,
+      error: `Extension found at ${extPath} but failed to load.`,
+      extensionPath: extPath,
+      diagnosis: `Load error: ${errMsg}`,
+      fix: errMsg.includes('manifest')
+        ? 'The extension manifest is invalid or incompatible with this Electron version.\n'
+          + 'Try updating Chrome to get the latest extension version, then restart SocialiseHub.'
+        : errMsg.includes('version')
+          ? 'The extension version is incompatible with this Electron version.\n'
+            + 'Update both Chrome and SocialiseHub to their latest versions.'
+          : 'Try these steps:\n'
+            + '1. Update Chrome to the latest version\n'
+            + '2. Make sure the Claude extension is enabled in Chrome (chrome://extensions)\n'
+            + '3. Close Chrome completely\n'
+            + '4. Restart SocialiseHub',
+    };
     console.warn('Failed to load Chrome extension:', err);
     // Clear the saved path so we retry detection next launch
     config.claudeExtensionPath = undefined;
@@ -174,7 +210,6 @@ let appView: WebContentsView | null = null;
 let claudeView: WebContentsView | null = null;
 let claudePanelOpen = true;
 let claudeViewAttached = false;
-// eslint-disable-next-line prefer-const -- reassigned in terminal handlers
 let ptyProcess: ReturnType<typeof pty.spawn> | null = null;
 
 // ── Layout management ───────────────────────────────────
@@ -337,11 +372,9 @@ function createMainWindow(port: number, config: AppConfig, hasExtension: boolean
     if (hasExtension) {
       console.log('Claude extension content scripts injected into app view');
     } else {
-      console.log(
-        '\n  ⚠ Claude Chrome extension not loaded.\n' +
-        '  Install it in Chrome first: https://chromewebstore.google.com/detail/claude/fcoeoabgfenejglbffodgkkbkcdhcgfn\n' +
-        '  Then restart SocialiseHub — it will be detected automatically.\n',
-      );
+      console.log(`\n  ⚠ ${extensionStatus.error ?? 'Claude Chrome extension not loaded.'}`);
+      if (extensionStatus.diagnosis) console.log(`  Diagnosis: ${extensionStatus.diagnosis}`);
+      if (extensionStatus.fix) console.log(`  Fix:\n  ${extensionStatus.fix.replace(/\n/g, '\n  ')}`);
     }
   });
 
@@ -382,6 +415,10 @@ function setupIpcHandlers(config: AppConfig): void {
 
   ipcMain.handle('get-claude-panel-state', () => {
     return claudePanelOpen;
+  });
+
+  ipcMain.handle('get-extension-status', () => {
+    return extensionStatus;
   });
 
   ipcMain.handle('get-claude-panel-width', () => {
