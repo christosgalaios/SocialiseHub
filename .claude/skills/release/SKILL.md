@@ -61,7 +61,7 @@ gh release create "v$VERSION" \
 
 If `gh` is unavailable, provide the manual URL:
 ```
-https://github.com/christosgalaios/socialise-hub/releases/new?tag=v$VERSION&target=development
+https://github.com/christosgalaios/SocialiseHub/releases/new?tag=v$VERSION&target=development
 ```
 
 ### Step 5 — Report

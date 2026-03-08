@@ -51,4 +51,4 @@ jobs:
       # - name: Deploy to Railway
       #   env:
       #     RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-      #   run: npx @railway/cli up --service socialise-hub-dev
+      #   run: npx @railway/cli up --service SocialiseHub-dev

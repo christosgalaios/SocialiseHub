@@ -1,5 +1,5 @@
 name: Bug Report
-description: Report a bug in Socialise Hub. An automated agent will validate and attempt to fix it.
+description: Report a bug in SocialiseHub. An automated agent will validate and attempt to fix it.
 title: "[BUG] "
 labels: ["bug"]
 body:

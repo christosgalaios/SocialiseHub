@@ -5,7 +5,7 @@ disable-model-invocation: false
 context: fork
 ---
 
-# Test Generator for Socialise Hub
+# Test Generator for SocialiseHub
 
 Generates comprehensive unit tests for agent modules, platform integrations, and utilities.
 

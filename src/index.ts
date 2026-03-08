@@ -1,5 +1,5 @@
 /**
- * Socialise Hub — AI-powered business operations tool
+ * SocialiseHub — AI-powered business operations tool
  *
  * Core capabilities:
  * 1. Event Analysis & Learning — analyse past events to identify patterns
@@ -10,5 +10,5 @@
 export const VERSION = '0.1.0';
 
 export function main() {
-  console.log(`Socialise Hub v${VERSION}`);
+  console.log(`SocialiseHub v${VERSION}`);
 }

@@ -46,7 +46,7 @@ jobs:
       # - name: Deploy to Railway
       #   env:
       #     RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-      #   run: npx @railway/cli up --service socialise-hub-prod
+      #   run: npx @railway/cli up --service SocialiseHub-prod
 
   # Back-merge production into development to keep branches in sync
   sync-development:

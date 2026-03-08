@@ -1,12 +1,12 @@
-# Socialise Hub
+# SocialiseHub
 
 AI-powered event management and business scaling tool for the Socialise events company.
 
 ---
 
-## What is Socialise Hub?
+## What is SocialiseHub?
 
-Socialise Hub automates the operational side of running an events business. It uses AI to learn from past events, create and publish new events across multiple platforms simultaneously, and (eventually) manage social media presence.
+SocialiseHub automates the operational side of running an events business. It uses AI to learn from past events, create and publish new events across multiple platforms simultaneously, and (eventually) manage social media presence.
 
 ### Core Features (Planned)
 

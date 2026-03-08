@@ -79,7 +79,7 @@ If the user said `/deploy production`:
 
 2. If `gh` is unavailable, provide the manual URL:
    ```
-   https://github.com/christosgalaios/socialise-hub/compare/production...development
+   https://github.com/christosgalaios/SocialiseHub/compare/production...development
    ```
 
 ## Notes

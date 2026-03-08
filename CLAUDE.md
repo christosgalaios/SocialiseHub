@@ -1,4 +1,4 @@
-# Socialise Hub — Claude Brain
+# SocialiseHub — Claude Brain
 
 > Fast-reference context for Claude Code. Read this file before touching anything.
 
@@ -6,7 +6,7 @@
 
 ## What This Tool Is
 
-**Socialise Hub** is an AI-powered business operations tool for the Socialise events company. It automates event management, learns from past events to scale the business, and manages multi-platform publishing.
+**SocialiseHub** is an AI-powered business operations tool for the Socialise events company. It automates event management, learns from past events to scale the business, and manages multi-platform publishing.
 
 **Core capabilities (planned):**
 1. **Event Analysis & Learning** — Analyses past event data (attendance, engagement, revenue, feedback) to identify patterns and recommend improvements

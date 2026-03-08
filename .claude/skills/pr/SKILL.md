@@ -78,7 +78,7 @@ If the rebase has conflicts, stop and help the user resolve them.
 3. **If `gh` is NOT available:** Provide the manual URL:
    ```
    Create your PR manually:
-   https://github.com/christosgalaios/socialise-hub/compare/development...<branch-name>
+   https://github.com/christosgalaios/SocialiseHub/compare/development...<branch-name>
    ```
 
 ### Step 4 — Report
