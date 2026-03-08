@@ -13,7 +13,8 @@ export function TerminalPanel({ height = 260 }: Props) {
 
   useEffect(() => {
     if (!containerRef.current) return;
-    const api = (window as any).electronAPI;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- electronAPI is injected by Electron preload
+    const api = (window as Record<string, any>).electronAPI;
     if (!api?.terminalCreate) return;
 
     const term = new Terminal({

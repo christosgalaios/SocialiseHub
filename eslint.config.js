@@ -5,10 +5,19 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    ignores: ['dist/**', 'node_modules/**', '*.js', '!eslint.config.js'],
+    ignores: [
+      'dist/**',
+      'dist-client/**',
+      'dist-electron/**',
+      'node_modules/**',
+      'scripts/**',
+      '*.js',
+      '*.cjs',
+      '!eslint.config.js',
+    ],
   },
   {
-    files: ['src/**/*.ts'],
+    files: ['src/**/*.ts', 'electron/**/*.ts', 'client/**/*.ts', 'client/**/*.tsx'],
     languageOptions: {
       parserOptions: {
         project: './tsconfig.eslint.json',

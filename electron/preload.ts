@@ -34,6 +34,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** Resize the Claude panel (returns clamped width) */
   resizeClaudePanel: (width: number) => ipcRenderer.invoke('resize-claude-panel', width),
 
+  /** Get Claude extension loading status (loaded, error, diagnosis, fix) */
+  getExtensionStatus: () => ipcRenderer.invoke('get-extension-status'),
+
   // ── Terminal (PTY) ──
 
   /** Spawn a new terminal shell process */

@@ -80,7 +80,7 @@ export function EventGeneratorPage() {
       } else {
         window.open('https://claude.ai/new', '_blank');
       }
-    } catch (err) {
+    } catch {
       setError('Failed to copy to clipboard');
     }
   };
