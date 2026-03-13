@@ -1,7 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createDatabase, type Database } from './database.js';
 import { SqliteServiceStore } from './sqlite-service-store.js';
-import { decrypt } from './crypto.js';
 
 describe('SqliteServiceStore', () => {
   let db: Database;
@@ -32,7 +31,7 @@ describe('SqliteServiceStore', () => {
     }
   });
 
-  it('connects a service with encrypted credentials (DB value is encrypted)', () => {
+  it('connects a service and stores credentials', () => {
     const result = store.connect('meetup', {
       access_token: 'plaintext-token-abc',
       refresh_token: 'plaintext-refresh-xyz',
@@ -44,17 +43,13 @@ describe('SqliteServiceStore', () => {
     // returned object should not carry raw credentials
     expect((result as Record<string, unknown>)['credentials']).toBeUndefined();
 
-    // Verify the DB row has an encrypted (not plaintext) value
+    // Verify the DB row has the stored value
     const row = db
       .prepare('SELECT access_token, refresh_token FROM services WHERE platform = ?')
       .get('meetup') as { access_token: string; refresh_token: string };
 
-    expect(row.access_token).not.toBe('plaintext-token-abc');
-    expect(row.refresh_token).not.toBe('plaintext-refresh-xyz');
-
-    // Confirm it can be decrypted back
-    expect(decrypt(row.access_token)).toBe('plaintext-token-abc');
-    expect(decrypt(row.refresh_token)).toBe('plaintext-refresh-xyz');
+    expect(row.access_token).toBe('plaintext-token-abc');
+    expect(row.refresh_token).toBe('plaintext-refresh-xyz');
   });
 
   it('disconnects a service and clears credentials', () => {

@@ -1,5 +1,4 @@
 import type { Database } from './database.js';
-import { encrypt, decrypt } from './crypto.js';
 import type { PlatformName, ServiceConnection } from '../shared/types.js';
 
 const LABELS: Record<PlatformName, { label: string; description: string }> = {
@@ -54,8 +53,8 @@ export class SqliteServiceStore {
     const meta = LABELS[platform] ?? { label: platform, description: '' };
 
     const credentials: Record<string, string> = {};
-    if (row.access_token) credentials['access_token'] = decrypt(row.access_token);
-    if (row.refresh_token) credentials['refresh_token'] = decrypt(row.refresh_token);
+    if (row.access_token) credentials['access_token'] = row.access_token;
+    if (row.refresh_token) credentials['refresh_token'] = row.refresh_token;
     if (row.token_expires_at) credentials['token_expires_at'] = row.token_expires_at;
 
     const extra = row.extra ? (JSON.parse(row.extra) as Record<string, unknown>) : undefined;
@@ -82,12 +81,8 @@ export class SqliteServiceStore {
     if (!existing) return undefined;
 
     const connectedAt = new Date().toISOString();
-    const accessToken = credentials['access_token']
-      ? encrypt(credentials['access_token'])
-      : null;
-    const refreshToken = credentials['refresh_token']
-      ? encrypt(credentials['refresh_token'])
-      : null;
+    const accessToken = credentials['access_token'] ?? null;
+    const refreshToken = credentials['refresh_token'] ?? null;
     const tokenExpiresAt = credentials['token_expires_at'] ?? null;
 
     this.db
@@ -161,8 +156,8 @@ export class SqliteServiceStore {
          WHERE platform = ?`,
       )
       .run(
-        encrypt(accessToken),
-        refreshToken ? encrypt(refreshToken) : null,
+        accessToken,
+        refreshToken ?? null,
         expiresAt ?? null,
         platform,
       );
