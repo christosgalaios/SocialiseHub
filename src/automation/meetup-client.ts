@@ -58,8 +58,13 @@ export class MeetupAutomationClient implements PlatformClient {
   async fetchEvents(): Promise<PlatformEvent[]> {
     const result = await requestAutomation({ platform: 'meetup', action: 'scrape', data: { groupUrlname: this.getGroupUrlname() } });
     if (!result.success) return [];
-    const events = typeof result.data?.lastEvalResult === 'string'
-      ? JSON.parse(result.data.lastEvalResult) : [];
+    const parsed = typeof result.data?.lastEvalResult === 'string'
+      ? JSON.parse(result.data.lastEvalResult) : result.data?.lastEvalResult;
+    if (!Array.isArray(parsed)) {
+      if (parsed?.error) throw new Error(parsed.error);
+      return [];
+    }
+    const events = parsed;
     return events.map((e: Record<string, unknown>) => ({
       id: '',
       platform: 'meetup' as const,

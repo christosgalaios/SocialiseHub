@@ -23,15 +23,16 @@ const PUBLISH_SELECTORS = {
 };
 
 /**
- * Steps to check if the user is logged into Eventbrite.
- * Returns: lastEvalResult = { loggedIn: boolean, organizationId?: string }
+ * Steps to check if the user is logged into Eventbrite and detect their organization.
+ * Navigates to Eventbrite and polls API until authenticated, then fetches org info.
+ * Returns: lastEvalResult = { loggedIn: boolean, organizationId?: string, organizationName?: string }
  */
 export function eventbriteConnectSteps(): AutomationStep[] {
   return [
     {
       action: 'navigate',
-      url: 'https://www.eventbrite.com/',
-      description: 'Opening Eventbrite...',
+      url: 'https://www.eventbrite.co.uk/signin/',
+      description: 'Opening Eventbrite login...',
     },
     {
       action: 'waitForSelector',
@@ -41,14 +42,43 @@ export function eventbriteConnectSteps(): AutomationStep[] {
     },
     {
       action: 'evaluate',
-      script: `(() => {
-        const nav = document.querySelector('${SELECTORS.loggedInNav}');
-        if (!nav) return JSON.stringify({ loggedIn: false });
-        const orgLink = document.querySelector('${SELECTORS.orgIdLink}');
-        const orgMatch = orgLink?.getAttribute('href')?.match(/organizations\\/(\\d+)/);
-        return JSON.stringify({ loggedIn: true, organizationId: orgMatch ? orgMatch[1] : null });
+      script: `(async () => {
+        const maxWait = 120_000;
+        const pollInterval = 3_000;
+        const start = Date.now();
+
+        while (Date.now() - start < maxWait) {
+          try {
+            const csrfToken = document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
+            const meResp = await fetch('/api/v3/users/me/', {
+              credentials: 'include',
+              headers: { 'X-CSRFToken': csrfToken },
+            });
+            if (meResp.ok) {
+              // Authenticated — fetch organizations
+              const orgsResp = await fetch('/api/v3/users/me/organizations/', {
+                credentials: 'include',
+                headers: { 'X-CSRFToken': csrfToken },
+              });
+              const result = { loggedIn: true, organizationId: null, organizationName: null, error: null };
+              if (orgsResp.ok) {
+                const orgsJson = await orgsResp.json();
+                const orgs = orgsJson?.organizations ?? [];
+                if (orgs.length > 0) {
+                  result.organizationId = orgs[0].id;
+                  result.organizationName = orgs[0].name;
+                }
+              }
+              return JSON.stringify(result);
+            }
+          } catch { /* retry */ }
+
+          await new Promise(r => setTimeout(r, pollInterval));
+        }
+
+        return JSON.stringify({ loggedIn: false, organizationId: null, organizationName: null, error: 'Login timed out — please log in to Eventbrite in the panel on the right.' });
       })()`,
-      description: 'Checking login status...',
+      description: 'Waiting for Eventbrite login (log in on the right panel)...',
     },
   ];
 }
@@ -171,47 +201,61 @@ export function eventbritePublishSteps(event: SocialiseEvent): AutomationStep[] 
 }
 
 /**
- * Steps to scrape events from Eventbrite organizations dashboard.
+ * Steps to scrape events from Eventbrite using the REST API.
  */
 export function eventbriteScrapeSteps(): AutomationStep[] {
   return [
     {
       action: 'navigate',
-      url: 'https://www.eventbrite.com/organizations/events/',
-      description: 'Opening events dashboard...',
+      url: 'https://www.eventbrite.co.uk/organizations/home/',
+      description: 'Opening Eventbrite...',
     },
     {
       action: 'waitForSelector',
-      selector: '[data-testid="event-list-item"], .event-list-item, table tbody tr',
-      timeout: 15_000,
-      description: 'Waiting for events list to load...',
+      selector: 'body',
+      timeout: 10_000,
+      description: 'Waiting for page to load...',
     },
     {
       action: 'evaluate',
-      script: `(() => {
-        const rows = document.querySelectorAll('[data-testid="event-list-item"], .event-list-item, table tbody tr');
-        const events = [];
-        for (const row of rows) {
-          const link = row.querySelector('a[href*="/event/"], a[href*="eid="]');
-          const href = link?.getAttribute('href') ?? '';
-          const eidMatch = href.match(/eid=(\\d+)/) ?? href.match(/event\\/(\\d+)/);
-          const title = row.querySelector('[data-testid="event-name"], .event-name, td:first-child a')?.textContent?.trim() ?? '';
-          const dateEl = row.querySelector('time, [data-testid="event-date"], td:nth-child(2)');
-          const date = dateEl?.getAttribute('datetime') ?? dateEl?.textContent?.trim() ?? '';
-          const status = row.querySelector('[data-testid="event-status"], .event-status')?.textContent?.trim() ?? '';
-          if (title) {
-            events.push({
-              externalId: eidMatch ? eidMatch[1] : href,
-              title,
-              date,
-              status,
-              url: href.startsWith('http') ? href : 'https://www.eventbrite.com' + href,
-            });
-          }
-        }
+      script: `(async () => {
+        const csrfToken = document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
+        const headers = { 'X-CSRFToken': csrfToken };
+
+        // Check auth first
+        const meResp = await fetch('/api/v3/users/me/', {
+          credentials: 'include', headers
+        });
+        if (!meResp.ok) return JSON.stringify({ error: 'Not authenticated — please connect Eventbrite first.' });
+
+        // Get org ID
+        const orgsResp = await fetch('/api/v3/users/me/organizations/', {
+          credentials: 'include', headers
+        });
+        if (!orgsResp.ok) return JSON.stringify({ error: 'Failed to fetch organizations (HTTP ' + orgsResp.status + ')' });
+        const orgsJson = await orgsResp.json();
+        const orgId = orgsJson?.organizations?.[0]?.id;
+        if (!orgId) return JSON.stringify({ error: 'No organization found on this Eventbrite account.' });
+
+        // Get events for this org
+        const eventsResp = await fetch(
+          '/api/v3/organizations/' + orgId + '/events/?status=live,started,ended,completed&order_by=start_desc&page_size=50',
+          { credentials: 'include', headers }
+        );
+        if (!eventsResp.ok) return JSON.stringify({ error: 'Failed to fetch events (HTTP ' + eventsResp.status + ')' });
+        const eventsJson = await eventsResp.json();
+
+        const events = (eventsJson?.events ?? []).map(e => ({
+          externalId: e.id,
+          title: e.name?.text ?? '',
+          date: e.start?.utc ?? '',
+          venue: '',
+          url: e.url ?? '',
+          status: e.status ?? '',
+        }));
         return JSON.stringify(events);
       })()`,
-      description: 'Scraping event data...',
+      description: 'Fetching events via API...',
     },
   ];
 }

@@ -18,15 +18,16 @@ const FORM_SELECTORS = {
 };
 
 /**
- * Steps to check if the user is logged into Headfirst Bristol.
- * Returns: lastEvalResult = { loggedIn: boolean }
+ * Steps to check if the user is logged into Headfirst Bristol and detect their organization.
+ * Navigates to the event manager (redirects to login if not authenticated) and polls until logged in.
+ * Returns: lastEvalResult = { loggedIn: boolean, organizationId?: string, organizationName?: string }
  */
 export function headfirstConnectSteps(): AutomationStep[] {
   return [
     {
       action: 'navigate',
-      url: 'https://www.headfirstbristol.co.uk/',
-      description: 'Opening Headfirst Bristol...',
+      url: 'https://www.headfirstbristol.co.uk/event-manager#/events',
+      description: 'Opening Headfirst Event Manager...',
     },
     {
       action: 'waitForSelector',
@@ -36,11 +37,37 @@ export function headfirstConnectSteps(): AutomationStep[] {
     },
     {
       action: 'evaluate',
-      script: `(() => {
-        const indicator = document.querySelector('${SELECTORS.loggedInIndicator}');
-        return JSON.stringify({ loggedIn: !!indicator });
+      script: `(async () => {
+        const maxWait = 120_000;
+        const pollInterval = 3_000;
+        const start = Date.now();
+
+        while (Date.now() - start < maxWait) {
+          await new Promise(r => setTimeout(r, pollInterval));
+
+          // Check for org link — only appears when logged in to event manager
+          const orgLink = document.querySelector('a[href*="/organisations/"]');
+          const orgMatch = orgLink?.getAttribute('href')?.match(/organisations\\/(\\d+)/);
+          const hasSignOut = document.body.textContent?.includes('Sign Out');
+
+          if (orgMatch || hasSignOut) {
+            const result = { loggedIn: true, organizationId: null, organizationName: null };
+            if (orgMatch) result.organizationId = orgMatch[1];
+
+            // Get org name directly from the org link's text content
+            const orgLinkEl = document.querySelector('a[href*="/organisations/"]');
+            if (orgLinkEl) {
+              const text = orgLinkEl.textContent?.trim();
+              if (text && text !== 'Organisation') result.organizationName = text;
+            }
+
+            return JSON.stringify(result);
+          }
+        }
+
+        return JSON.stringify({ loggedIn: false, organizationId: null, organizationName: null, error: 'Login timed out — please log in to Headfirst in the panel on the right.' });
       })()`,
-      description: 'Checking login status...',
+      description: 'Waiting for Headfirst login (log in on the right panel)...',
     },
   ];
 }
@@ -143,47 +170,75 @@ export function headfirstPublishSteps(event: SocialiseEvent): AutomationStep[] {
 }
 
 /**
- * Steps to scrape events from a Headfirst Bristol user listing.
+ * Steps to scrape events from the Headfirst Bristol event manager.
  */
 export function headfirstScrapeSteps(): AutomationStep[] {
   return [
     {
       action: 'navigate',
-      url: 'https://www.headfirstbristol.co.uk/my-events',
-      description: 'Opening my events...',
+      url: 'https://www.headfirstbristol.co.uk/event-manager#/events/future',
+      description: 'Opening Headfirst Event Manager...',
     },
     {
       action: 'waitForSelector',
-      selector: '.event-card, .event-listing, a[href*="/event/"]',
+      selector: 'body',
       timeout: 10_000,
-      description: 'Waiting for events to load...',
+      description: 'Waiting for page to load...',
     },
     {
       action: 'evaluate',
-      script: `(() => {
-        const items = document.querySelectorAll('.event-card, .event-listing, [data-event-id]');
+      script: `(async () => {
+        // Poll until event links appear or timeout after 15s
+        const pollStart = Date.now();
+        while (Date.now() - pollStart < 15000) {
+          if (document.querySelectorAll('a[href*="#/events/"]').length > 2) break;
+          await new Promise(r => setTimeout(r, 500));
+        }
+
         const events = [];
-        for (const item of items) {
-          const link = item.querySelector('a[href*="/event/"]') ?? item.closest('a');
-          const href = link?.getAttribute('href') ?? '';
-          const idMatch = href.match(/event\\/(\\d+)/);
-          const title = item.querySelector('h2, h3, .event-title')?.textContent?.trim() ?? '';
-          const dateEl = item.querySelector('time, .event-date');
-          const date = dateEl?.getAttribute('datetime') ?? dateEl?.textContent?.trim() ?? '';
-          const venue = item.querySelector('.event-venue, .venue')?.textContent?.trim() ?? '';
-          if (title) {
-            events.push({
-              externalId: idMatch ? idMatch[1] : href,
-              title,
-              date,
-              venue,
-              url: href.startsWith('http') ? href : 'https://www.headfirstbristol.co.uk' + href,
-            });
+        const seen = new Set();
+
+        // Extract event IDs and data from event manager links
+        const links = document.querySelectorAll('a[href*="/events/"]');
+        for (const a of links) {
+          const match = a.href.match(/#\\/events\\/(\\d+)/);
+          if (!match || seen.has(match[1])) continue;
+          const id = match[1];
+          seen.add(id);
+
+          // The link text contains either the title or the date/venue
+          const text = a.textContent?.trim() ?? '';
+          // Skip non-content links like "Access Doorlist", ticket counts, prices
+          if (!text || /^\\d+\\s*\\/|^\\xA3|doorlist|orders/i.test(text)) continue;
+
+          events.push({
+            externalId: id,
+            title: text,
+            date: '',
+            venue: '',
+            url: 'https://www.headfirstbristol.co.uk/event-manager#/events/' + id + '/details',
+          });
+        }
+
+        // Now enrich: for each event, find sibling links with date/venue info
+        for (const evt of events) {
+          const detailLinks = document.querySelectorAll('a[href*="/events/' + evt.externalId + '/details"]');
+          for (const dl of detailLinks) {
+            const t = dl.textContent?.trim() ?? '';
+            // Date pattern like "Thursday, 26th March - 19:00Venue Name"
+            const dateMatch = t.match(/^(\\w+,\\s*\\d+\\w*\\s+\\w+\\s*-\\s*\\d+:\\d+)/);
+            if (dateMatch) {
+              // Split date and venue: "Thursday, 26th March - 19:00Green house"
+              const afterTime = t.replace(dateMatch[1], '').trim();
+              evt.date = dateMatch[1];
+              if (afterTime) evt.venue = afterTime;
+            }
           }
         }
+
         return JSON.stringify(events);
       })()`,
-      description: 'Scraping event data...',
+      description: 'Fetching events from Event Manager...',
     },
   ];
 }

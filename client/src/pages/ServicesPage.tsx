@@ -83,8 +83,12 @@ export function ServicesPage() {
         try {
           const evalResult = (result.data as Record<string, unknown>)?.lastEvalResult;
           const data = typeof evalResult === 'string' ? JSON.parse(evalResult) : evalResult;
-          if (data?.groupUrlname && platform === 'meetup') {
+          if (data && platform === 'meetup' && data.groupUrlname) {
             await setupService(platform, { groupUrlname: data.groupUrlname });
+          } else if (data && platform === 'eventbrite' && data.organizationId) {
+            await setupService(platform, { organizationId: data.organizationId, organizationName: data.organizationName });
+          } else if (data && platform === 'headfirst' && data.organizationId) {
+            await setupService(platform, { organizationId: data.organizationId, organizationName: data.organizationName });
           }
         } catch { /* ignore */ }
 

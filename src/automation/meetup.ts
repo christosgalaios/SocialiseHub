@@ -20,8 +20,8 @@ export function meetupConnectSteps(): AutomationStep[] {
   return [
     {
       action: 'navigate',
-      url: 'https://www.meetup.com/home/',
-      description: 'Opening Meetup...',
+      url: 'https://www.meetup.com/login/',
+      description: 'Opening Meetup login...',
     },
     {
       action: 'waitForSelector',
@@ -29,106 +29,55 @@ export function meetupConnectSteps(): AutomationStep[] {
       timeout: 10_000,
       description: 'Waiting for page to load...',
     },
-    // Extract groups from Next.js page data and Apollo cache
+    // Wait for user to log in (poll until GraphQL confirms authentication)
     {
       action: 'evaluate',
       script: `(async () => {
-        try {
-          // Strategy 1: Check __NEXT_DATA__ for embedded group data
-          const nextData = window.__NEXT_DATA__;
-          let groups = [];
+        // Poll for up to 120 seconds waiting for the user to log in
+        const maxWait = 120_000;
+        const pollInterval = 3_000;
+        const start = Date.now();
 
-          if (nextData) {
-            // Walk the entire Next.js data tree looking for group objects with urlname
-            const found = new Map();
-            const walk = (obj, depth) => {
-              if (!obj || depth > 10) return;
-              if (typeof obj !== 'object') return;
-              // A group object typically has urlname + name
-              if (obj.urlname && obj.name && typeof obj.urlname === 'string' && typeof obj.name === 'string') {
-                if (!found.has(obj.urlname)) {
-                  found.set(obj.urlname, {
-                    urlname: obj.urlname,
-                    name: obj.name,
-                    isOrganizer: obj.isOrganizer === true || obj.membershipMetadata?.role === 'ORGANIZER',
+        while (Date.now() - start < maxWait) {
+          try {
+            const resp = await fetch('https://www.meetup.com/gql2', {
+              method: 'POST',
+              credentials: 'include',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                query: '{ self { id name memberships(first: 50) { edges { metadata { role } node { id urlname name } } } } }'
+              }),
+            });
+            if (resp.ok) {
+              const json = await resp.json();
+              if (json?.data?.self?.id) {
+                // User is authenticated — extract groups
+                const result = { loggedIn: true, groups: [], groupUrlname: null, error: null };
+                const edges = json.data.self.memberships?.edges ?? [];
+
+                for (const edge of edges) {
+                  const role = edge.metadata?.role ?? 'MEMBER';
+                  const g = edge.node;
+                  result.groups.push({
+                    urlname: g.urlname,
+                    name: g.name,
+                    isOrganizer: role === 'ORGANIZER' || role === 'COORGANIZER',
                   });
                 }
-              }
-              if (Array.isArray(obj)) {
-                for (const item of obj) walk(item, depth + 1);
-              } else {
-                for (const val of Object.values(obj)) walk(val, depth + 1);
-              }
-            };
-            walk(nextData, 0);
-            groups = Array.from(found.values());
-          }
 
-          // Strategy 2: Check Apollo Client cache (window.__APOLLO_STATE__ or similar)
-          if (groups.length === 0) {
-            const apolloState = window.__APOLLO_STATE__ || window.__NEXT_DATA__?.props?.pageProps?.__APOLLO_STATE__;
-            if (apolloState) {
-              const found = new Map();
-              for (const [key, val] of Object.entries(apolloState)) {
-                if (key.startsWith('Group:') && val && val.urlname) {
-                  found.set(val.urlname, {
-                    urlname: val.urlname,
-                    name: val.name || val.urlname,
-                    isOrganizer: val.isOrganizer === true,
-                  });
-                }
+                const orgGroup = result.groups.find(g => g.isOrganizer);
+                result.groupUrlname = orgGroup?.urlname ?? null;
+                return JSON.stringify(result);
               }
-              groups = Array.from(found.values());
             }
-          }
+          } catch { /* retry */ }
 
-          // Strategy 3: Try Meetup's internal /musearch/typeahead endpoint
-          if (groups.length === 0) {
-            try {
-              const res = await fetch('https://www.meetup.com/mu_api/urlname-list', { credentials: 'include' });
-              if (res.ok) {
-                const data = await res.json();
-                if (Array.isArray(data)) {
-                  groups = data.map(g => ({ urlname: g.urlname || g, name: g.name || g.urlname || g, isOrganizer: false }));
-                }
-              }
-            } catch {}
-          }
-
-          // Strategy 4: Extract from the page's React fiber tree
-          if (groups.length === 0) {
-            const rootEl = document.getElementById('__next') || document.getElementById('root');
-            if (rootEl && rootEl._reactRootContainer) {
-              // Can't easily traverse fiber, skip
-            }
-          }
-
-          // Strategy 5: Look for group links that are NOT in nav/footer
-          if (groups.length === 0) {
-            const mainContent = document.querySelector('main, [role="main"], #__next > div > div:nth-child(2)') || document.body;
-            const links = Array.from(mainContent.querySelectorAll('a[href*="/"]'));
-            const skip = new Set(['home','groups','messages','notifications','settings','find','topics','apps','about','help','pro','login','register','account','events','blog','media','meetup','your-events','profile','members','resources','start','logout','cities','sitemap','meetup-pro','cookie-policy','terms','privacy','lp','swarm','recommended']);
-            const seen = new Set();
-            for (const link of links) {
-              const href = link.getAttribute('href') ?? '';
-              const m = href.match(/\\/([a-zA-Z][a-zA-Z0-9-]{2,})\\/?$/);
-              if (!m || skip.has(m[1].toLowerCase()) || seen.has(m[1])) continue;
-              // Only consider links inside the main content area, not nav/footer
-              if (link.closest('nav, footer, header')) continue;
-              seen.add(m[1]);
-              groups.push({ urlname: m[1], name: link.textContent?.trim() || m[1], isOrganizer: false });
-            }
-          }
-
-          const loggedIn = !!document.querySelector('${SELECTORS.loggedInAvatar}') || !!nextData?.props?.pageProps?.self || groups.length > 0;
-          const organizer = groups.filter(g => g.isOrganizer);
-          const result = organizer.length > 0 ? organizer : groups;
-          return JSON.stringify({ loggedIn, groups, groupUrlname: result[0]?.urlname ?? null });
-        } catch (err) {
-          return JSON.stringify({ loggedIn: false, error: String(err) });
+          await new Promise(r => setTimeout(r, pollInterval));
         }
+
+        return JSON.stringify({ loggedIn: false, groups: [], groupUrlname: null, error: 'Login timed out — please log in to Meetup in the panel on the right.' });
       })()`,
-      description: 'Finding your organizer groups...',
+      description: 'Waiting for Meetup login (log in on the right panel)...',
     },
   ];
 }
@@ -234,38 +183,37 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
     },
     {
       action: 'waitForSelector',
-      selector: '[data-testid="event-card"], .eventCard, a[href*="/events/"]',
+      selector: 'body',
       timeout: 10_000,
-      description: 'Waiting for events to load...',
+      description: 'Waiting for page to load...',
     },
+    // Use GraphQL API with variables for reliable, injection-safe event data
     {
       action: 'evaluate',
-      script: `(() => {
-        const cards = document.querySelectorAll('[data-testid="event-card"], .eventCard--link, [id^="event-card"]');
-        const events = [];
-        for (const card of cards) {
-          const link = card.closest('a') ?? card.querySelector('a');
-          const href = link?.getAttribute('href') ?? '';
-          const idMatch = href.match(/events\\/(\\d+)/);
-          const title = card.querySelector('h2, h3, [data-testid="event-name"]')?.textContent?.trim() ?? '';
-          const dateEl = card.querySelector('time, [datetime], [data-testid="event-date"]');
-          const date = dateEl?.getAttribute('datetime') ?? dateEl?.textContent?.trim() ?? '';
-          const venue = card.querySelector('[data-testid="event-venue"], .venue-name')?.textContent?.trim() ?? '';
-          const attendees = card.querySelector('[data-testid="attendee-count"], .attendee-count')?.textContent?.match(/\\d+/)?.[0];
-          if (title) {
-            events.push({
-              externalId: idMatch ? idMatch[1] : href,
-              title,
-              date,
-              venue,
-              url: href.startsWith('http') ? href : 'https://www.meetup.com' + href,
-              attendees: attendees ? parseInt(attendees) : undefined,
-            });
-          }
-        }
+      script: `(async () => {
+        const resp = await fetch('https://www.meetup.com/gql2', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: 'query($urlname: String!) { groupByUrlname(urlname: $urlname) { events(first: 50) { edges { node { id title dateTime eventUrl venue { name } } } } } }',
+            variables: { urlname: ${JSON.stringify(groupUrlname)} }
+          }),
+        });
+        if (!resp.ok) return JSON.stringify({ error: 'GraphQL returned ' + resp.status });
+        const json = await resp.json();
+        if (json.errors) return JSON.stringify({ error: json.errors[0]?.message ?? 'GraphQL error' });
+        const edges = json?.data?.groupByUrlname?.events?.edges ?? [];
+        const events = edges.map(e => ({
+          externalId: e.node.id,
+          title: e.node.title,
+          date: e.node.dateTime,
+          venue: e.node.venue?.name ?? '',
+          url: e.node.eventUrl,
+        }));
         return JSON.stringify(events);
       })()`,
-      description: 'Scraping event data...',
+      description: 'Fetching events via API...',
     },
   ];
 }
