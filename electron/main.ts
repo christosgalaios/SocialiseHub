@@ -578,17 +578,59 @@ app.whenReady().then(async () => {
         req.on('end', async () => {
           try {
             const request = JSON.parse(body);
-            // Placeholder — Task 14 replaces this block with real platform dispatch.
-            // Until then, bridge requests return a stub error so callers handle gracefully.
-            void request;
+            const { meetupConnectSteps, meetupPublishSteps, meetupScrapeSteps } = await import('../dist/automation/meetup.js');
+            const { eventbriteConnectSteps, eventbritePublishSteps, eventbriteScrapeSteps } = await import('../dist/automation/eventbrite.js');
+            const { headfirstConnectSteps, headfirstPublishSteps, headfirstScrapeSteps } = await import('../dist/automation/headfirst.js');
+
+            type StepFn = () => import('../dist/automation/types.js').AutomationStep[];
+            const dispatch: Record<string, Record<string, StepFn | undefined>> = {
+              meetup: {
+                connect: () => meetupConnectSteps(),
+                publish: () => meetupPublishSteps(request.data, request.data?.groupUrlname ?? ''),
+                scrape: () => meetupScrapeSteps(request.data?.groupUrlname ?? ''),
+              },
+              eventbrite: {
+                connect: () => eventbriteConnectSteps(),
+                publish: () => eventbritePublishSteps(request.data),
+                scrape: () => eventbriteScrapeSteps(),
+              },
+              headfirst: {
+                connect: () => headfirstConnectSteps(),
+                publish: () => headfirstPublishSteps(request.data),
+                scrape: () => headfirstScrapeSteps(),
+              },
+            };
+
+            const stepFn = dispatch[request.platform]?.[request.action];
+            if (!stepFn) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: false, error: `Unsupported: ${request.platform}/${request.action}` }));
+              return;
+            }
+
+            const steps = stepFn();
             const config2 = loadConfig();
             const panelWidth = config2.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
             showAutomationView(mainWindow!, panelWidth);
 
+            // Import and create engine from the automation view's webContents
+            const { AutomationEngine } = await import('../dist/automation/engine.js');
+            const engine = new AutomationEngine(automationView!.webContents as never);
+
+            // Forward status updates to the renderer
+            engine.onStatus((status: Record<string, unknown>) => {
+              appView?.webContents.send('automation:status', status);
+            });
+
+            const result = await engine.run(steps);
+
+            // Send result to renderer
+            appView?.webContents.send('automation:result', result);
+
             res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ success: false, error: 'Platform scripts not yet wired — see Task 14' }));
+            res.end(JSON.stringify(result));
           } catch (err) {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.writeHead(500, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ success: false, error: String(err) }));
           }
         });
