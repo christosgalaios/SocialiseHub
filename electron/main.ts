@@ -541,20 +541,71 @@ function setupIpcHandlers(config: AppConfig): void {
 
   // ── Browser Automation handlers ──
 
-  ipcMain.handle('automation:start', async (_event, _request) => {
-    if (!mainWindow) return;
+  let currentEngine: InstanceType<typeof import('../dist/automation/engine.js').AutomationEngine> | null = null;
+
+  ipcMain.handle('automation:start', async (_event, request) => {
+    if (!mainWindow || !automationView) return;
+
     const panelWidth = config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
     showAutomationView(mainWindow, panelWidth);
-    // Actual automation execution is handled by the HTTP bridge (Task 4)
-    // This IPC handler just shows the view — the bridge server runs the scripts
+
+    try {
+      const { meetupConnectSteps, meetupPublishSteps, meetupScrapeSteps } = await import('../dist/automation/meetup.js');
+      const { eventbriteConnectSteps, eventbritePublishSteps, eventbriteScrapeSteps } = await import('../dist/automation/eventbrite.js');
+      const { headfirstConnectSteps, headfirstPublishSteps, headfirstScrapeSteps } = await import('../dist/automation/headfirst.js');
+
+      type StepFn = () => import('../dist/automation/types.js').AutomationStep[];
+      const dispatch: Record<string, Record<string, StepFn | undefined>> = {
+        meetup: {
+          connect: () => meetupConnectSteps(),
+          publish: () => meetupPublishSteps(request.data, request.data?.groupUrlname ?? ''),
+          scrape: () => meetupScrapeSteps(request.data?.groupUrlname ?? ''),
+        },
+        eventbrite: {
+          connect: () => eventbriteConnectSteps(),
+          publish: () => eventbritePublishSteps(request.data),
+          scrape: () => eventbriteScrapeSteps(),
+        },
+        headfirst: {
+          connect: () => headfirstConnectSteps(),
+          publish: () => headfirstPublishSteps(request.data),
+          scrape: () => headfirstScrapeSteps(),
+        },
+      };
+
+      const stepFn = dispatch[request.platform]?.[request.action];
+      if (!stepFn) {
+        appView?.webContents.send('automation:result', { success: false, error: `Unsupported: ${request.platform}/${request.action}` });
+        return;
+      }
+
+      const steps = stepFn();
+      const { AutomationEngine } = await import('../dist/automation/engine.js');
+      currentEngine = new AutomationEngine(automationView.webContents as never);
+
+      currentEngine.onStatus((status: { step: number; totalSteps: number; description: string; state: string }) => {
+        appView?.webContents.send('automation:status', status);
+      });
+
+      const result = await currentEngine.run(steps);
+      appView?.webContents.send('automation:result', result);
+      currentEngine = null;
+    } catch (err) {
+      appView?.webContents.send('automation:result', { success: false, error: String(err) });
+      currentEngine = null;
+    }
   });
 
   ipcMain.handle('automation:cancel', () => {
-    // Will be wired to AutomationEngine.cancel() in Task 14
+    currentEngine?.cancel();
+    currentEngine = null;
+    if (mainWindow) {
+      hideAutomationView(mainWindow, config);
+    }
   });
 
   ipcMain.handle('automation:resume', () => {
-    // Will be wired to resume logic in Task 14
+    // Resume is for future pause/login flow support
   });
 }
 
