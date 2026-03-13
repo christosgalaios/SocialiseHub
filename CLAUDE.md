@@ -56,6 +56,29 @@ Native modules (better-sqlite3) must be rebuilt for Electron with `@electron/reb
 - Test platform integrations with mocks
 - Sequential automation — one platform at a time (single WebContentsView)
 
+## Workflow Rules
+
+### API-first platform integration
+When adding or debugging platform integrations, **always inspect network traffic first** before writing scrape code. Use `mcp__claude-in-chrome__read_network_requests` or browser devtools to discover APIs (GraphQL, REST). Never guess at DOM selectors or API field names — observe what the real site uses.
+
+### Delegate exploratory work to subagents
+Long debugging sessions and API exploration exhaust the context window. Use subagents for:
+- Exploring undocumented APIs (GraphQL introspection, endpoint discovery)
+- Debugging platform-specific issues (cookie import, auth flows)
+- Any task that may require multiple failed attempts before finding the right approach
+
+### Commit working pieces early
+Don't accumulate large uncommitted diffs. Commit each working piece as it's completed (e.g., commit Meetup refactor before starting Eventbrite). This prevents losing work if context runs out and makes code review easier.
+
+### Run review agents in background
+When using a manager/review agent, run it in the background while continuing other work. Don't block on review feedback — implement the next feature in parallel.
+
+### Windows PowerShell path handling
+When calling PowerShell from Node.js `execSync`, use `-LiteralPath` with single quotes and `''` escaping for paths with spaces. Never use double-quote nesting. Standard pattern:
+```typescript
+execSync(`powershell -NoProfile -Command "Copy-Item -LiteralPath '${path.replace(/'/g, "''")}'..."`)
+```
+
 ## Running
 
 ```bash
