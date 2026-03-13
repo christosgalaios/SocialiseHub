@@ -260,7 +260,18 @@ Analyse this event and provide an optimised version. For each field, explain wha
 - Is the date/time optimal for this type of event?
 - Is the price competitive based on similar events?
 
-### 6. **Overall SEO Score**
+### 6. **Promotion & Distribution Strategy**
+This is critical. We've proven that targeted community advertising sells out events. Example: a "Frog Walk" event was promoted in ecology-focused Facebook groups in Bristol and sold out.
+
+For THIS event, provide:
+- **Facebook Group Search Queries**: 5-8 specific search terms to find relevant Facebook groups (e.g., for a frog walk: "Bristol ecology group", "Bristol nature walks", "wildlife lovers Bristol", "Bristol environmental")
+- **Recommended Group Types**: What types of communities would be interested? (hobby groups, local area groups, professional groups, university societies, etc.)
+- **Other Platforms**: Reddit communities, Instagram hashtags, local forums, newsletters, notice boards
+- **Cross-promotion**: Which Meetup/Eventbrite categories to list under
+- **Timing**: When to start promoting (how many days before the event)
+- **Post Template**: A short, engaging Facebook group post for this event (2-3 sentences + link)
+
+### 7. **Overall SEO Score**
 Rate the current listing 1-10 and the optimised version 1-10, with brief justification.
 
 Please format your response as structured JSON so the app can auto-apply changes:
@@ -273,6 +284,14 @@ Please format your response as structured JSON so the app can auto-apply changes
   "imageSuggestion": "Description of ideal image",
   "timingSuggestion": "Your timing advice",
   "pricingSuggestion": "Your pricing advice",
+  "promotion": {
+    "facebookSearchQueries": ["query1", "query2", ...],
+    "recommendedGroupTypes": ["type1", "type2", ...],
+    "otherPlatforms": ["platform: details", ...],
+    "crossPromotion": "Category suggestions",
+    "promotionTimeline": "When to start promoting",
+    "samplePost": "Ready-to-use Facebook group post"
+  },
   "currentScore": 4,
   "optimisedScore": 8,
   "rationale": "Brief explanation of key changes"

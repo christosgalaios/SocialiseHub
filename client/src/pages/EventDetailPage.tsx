@@ -56,8 +56,10 @@ export function EventDetailPage() {
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformName[]>([]);
   const [optimizing, setOptimizing] = useState(false);
   const [optimizePrompt, setOptimizePrompt] = useState<string | null>(null);
+  const [optimizeResponse, setOptimizeResponse] = useState<string | null>(null);
   const [showOptimizeModal, setShowOptimizeModal] = useState(false);
   const [optimizeCopied, setOptimizeCopied] = useState(false);
+  const [autoSending, setAutoSending] = useState(false);
 
   useEffect(() => {
     // Always load services for platform selector
@@ -140,6 +142,7 @@ export function EventDetailPage() {
     if (!id) return;
     setOptimizing(true);
     setError(null);
+    setOptimizeResponse(null);
     try {
       const res = await fetch(`/api/generator/optimize/${id}`, { method: 'POST' });
       if (!res.ok) {
@@ -157,6 +160,32 @@ export function EventDetailPage() {
     }
   };
 
+  /** Auto-send prompt to Claude panel and wait for response */
+  const handleAutoOptimize = async () => {
+    if (!optimizePrompt) return;
+    const w = window as Window & { electronAPI?: { sendPromptToClaude: (p: string) => Promise<{ response?: string; error?: string }> } };
+    if (!w.electronAPI?.sendPromptToClaude) {
+      // Fallback to manual copy
+      handleCopyOptimize();
+      return;
+    }
+    setAutoSending(true);
+    setError(null);
+    try {
+      const result = await w.electronAPI.sendPromptToClaude(optimizePrompt);
+      if (result.error) {
+        setError(`Claude: ${result.error}`);
+      } else if (result.response) {
+        setOptimizeResponse(result.response);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Auto-optimize failed');
+    } finally {
+      setAutoSending(false);
+    }
+  };
+
+  /** Manual: copy prompt to clipboard and open Claude */
   const handleCopyOptimize = async () => {
     if (!optimizePrompt) return;
     try {
@@ -174,6 +203,25 @@ export function EventDetailPage() {
       }
     } catch {
       setError('Failed to copy to clipboard');
+    }
+  };
+
+  /** Apply optimized values from Claude's JSON response */
+  const handleApplyOptimization = () => {
+    if (!optimizeResponse) return;
+    try {
+      // Extract JSON from the response (may be wrapped in markdown code fences)
+      const jsonMatch = optimizeResponse.match(/```json\s*([\s\S]*?)```/) || optimizeResponse.match(/\{[\s\S]*"title"[\s\S]*\}/);
+      if (!jsonMatch) {
+        setError('Could not find JSON in Claude response — apply changes manually');
+        return;
+      }
+      const json = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+      if (json.title) setTitle(json.title);
+      if (json.description) setDescription(json.description);
+      setShowOptimizeModal(false);
+    } catch {
+      setError('Could not parse optimization JSON — apply changes manually');
     }
   };
 
@@ -382,27 +430,52 @@ export function EventDetailPage() {
         <div style={styles.overlay} onClick={() => setShowOptimizeModal(false)}>
           <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
             <div style={styles.modalHeader}>
-              <h2 style={styles.modalTitle}>SEO Optimization Prompt</h2>
+              <h2 style={styles.modalTitle}>
+                {optimizeResponse ? 'Optimization Results' : 'SEO Optimization Prompt'}
+              </h2>
               <button style={styles.closeBtn} onClick={() => setShowOptimizeModal(false)}>
                 ✕
               </button>
             </div>
             <div style={styles.promptBox}>
-              <pre style={styles.promptText}>{optimizePrompt}</pre>
+              {optimizeResponse ? (
+                <pre style={styles.promptText}>{optimizeResponse}</pre>
+              ) : (
+                <pre style={styles.promptText}>{optimizePrompt}</pre>
+              )}
             </div>
             <div style={styles.modalFooter}>
               <p style={styles.modalHint}>
-                {optimizeCopied
-                  ? 'Copied! Paste into Claude and hit Enter.'
-                  : 'Copy the prompt and send to Claude for optimization suggestions'}
+                {autoSending
+                  ? 'Sending to Claude and waiting for response...'
+                  : optimizeResponse
+                    ? 'Review suggestions above, then apply to update your event'
+                    : optimizeCopied
+                      ? 'Copied! Paste into Claude and hit Enter.'
+                      : 'Send to Claude automatically or copy the prompt manually'}
               </p>
               <div style={styles.modalActions}>
                 <button style={styles.secondaryBtn} onClick={() => setShowOptimizeModal(false)}>
                   Cancel
                 </button>
-                <button style={styles.sendBtn} onClick={handleCopyOptimize}>
-                  {optimizeCopied ? 'Copied — Focus Claude' : 'Copy & Open Claude'}
-                </button>
+                {optimizeResponse ? (
+                  <button style={styles.sendBtn} onClick={handleApplyOptimization}>
+                    Apply Changes
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      style={styles.sendBtn}
+                      onClick={handleAutoOptimize}
+                      disabled={autoSending}
+                    >
+                      {autoSending ? 'Waiting for Claude...' : 'Send to Claude'}
+                    </button>
+                    <button style={styles.secondaryBtn} onClick={handleCopyOptimize}>
+                      {optimizeCopied ? 'Copied' : 'Copy Manual'}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>

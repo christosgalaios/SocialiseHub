@@ -549,6 +549,167 @@ function setupIpcHandlers(config: AppConfig): void {
     }
   });
 
+  // ── Execute JavaScript in the Claude panel ──
+
+  ipcMain.handle('execute-in-claude-panel', async (_event, code: string) => {
+    if (!claudeView) return { error: 'Claude panel not available' };
+    try {
+      const result = await claudeView.webContents.executeJavaScript(code);
+      return { result: result !== undefined ? String(result) : 'undefined' };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
+  // ── Send prompt to Claude and wait for response ──
+
+  ipcMain.handle('claude-send-prompt', async (_event, prompt: string) => {
+    if (!claudeView) return { error: 'Claude panel not available' };
+    if (!mainWindow) return { error: 'Main window not available' };
+
+    const wc = claudeView.webContents;
+
+    // Ensure panel is open
+    if (!claudePanelOpen) {
+      claudePanelOpen = true;
+      const panelWidth = config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
+      mainWindow.contentView.addChildView(claudeView);
+      layoutViews(mainWindow, panelWidth);
+    }
+
+    try {
+      // Step 1: Navigate to a new chat if needed, then find the input
+      const inputResult = await wc.executeJavaScript(`
+        (async () => {
+          // Wait for the input area to be ready
+          const maxWait = 15000;
+          const start = Date.now();
+          while (Date.now() - start < maxWait) {
+            // Claude.ai uses a contenteditable div or ProseMirror editor
+            const editor = document.querySelector('[contenteditable="true"]')
+              || document.querySelector('.ProseMirror')
+              || document.querySelector('textarea');
+            if (editor) return 'ready';
+            await new Promise(r => setTimeout(r, 500));
+          }
+          return 'not-found';
+        })()
+      `);
+
+      if (inputResult !== 'ready') {
+        return { error: 'Could not find Claude input field — is claude.ai loaded?' };
+      }
+
+      // Step 2: Type the prompt into the editor
+      const escapedPrompt = JSON.stringify(prompt);
+      await wc.executeJavaScript(`
+        (() => {
+          const editor = document.querySelector('[contenteditable="true"]')
+            || document.querySelector('.ProseMirror')
+            || document.querySelector('textarea');
+          if (!editor) return false;
+
+          // Clear existing content
+          if (editor.tagName === 'TEXTAREA') {
+            editor.value = ${escapedPrompt};
+            editor.dispatchEvent(new Event('input', { bubbles: true }));
+          } else {
+            // ContentEditable / ProseMirror
+            editor.focus();
+            editor.innerHTML = '<p>' + ${escapedPrompt}.replace(/\\n/g, '</p><p>') + '</p>';
+            editor.dispatchEvent(new Event('input', { bubbles: true }));
+          }
+          return true;
+        })()
+      `);
+
+      // Step 3: Click the send button
+      await wc.executeJavaScript(`
+        (() => {
+          // Claude.ai send button — try multiple selectors
+          const btn = document.querySelector('button[aria-label="Send message"]')
+            || document.querySelector('button[aria-label="Send Message"]')
+            || document.querySelector('button[data-testid="send-button"]')
+            || document.querySelector('fieldset button:last-of-type')
+            || [...document.querySelectorAll('button')].find(b =>
+              b.querySelector('svg') && b.closest('fieldset, form, [role="presentation"]')
+              && !b.disabled
+            );
+          if (btn) {
+            btn.click();
+            return 'sent';
+          }
+          // Fallback: try Enter key
+          const editor = document.querySelector('[contenteditable="true"]')
+            || document.querySelector('.ProseMirror')
+            || document.querySelector('textarea');
+          if (editor) {
+            editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+            return 'sent-via-enter';
+          }
+          return 'no-send-button';
+        })()
+      `);
+
+      // Step 4: Poll for the response to complete
+      // We wait for Claude to finish generating (streaming indicator disappears)
+      const pollResult = await wc.executeJavaScript(`
+        (async () => {
+          const maxWait = 300000; // 5 min max
+          const pollInterval = 2000;
+          const start = Date.now();
+
+          // Wait a bit for response to start
+          await new Promise(r => setTimeout(r, 3000));
+
+          while (Date.now() - start < maxWait) {
+            // Check if Claude is still generating
+            const stopBtn = document.querySelector('button[aria-label="Stop generating"]')
+              || document.querySelector('button[aria-label="Stop Response"]')
+              || document.querySelector('[data-testid="stop-button"]');
+
+            if (!stopBtn) {
+              // Not generating — check if there's a response
+              await new Promise(r => setTimeout(r, 1000));
+
+              // Get the last assistant message
+              const messages = document.querySelectorAll('[data-message-author-role="assistant"], .font-claude-message, [class*="agent-turn"]');
+              if (messages.length > 0) {
+                const last = messages[messages.length - 1];
+                const text = last.innerText || last.textContent || '';
+                if (text.trim().length > 0) {
+                  return JSON.stringify({ done: true, response: text.trim() });
+                }
+              }
+
+              // Alternative: look for markdown content blocks
+              const codeBlocks = document.querySelectorAll('[class*="message"] [class*="markdown"], [class*="response"]');
+              if (codeBlocks.length > 0) {
+                const last = codeBlocks[codeBlocks.length - 1];
+                const text = last.innerText || last.textContent || '';
+                if (text.trim().length > 0) {
+                  return JSON.stringify({ done: true, response: text.trim() });
+                }
+              }
+            }
+
+            await new Promise(r => setTimeout(r, pollInterval));
+          }
+
+          return JSON.stringify({ done: false, error: 'Timed out waiting for Claude response' });
+        })()
+      `);
+
+      const parsed = JSON.parse(pollResult);
+      if (parsed.done) {
+        return { response: parsed.response };
+      }
+      return { error: parsed.error || 'Unknown error waiting for response' };
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   // ── Browser Automation handlers ──
 
   let currentEngine: InstanceType<typeof import('../dist/automation/engine.js').AutomationEngine> | null = null;

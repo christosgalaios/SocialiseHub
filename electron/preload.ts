@@ -65,10 +65,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => { ipcRenderer.removeListener('terminal-exit', handler); };
   },
 
-  // ── JS execution in app view ──
+  // ── JS execution ──
 
   /** Execute JavaScript in the app view context (for controlling the app) */
   executeInApp: (code: string) => ipcRenderer.invoke('execute-in-app', code),
+
+  /** Execute JavaScript in the Claude panel (for DOM interaction) */
+  executeInClaudePanel: (code: string) => ipcRenderer.invoke('execute-in-claude-panel', code),
+
+  /**
+   * Send a prompt to Claude and wait for the response.
+   * Opens the Claude panel if needed, types the prompt, clicks send,
+   * and polls until Claude finishes generating.
+   * Returns { response: string } on success or { error: string } on failure.
+   */
+  sendPromptToClaude: (prompt: string) => ipcRenderer.invoke('claude-send-prompt', prompt),
 
   // ── Browser Automation ──
 
