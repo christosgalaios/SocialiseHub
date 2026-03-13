@@ -187,66 +187,65 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
       timeout: 10_000,
       description: 'Waiting for page to load...',
     },
-    // Fetch both upcoming and past events via GraphQL
+    // Fetch both upcoming and past events via GraphQL with pagination
     {
       action: 'evaluate',
       script: `(async () => {
         const allEvents = [];
+        const seen = new Set();
 
-        // Fetch upcoming events
-        const upcomingResp = await fetch('https://www.meetup.com/gql2', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: 'query($urlname: String!) { groupByUrlname(urlname: $urlname) { events(first: 50) { edges { node { id title dateTime eventUrl venue { name } status } } } } }',
-            variables: { urlname: ${JSON.stringify(groupUrlname)} }
-          }),
-        });
-        if (upcomingResp.ok) {
-          const json = await upcomingResp.json();
-          if (!json.errors) {
-            const edges = json?.data?.groupByUrlname?.events?.edges ?? [];
-            for (const e of edges) {
-              allEvents.push({
-                externalId: e.node.id,
-                title: e.node.title,
-                date: e.node.dateTime,
-                venue: e.node.venue?.name ?? '',
-                url: e.node.eventUrl,
-                status: 'active',
-              });
-            }
-          }
+        // Helper: fetch a page of events with given status
+        async function fetchPage(status, cursor) {
+          const afterArg = cursor ? ', after: $after' : '';
+          const vars = { urlname: ${JSON.stringify(groupUrlname)} };
+          if (cursor) vars.after = cursor;
+          const resp = await fetch('https://www.meetup.com/gql2', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: 'query($urlname: String!' + (cursor ? ', $after: String' : '') + ') { groupByUrlname(urlname: $urlname) { events(status: ' + status + ', first: 50, sort: DESC' + afterArg + ') { edges { node { id title dateTime eventUrl venue { name } } } pageInfo { hasNextPage endCursor } } } }',
+              variables: vars,
+            }),
+          });
+          if (!resp.ok) return { edges: [], hasNext: false, cursor: null };
+          const json = await resp.json();
+          if (json.errors) return { edges: [], hasNext: false, cursor: null };
+          const data = json?.data?.groupByUrlname?.events ?? {};
+          return {
+            edges: data.edges ?? [],
+            hasNext: data.pageInfo?.hasNextPage ?? false,
+            cursor: data.pageInfo?.endCursor ?? null,
+          };
         }
 
-        // Fetch past events — Meetup GraphQL uses status filter
-        const pastResp = await fetch('https://www.meetup.com/gql2', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            query: 'query($urlname: String!) { groupByUrlname(urlname: $urlname) { pastEvents(first: 50, sort: { sortOrder: DESC }) { edges { node { id title dateTime eventUrl venue { name } } } } } }',
-            variables: { urlname: ${JSON.stringify(groupUrlname)} }
-          }),
-        });
-        if (pastResp.ok) {
-          const json = await pastResp.json();
-          if (!json.errors) {
-            const edges = json?.data?.groupByUrlname?.pastEvents?.edges ?? [];
-            for (const e of edges) {
-              if (!allEvents.some(ev => ev.externalId === e.node.id)) {
-                allEvents.push({
-                  externalId: e.node.id,
-                  title: e.node.title,
-                  date: e.node.dateTime,
-                  venue: e.node.venue?.name ?? '',
-                  url: e.node.eventUrl,
-                  status: 'past',
-                });
-              }
-            }
+        // Fetch upcoming events (usually just 1 page)
+        const upcoming = await fetchPage('ACTIVE', null);
+        for (const e of upcoming.edges) {
+          if (seen.has(e.node.id)) continue;
+          seen.add(e.node.id);
+          allEvents.push({
+            externalId: e.node.id, title: e.node.title,
+            date: e.node.dateTime, venue: e.node.venue?.name ?? '',
+            url: e.node.eventUrl, status: 'active',
+          });
+        }
+
+        // Fetch all past events with pagination (up to 10 pages = 500 events)
+        let cursor = null;
+        for (let page = 0; page < 10; page++) {
+          const result = await fetchPage('PAST', cursor);
+          for (const e of result.edges) {
+            if (seen.has(e.node.id)) continue;
+            seen.add(e.node.id);
+            allEvents.push({
+              externalId: e.node.id, title: e.node.title,
+              date: e.node.dateTime, venue: e.node.venue?.name ?? '',
+              url: e.node.eventUrl, status: 'past',
+            });
           }
+          if (!result.hasNext || !result.cursor) break;
+          cursor = result.cursor;
         }
 
         return JSON.stringify(allEvents);
