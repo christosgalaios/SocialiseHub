@@ -12,7 +12,9 @@ describe('MeetupAutomationClient', () => {
   let client: MeetupAutomationClient;
 
   beforeEach(() => {
-    client = new MeetupAutomationClient('socialise-bristol');
+    client = new MeetupAutomationClient({
+      getExtra: () => ({ groupUrlname: 'socialise-bristol' }),
+    });
     mockRequest.mockReset();
   });
 

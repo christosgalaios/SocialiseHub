@@ -5,6 +5,7 @@ import {
   connectService,
   disconnectService,
   startAutomation,
+  setupService,
 } from '../api/events';
 import { PLATFORM_COLORS, PLATFORM_ICONS } from '../lib/platforms';
 
@@ -76,7 +77,17 @@ export function ServicesPage() {
         // Mark service as connected in the database
         try {
           await connectService(platform, { automationConnected: 'true' });
-        } catch { /* ignore — load() will refresh anyway */ }
+        } catch { /* ignore */ }
+
+        // Extract platform-specific data from automation result and store it
+        try {
+          const evalResult = (result.data as Record<string, unknown>)?.lastEvalResult;
+          const data = typeof evalResult === 'string' ? JSON.parse(evalResult) : evalResult;
+          if (data?.groupUrlname && platform === 'meetup') {
+            await setupService(platform, { groupUrlname: data.groupUrlname });
+          }
+        } catch { /* ignore */ }
+
         load();
       } else {
         load();

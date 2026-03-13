@@ -2,12 +2,21 @@ import type { PlatformClient } from '../tools/platform-client.js';
 import type { SocialiseEvent, PlatformEvent, PlatformPublishResult } from '../shared/types.js';
 import { requestAutomation } from './bridge.js';
 
+export interface ServiceExtraLookup {
+  getExtra(platform: string): Record<string, unknown> | undefined;
+}
+
 export class MeetupAutomationClient implements PlatformClient {
   readonly platform = 'meetup' as const;
-  private groupUrlname: string;
+  private serviceLookup?: ServiceExtraLookup;
 
-  constructor(groupUrlname = '') {
-    this.groupUrlname = groupUrlname;
+  constructor(serviceLookup?: ServiceExtraLookup) {
+    this.serviceLookup = serviceLookup;
+  }
+
+  private getGroupUrlname(): string {
+    const extra = this.serviceLookup?.getExtra('meetup');
+    return (extra?.groupUrlname as string) ?? '';
   }
 
   async validateConnection(): Promise<boolean> {
@@ -19,7 +28,7 @@ export class MeetupAutomationClient implements PlatformClient {
   }
 
   async createEvent(event: SocialiseEvent): Promise<PlatformPublishResult> {
-    const result = await requestAutomation({ platform: 'meetup', action: 'publish', data: event });
+    const result = await requestAutomation({ platform: 'meetup', action: 'publish', data: { ...event, groupUrlname: this.getGroupUrlname() } });
     if (!result.success) {
       return { platform: 'meetup', success: false, error: result.error ?? 'Publish failed' };
     }
@@ -47,7 +56,7 @@ export class MeetupAutomationClient implements PlatformClient {
   }
 
   async fetchEvents(): Promise<PlatformEvent[]> {
-    const result = await requestAutomation({ platform: 'meetup', action: 'scrape' });
+    const result = await requestAutomation({ platform: 'meetup', action: 'scrape', data: { groupUrlname: this.getGroupUrlname() } });
     if (!result.success) return [];
     const events = typeof result.data?.lastEvalResult === 'string'
       ? JSON.parse(result.data.lastEvalResult) : [];

@@ -32,8 +32,16 @@ export function createApp(deps?: AppDeps): express.Express {
   const platformEventStore = new PlatformEventStore(db);
   const syncLogStore = new SyncLogStore(db);
 
+  // Adapter so automation clients can look up service config (e.g. groupUrlname)
+  const serviceLookup = {
+    getExtra(platform: string) {
+      const svc = serviceStore.getService(platform as import('./shared/types.js').PlatformName);
+      return svc?.extra;
+    },
+  };
+
   const publishService = new PublishService({
-    meetup: new MeetupAutomationClient(),
+    meetup: new MeetupAutomationClient(serviceLookup),
     eventbrite: new EventbriteAutomationClient(),
     headfirst: new HeadfirstAutomationClient(),
   });
