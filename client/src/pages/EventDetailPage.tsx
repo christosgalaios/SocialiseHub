@@ -16,7 +16,9 @@ import {
 } from '../api/events';
 import { PlatformSelector } from '../components/PlatformSelector';
 import { StatusBadge } from '../components/StatusBadge';
+import { ReadinessChecklist } from '../components/ReadinessChecklist';
 import { PLATFORM_COLORS } from '../lib/platforms';
+import { checkEventReadiness, isReadyToPublish } from '../../../src/lib/event-readiness';
 
 function toDatetimeLocal(isoStr?: string): string {
   if (!isoStr) return '';
@@ -247,6 +249,25 @@ export function EventDetailPage() {
     }
   };
 
+  // Build a SocialiseEvent-like object from current form state for readiness checking
+  const currentFormEvent = {
+    id: id ?? '',
+    title,
+    description,
+    start_time: startTime ? new Date(startTime).toISOString() : '',
+    duration_minutes: durationMinutes,
+    venue,
+    price,
+    capacity,
+    imageUrl: imageUrl || undefined,
+    status: event?.status ?? 'draft' as const,
+    platforms: event?.platforms ?? [],
+    createdAt: event?.createdAt ?? '',
+    updatedAt: event?.updatedAt ?? '',
+  };
+  const readinessChecks = checkEventReadiness(currentFormEvent);
+  const canPublish = isReadyToPublish(readinessChecks);
+
   if (loading) return <p style={{ color: '#7a7a7a' }}>Loading...</p>;
 
   return (
@@ -264,6 +285,7 @@ export function EventDetailPage() {
 
       {error && <div style={styles.error}>{error}</div>}
 
+      <div style={styles.twoCol}>
       <form onSubmit={handleSubmit} style={styles.form}>
         <div style={styles.grid}>
           <label style={styles.field}>
@@ -401,21 +423,31 @@ export function EventDetailPage() {
               >
                 {optimizing ? 'Analyzing...' : 'SEO Optimize'}
               </button>
-              <button
-                type="button"
-                disabled={publishing || selectedPlatforms.length === 0}
-                style={{
-                  ...styles.publishBtn,
-                  opacity: publishing || selectedPlatforms.length === 0 ? 0.7 : 1,
-                }}
-                onClick={handlePublish}
-              >
-                {publishing ? 'Publishing...' : 'Publish'}
-              </button>
+              <div style={{ position: 'relative', display: 'inline-block' }} title={!canPublish ? 'Complete all required fields before publishing' : ''}>
+                <button
+                  type="button"
+                  disabled={publishing || selectedPlatforms.length === 0 || !canPublish}
+                  style={{
+                    ...styles.publishBtn,
+                    opacity: publishing || selectedPlatforms.length === 0 || !canPublish ? 0.7 : 1,
+                    cursor: !canPublish ? 'not-allowed' : 'pointer',
+                  }}
+                  onClick={handlePublish}
+                >
+                  {publishing ? 'Publishing...' : 'Publish'}
+                </button>
+              </div>
             </>
           )}
         </div>
       </form>
+
+      {!isNew && (
+        <div style={styles.sidebar}>
+          <ReadinessChecklist checks={readinessChecks} ready={canPublish} />
+        </div>
+      )}
+      </div>
 
       {/* Publish results panel */}
       {publishResults && publishResults.length > 0 && (
@@ -576,11 +608,23 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 20,
     fontWeight: 500,
   },
+  twoCol: {
+    display: 'flex',
+    gap: 32,
+    alignItems: 'flex-start',
+  },
   form: {
     display: 'flex',
     flexDirection: 'column',
     gap: 20,
     maxWidth: 640,
+    flex: 1,
+  },
+  sidebar: {
+    width: 260,
+    flexShrink: 0,
+    position: 'sticky' as const,
+    top: 20,
   },
   grid: {
     display: 'grid',
