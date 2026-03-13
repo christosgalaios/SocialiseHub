@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { existsSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { homedir } from 'node:os';
 import type { Server } from 'node:http';
+import { importChromeCookies } from './chrome-cookies.js';
 
 // node-pty is a native CJS module — use createRequire for reliable ESM import
 const require = createRequire(import.meta.url);
@@ -350,6 +351,12 @@ function createMainWindow(port: number, config: AppConfig, hasExtension: boolean
   automationView.webContents.setUserAgent(
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
   );
+
+  // Import cookies from Chrome into the automation session
+  importChromeCookies(automationSession).then(({ imported, error }) => {
+    if (error) console.warn(`[chrome-cookies] ${error}`);
+    if (imported > 0) console.log(`[chrome-cookies] Imported ${imported} cookies from Chrome`);
+  });
 
   // Add app view (always visible)
   win.contentView.addChildView(appView);
