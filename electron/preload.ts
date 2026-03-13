@@ -73,8 +73,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // ── Browser Automation ──
 
   /** Start a browser automation task (connect, publish, scrape) */
-  startAutomation: (request: { platform: string; action: string; data?: unknown; externalId?: string }) =>
-    ipcRenderer.invoke('automation:start', request),
+  startAutomation: (request: { platform: string; action: string; data?: unknown; externalId?: string }) => {
+    console.log('[preload] startAutomation called:', request);
+    return ipcRenderer.invoke('automation:start', request);
+  },
 
   /** Cancel the currently running automation task */
   cancelAutomation: () => ipcRenderer.invoke('automation:cancel'),

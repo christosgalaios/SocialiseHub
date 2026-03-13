@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsc && vite build client",
     "build:server": "tsc",
-    "build:electron": "tsc -p electron/tsconfig.json",
+    "build:electron": "tsc -p electron/tsconfig.json && tsc -p electron/tsconfig.preload.json",
     "build:client": "vite build client",
     "build:all": "npm run build:server && npm run build:electron && npm run build:client",
     "build:dist": "npm run build:all && electron-builder --config electron-builder.config.cjs",

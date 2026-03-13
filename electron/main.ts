@@ -405,10 +405,11 @@ function createMainWindow(port: number, config: AppConfig, hasExtension: boolean
   // Load the SocialiseHub app
   if (isDev) {
     appView.webContents.loadURL('http://localhost:5173');
-    appView.webContents.openDevTools({ mode: 'detach' });
   } else {
     appView.webContents.loadURL(`http://localhost:${port}`);
   }
+  // Always open DevTools for debugging (remove later)
+  appView.webContents.openDevTools({ mode: 'detach' });
 
   // Load Claude panel — always use claude.ai for maximum reliability.
   // The extension's content scripts inject into appView for DOM access,
@@ -544,9 +545,15 @@ function setupIpcHandlers(config: AppConfig): void {
   let currentEngine: InstanceType<typeof import('../dist/automation/engine.js').AutomationEngine> | null = null;
 
   ipcMain.handle('automation:start', async (_event, request) => {
-    if (!mainWindow || !automationView) return;
+    console.log('[automation] IPC automation:start received:', JSON.stringify(request));
+    console.log('[automation] mainWindow:', !!mainWindow, 'automationView:', !!automationView);
+    if (!mainWindow || !automationView) {
+      console.log('[automation] ABORT: missing mainWindow or automationView');
+      return;
+    }
 
     const panelWidth = config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
+    console.log('[automation] showing automation view');
     showAutomationView(mainWindow, panelWidth);
 
     try {
@@ -580,17 +587,21 @@ function setupIpcHandlers(config: AppConfig): void {
       }
 
       const steps = stepFn();
+      console.log('[automation] running', steps.length, 'steps');
       const { AutomationEngine } = await import('../dist/automation/engine.js');
       currentEngine = new AutomationEngine(automationView.webContents as never);
 
       currentEngine.onStatus((status: { step: number; totalSteps: number; description: string; state: string }) => {
+        console.log('[automation] status:', status.description, `(${status.step}/${status.totalSteps})`);
         appView?.webContents.send('automation:status', status);
       });
 
       const result = await currentEngine.run(steps);
+      console.log('[automation] result:', JSON.stringify(result));
       appView?.webContents.send('automation:result', result);
       currentEngine = null;
     } catch (err) {
+      console.error('[automation] error:', err);
       appView?.webContents.send('automation:result', { success: false, error: String(err) });
       currentEngine = null;
     }
