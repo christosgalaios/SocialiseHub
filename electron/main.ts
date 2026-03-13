@@ -602,59 +602,38 @@ function setupIpcHandlers(config: AppConfig): void {
         return { error: 'Could not find Claude input field — is claude.ai loaded?' };
       }
 
-      // Step 2: Type the prompt into the editor
-      // Selectors verified against claude.ai as of 2026-03-13
-      const escapedPrompt = JSON.stringify(prompt);
+      // Step 2: Paste prompt into the editor and press Enter
+      // Uses clipboard paste — the most reliable method for ProseMirror editors
+      // since it goes through the editor's native paste handling.
+      const { clipboard } = await import('electron');
+      const previousClipboard = clipboard.readText();
+      clipboard.writeText(prompt);
+
+      // Focus the editor and paste
       await wc.executeJavaScript(`
         (() => {
           const editor = document.querySelector('[contenteditable="true"]')
             || document.querySelector('.ProseMirror')
             || document.querySelector('textarea');
-          if (!editor) return false;
-
-          if (editor.tagName === 'TEXTAREA') {
-            editor.value = ${escapedPrompt};
-            editor.dispatchEvent(new Event('input', { bubbles: true }));
-          } else {
-            // ContentEditable / ProseMirror — use execCommand to keep editor
-            // state in sync. Direct innerHTML mutation leaves ProseMirror's
-            // internal doc model out of sync, causing the send button to see
-            // an empty editor even though text is visible.
-            editor.focus();
-            document.execCommand('selectAll', false, null);
-            document.execCommand('insertText', false, ${escapedPrompt});
-          }
-          return true;
+          if (!editor) return 'no-editor';
+          editor.focus();
+          return 'focused';
         })()
       `);
 
-      // Step 3: Click the send button
-      // Claude.ai selectors verified 2026-03-13 — may need updating when UI changes
-      await wc.executeJavaScript(`
-        (() => {
-          const btn = document.querySelector('button[aria-label="Send message"]')
-            || document.querySelector('button[aria-label="Send Message"]')
-            || document.querySelector('button[data-testid="send-button"]')
-            || document.querySelector('fieldset button:last-of-type')
-            || [...document.querySelectorAll('button')].find(b =>
-              b.querySelector('svg') && b.closest('fieldset, form, [role="presentation"]')
-              && !b.disabled
-            );
-          if (btn) {
-            btn.click();
-            return 'sent';
-          }
-          // Fallback: try Enter key
-          const editor = document.querySelector('[contenteditable="true"]')
-            || document.querySelector('.ProseMirror')
-            || document.querySelector('textarea');
-          if (editor) {
-            editor.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-            return 'sent-via-enter';
-          }
-          return 'no-send-button';
-        })()
-      `);
+      // Ctrl+V to paste, then Enter to send
+      wc.sendInputEvent({ type: 'keyDown', keyCode: 'V', modifiers: ['control'] });
+      wc.sendInputEvent({ type: 'keyUp', keyCode: 'V', modifiers: ['control'] });
+
+      // Brief pause for paste to register
+      await new Promise(r => setTimeout(r, 500));
+
+      // Press Enter to send
+      wc.sendInputEvent({ type: 'keyDown', keyCode: 'Return' });
+      wc.sendInputEvent({ type: 'keyUp', keyCode: 'Return' });
+
+      // Restore previous clipboard content
+      clipboard.writeText(previousClipboard);
 
       // Step 4: Poll for the response to complete
       // We wait for Claude to finish generating (streaming indicator disappears)
