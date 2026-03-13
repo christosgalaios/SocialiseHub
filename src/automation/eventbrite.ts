@@ -237,23 +237,36 @@ export function eventbriteScrapeSteps(): AutomationStep[] {
         const orgId = orgsJson?.organizations?.[0]?.id;
         if (!orgId) return JSON.stringify({ error: 'No organization found on this Eventbrite account.' });
 
-        // Get events for this org
-        const eventsResp = await fetch(
-          '/api/v3/organizations/' + orgId + '/events/?status=live,started,ended,completed&order_by=start_desc&page_size=50',
-          { credentials: 'include', headers }
-        );
-        if (!eventsResp.ok) return JSON.stringify({ error: 'Failed to fetch events (HTTP ' + eventsResp.status + ')' });
-        const eventsJson = await eventsResp.json();
-
-        const events = (eventsJson?.events ?? []).map(e => ({
-          externalId: e.id,
-          title: e.name?.text ?? '',
-          date: e.start?.utc ?? '',
-          venue: '',
-          url: e.url ?? '',
-          status: e.status ?? '',
-        }));
-        return JSON.stringify(events);
+        // Paginate through all events (draft, live, started, ended, completed)
+        const allEvents = [];
+        let page = 1;
+        let hasMore = true;
+        while (hasMore && page <= 20) {
+          const eventsResp = await fetch(
+            '/api/v3/organizations/' + orgId + '/events/?status=draft,live,started,ended,completed&order_by=start_desc&page_size=50&page=' + page,
+            { credentials: 'include', headers }
+          );
+          if (!eventsResp.ok) {
+            if (allEvents.length === 0) return JSON.stringify({ error: 'Failed to fetch events (HTTP ' + eventsResp.status + ')' });
+            break;
+          }
+          const eventsJson = await eventsResp.json();
+          const events = eventsJson?.events ?? [];
+          for (const e of events) {
+            const isPast = e.status === 'ended' || e.status === 'completed';
+            allEvents.push({
+              externalId: e.id,
+              title: e.name?.text ?? '',
+              date: e.start?.utc ?? '',
+              venue: '',
+              url: e.url ?? '',
+              status: isPast ? 'past' : 'active',
+            });
+          }
+          hasMore = eventsJson?.pagination?.has_more_items === true;
+          page++;
+        }
+        return JSON.stringify(allEvents);
       })()`,
       description: 'Fetching events via API...',
     },

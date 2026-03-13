@@ -60,7 +60,7 @@ export class HeadfirstAutomationClient implements PlatformClient {
       externalUrl: String(e.url ?? ''),
       date: String(e.date ?? ''),
       venue: String(e.venue ?? ''),
-      status: 'active' as const,
+      status: (e.status === 'past' ? 'past' : 'active') as 'active' | 'past',
       syncedAt: new Date().toISOString(),
     }));
   }

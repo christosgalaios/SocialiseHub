@@ -187,33 +187,78 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
       timeout: 10_000,
       description: 'Waiting for page to load...',
     },
-    // Use GraphQL API with variables for reliable, injection-safe event data
+    // Fetch both upcoming and past events via GraphQL
     {
       action: 'evaluate',
       script: `(async () => {
-        const resp = await fetch('https://www.meetup.com/gql2', {
+        const allEvents = [];
+
+        // Fetch upcoming events
+        const upcomingResp = await fetch('https://www.meetup.com/gql2', {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            query: 'query($urlname: String!) { groupByUrlname(urlname: $urlname) { events(first: 50) { edges { node { id title dateTime eventUrl venue { name } } } } } }',
+            query: 'query($urlname: String!) { groupByUrlname(urlname: $urlname) { events(first: 50) { edges { node { id title dateTime eventUrl venue { name } status } } } } }',
             variables: { urlname: ${JSON.stringify(groupUrlname)} }
           }),
         });
-        if (!resp.ok) return JSON.stringify({ error: 'GraphQL returned ' + resp.status });
-        const json = await resp.json();
-        if (json.errors) return JSON.stringify({ error: json.errors[0]?.message ?? 'GraphQL error' });
-        const edges = json?.data?.groupByUrlname?.events?.edges ?? [];
-        const events = edges.map(e => ({
-          externalId: e.node.id,
-          title: e.node.title,
-          date: e.node.dateTime,
-          venue: e.node.venue?.name ?? '',
-          url: e.node.eventUrl,
-        }));
-        return JSON.stringify(events);
+        if (upcomingResp.ok) {
+          const json = await upcomingResp.json();
+          if (!json.errors) {
+            const edges = json?.data?.groupByUrlname?.events?.edges ?? [];
+            for (const e of edges) {
+              allEvents.push({
+                externalId: e.node.id,
+                title: e.node.title,
+                date: e.node.dateTime,
+                venue: e.node.venue?.name ?? '',
+                url: e.node.eventUrl,
+                status: 'active',
+              });
+            }
+          }
+        }
+
+        // Fetch past events — Meetup GraphQL uses status filter
+        const pastResp = await fetch('https://www.meetup.com/gql2', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: 'query($urlname: String!) { groupByUrlname(urlname: $urlname) { pastEvents(first: 50, sort: { sortOrder: DESC }) { edges { node { id title dateTime eventUrl venue { name } } } } } }',
+            variables: { urlname: ${JSON.stringify(groupUrlname)} }
+          }),
+        });
+        if (pastResp.ok) {
+          const json = await pastResp.json();
+          if (!json.errors) {
+            const edges = json?.data?.groupByUrlname?.pastEvents?.edges ?? [];
+            for (const e of edges) {
+              if (!allEvents.some(ev => ev.externalId === e.node.id)) {
+                allEvents.push({
+                  externalId: e.node.id,
+                  title: e.node.title,
+                  date: e.node.dateTime,
+                  venue: e.node.venue?.name ?? '',
+                  url: e.node.eventUrl,
+                  status: 'past',
+                });
+              }
+            }
+          }
+        }
+
+        if (allEvents.length === 0) {
+          // Check if there was an error
+          if (!upcomingResp.ok) return JSON.stringify({ error: 'GraphQL returned ' + upcomingResp.status });
+          const json = await upcomingResp.clone().json().catch(() => ({}));
+          if (json.errors) return JSON.stringify({ error: json.errors[0]?.message ?? 'GraphQL error' });
+        }
+
+        return JSON.stringify(allEvents);
       })()`,
-      description: 'Fetching events via API...',
+      description: 'Fetching upcoming and past events via API...',
     },
   ];
 }

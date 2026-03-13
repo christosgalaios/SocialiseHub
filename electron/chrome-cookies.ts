@@ -14,7 +14,7 @@
 
 import { join } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
-import { copyFileSync, readFileSync, existsSync, unlinkSync } from 'node:fs';
+import { copyFileSync, readFileSync, existsSync, unlinkSync, readdirSync } from 'node:fs';
 import { createDecipheriv } from 'node:crypto';
 import { execSync } from 'node:child_process';
 import { createRequire } from 'node:module';
@@ -166,12 +166,24 @@ export async function importChromeCookies(electronSession: Session): Promise<{ i
     return { imported: 0, error: 'Failed to decrypt Chrome master key (DPAPI)' };
   }
 
-  // Find the Cookies DB — try Default profile first, then Profile 1
+  // Find the Cookies DB — try multiple profile paths
   let cookieDbPath: string | null = null;
-  for (const profile of ['Default', 'Profile 1']) {
+  const profilesToTry = ['Default', 'Profile 1', 'Profile 2', 'Profile 3'];
+  // Also detect actual profiles from directory listing
+  try {
+    const entries = readdirSync(userDataDir);
+    for (const entry of entries) {
+      if (entry.startsWith('Profile ') && !profilesToTry.includes(entry)) {
+        profilesToTry.push(entry);
+      }
+    }
+  } catch { /* ignore */ }
+
+  for (const profile of profilesToTry) {
     const candidate = join(userDataDir, profile, 'Network', 'Cookies');
     if (existsSync(candidate)) {
       cookieDbPath = candidate;
+      console.log(`[chrome-cookies] Found Cookies DB in profile: ${profile}`);
       break;
     }
   }

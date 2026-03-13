@@ -306,7 +306,7 @@ function hideAutomationView(win: BaseWindow, config: AppConfig): void {
 
 // ── Window creation ─────────────────────────────────────
 
-function createMainWindow(port: number, config: AppConfig, hasExtension: boolean): BaseWindow {
+async function createMainWindow(port: number, config: AppConfig, hasExtension: boolean): Promise<BaseWindow> {
   const bounds = config.windowBounds ?? { width: 1400, height: 900 };
   claudePanelOpen = config.claudePanelOpen ?? true;
   const panelWidth = config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
@@ -352,11 +352,16 @@ function createMainWindow(port: number, config: AppConfig, hasExtension: boolean
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
   );
 
-  // Import cookies from Chrome into the automation session
-  importChromeCookies(automationSession).then(({ imported, error }) => {
+  // Import cookies from Chrome into the automation session (awaited so cookies
+  // are ready before user clicks Connect)
+  try {
+    const { imported, error } = await importChromeCookies(automationSession);
     if (error) console.warn(`[chrome-cookies] ${error}`);
     if (imported > 0) console.log(`[chrome-cookies] Imported ${imported} cookies from Chrome`);
-  });
+    else console.log(`[chrome-cookies] No cookies imported (${error ?? 'no matching cookies found'})`);
+  } catch (err) {
+    console.warn('[chrome-cookies] Import failed:', err);
+  }
 
   // Add app view (always visible)
   win.contentView.addChildView(appView);
@@ -712,7 +717,7 @@ app.whenReady().then(async () => {
     // Load Claude extension (auto-detect from Chrome, or use saved path)
     const hasExtension = await loadChromeExtension(config);
 
-    createMainWindow(port, config, hasExtension);
+    await createMainWindow(port, config, hasExtension);
 
     app.on('activate', () => {
       if (!mainWindow) {

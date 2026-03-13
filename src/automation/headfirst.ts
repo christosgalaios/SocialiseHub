@@ -176,7 +176,7 @@ export function headfirstScrapeSteps(): AutomationStep[] {
   return [
     {
       action: 'navigate',
-      url: 'https://www.headfirstbristol.co.uk/event-manager#/events/future',
+      url: 'https://www.headfirstbristol.co.uk/event-manager#/events',
       description: 'Opening Headfirst Event Manager...',
     },
     {
@@ -185,60 +185,68 @@ export function headfirstScrapeSteps(): AutomationStep[] {
       timeout: 10_000,
       description: 'Waiting for page to load...',
     },
+    // Scrape both future and past events by navigating to each tab
     {
       action: 'evaluate',
       script: `(async () => {
-        // Poll until event links appear or timeout after 15s
-        const pollStart = Date.now();
-        while (Date.now() - pollStart < 15000) {
-          if (document.querySelectorAll('a[href*="#/events/"]').length > 2) break;
-          await new Promise(r => setTimeout(r, 500));
-        }
-
-        const events = [];
+        const allEvents = [];
         const seen = new Set();
 
-        // Extract event IDs and data from event manager links
-        const links = document.querySelectorAll('a[href*="/events/"]');
-        for (const a of links) {
-          const match = a.href.match(/#\\/events\\/(\\d+)/);
-          if (!match || seen.has(match[1])) continue;
-          const id = match[1];
-          seen.add(id);
+        async function scrapeCurrentPage(statusLabel) {
+          // Poll until event links appear or timeout after 15s
+          const pollStart = Date.now();
+          while (Date.now() - pollStart < 15000) {
+            if (document.querySelectorAll('a[href*="#/events/"]').length > 2) break;
+            await new Promise(r => setTimeout(r, 500));
+          }
 
-          // The link text contains either the title or the date/venue
-          const text = a.textContent?.trim() ?? '';
-          // Skip non-content links like "Access Doorlist", ticket counts, prices
-          if (!text || /^\\d+\\s*\\/|^\\xA3|doorlist|orders/i.test(text)) continue;
+          const links = document.querySelectorAll('a[href*="/events/"]');
+          for (const a of links) {
+            const match = a.href.match(/#\\/events\\/(\\d+)/);
+            if (!match || seen.has(match[1])) continue;
+            const id = match[1];
+            seen.add(id);
 
-          events.push({
-            externalId: id,
-            title: text,
-            date: '',
-            venue: '',
-            url: 'https://www.headfirstbristol.co.uk/event-manager#/events/' + id + '/details',
-          });
-        }
+            const text = a.textContent?.trim() ?? '';
+            if (!text || /^\\d+\\s*\\/|^\\xA3|doorlist|orders/i.test(text)) continue;
 
-        // Now enrich: for each event, find sibling links with date/venue info
-        for (const evt of events) {
-          const detailLinks = document.querySelectorAll('a[href*="/events/' + evt.externalId + '/details"]');
-          for (const dl of detailLinks) {
-            const t = dl.textContent?.trim() ?? '';
-            // Date pattern like "Thursday, 26th March - 19:00Venue Name"
-            const dateMatch = t.match(/^(\\w+,\\s*\\d+\\w*\\s+\\w+\\s*-\\s*\\d+:\\d+)/);
-            if (dateMatch) {
-              // Split date and venue: "Thursday, 26th March - 19:00Green house"
-              const afterTime = t.replace(dateMatch[1], '').trim();
-              evt.date = dateMatch[1];
-              if (afterTime) evt.venue = afterTime;
+            allEvents.push({
+              externalId: id,
+              title: text,
+              date: '',
+              venue: '',
+              url: 'https://www.headfirstbristol.co.uk/event-manager#/events/' + id + '/details',
+              status: statusLabel,
+            });
+          }
+
+          // Enrich with date/venue from detail links
+          for (const evt of allEvents) {
+            if (evt.date) continue;
+            const detailLinks = document.querySelectorAll('a[href*="/events/' + evt.externalId + '/details"]');
+            for (const dl of detailLinks) {
+              const t = dl.textContent?.trim() ?? '';
+              const dateMatch = t.match(/^(\\w+,\\s*\\d+\\w*\\s+\\w+\\s*-\\s*\\d+:\\d+)/);
+              if (dateMatch) {
+                const afterTime = t.replace(dateMatch[1], '').trim();
+                evt.date = dateMatch[1];
+                if (afterTime) evt.venue = afterTime;
+              }
             }
           }
         }
 
-        return JSON.stringify(events);
+        // Scrape future events first (default view)
+        await scrapeCurrentPage('active');
+
+        // Navigate to past events tab
+        window.location.hash = '#/events/past';
+        await new Promise(r => setTimeout(r, 1000));
+        await scrapeCurrentPage('past');
+
+        return JSON.stringify(allEvents);
       })()`,
-      description: 'Fetching events from Event Manager...',
+      description: 'Fetching future and past events from Event Manager...',
     },
   ];
 }
