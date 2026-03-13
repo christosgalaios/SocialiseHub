@@ -1,31 +1,51 @@
 # SocialiseHub
 
-AI-powered event management and business scaling tool for the Socialise events company.
+A unified event management hub for the Socialise events company. SocialiseHub provides a single dashboard to create, publish, and sync events across multiple platforms — with encrypted OAuth credentials, AI-assisted event generation, and a built-in market analyzer.
 
 ---
 
-## What is SocialiseHub?
+## Features
 
-SocialiseHub automates the operational side of running an events business. It uses AI to learn from past events, create and publish new events across multiple platforms simultaneously, and (eventually) manage social media presence.
-
-### Core Features (Planned)
-
-- **Event Analysis** — Analyse past event data to identify what works: timing, pricing, venues, categories, audience demographics
-- **Event Creation** — Input event details once, select images from the library, and publish to Meetup, Headfirst Bristol, and other platforms simultaneously
-- **Business Scaling** — AI recommendations based on historical patterns: optimal event frequency, pricing strategies, marketing approaches
-- **Social Media Management** — (Future) Automated posting, scheduling, and engagement tracking
+- **Unified Dashboard** — View and manage all events from one place, with per-platform publish status
+- **Multi-Platform Publishing** — Publish events to Meetup, Eventbrite, and Headfirst Bristol simultaneously
+- **OAuth Flows** — Secure OAuth 2.0 connections to Meetup and Eventbrite with encrypted token storage
+- **Platform Sync** — Pull external event listings into the local database and track sync history
+- **Encrypted Credentials** — OAuth tokens stored encrypted at rest using AES-256-GCM
+- **Event Generator** — AI-assisted event idea generation using market analysis of competitor listings
+- **Market Analyzer** — Scrapes public event listings from connected platforms for Bristol-area insights
 
 ---
 
 ## Tech Stack
 
-| Layer | Tech |
+| Layer | Technology |
 |---|---|
 | **Runtime** | Node.js 20 |
-| **Language** | TypeScript (planned) |
-| **Testing** | Vitest |
+| **Language** | TypeScript |
+| **Database** | SQLite via better-sqlite3 |
+| **Backend** | Express 5 |
+| **Frontend** | React 19, Vite 7, React Router v7 |
+| **Testing** | Vitest (80% coverage target) |
 | **CI/CD** | GitHub Actions |
-| **Platforms** | Meetup API, Headfirst Bristol, more TBD |
+
+---
+
+## Architecture
+
+```
+src/
+  data/        # SQLite database, stores (events, services, sync), encryption, migration
+  tools/       # Platform API clients (Meetup, Eventbrite, Headfirst), PublishService
+  routes/      # Express API routes: /events, /services, /auth, /sync, /generator
+  agents/      # MarketAnalyzer for competitor event scraping
+  lib/         # Shared utilities (validation)
+  shared/      # TypeScript types shared across server and client
+
+client/src/
+  pages/       # React pages (Dashboard, Events, Services, Generator, AppTester)
+  components/  # Reusable UI components
+  api/         # API client for backend calls
+```
 
 ---
 
@@ -34,7 +54,7 @@ SocialiseHub automates the operational side of running an events business. It us
 ### Prerequisites
 
 - Node.js 20+
-- Platform API keys (Meetup, etc.)
+- OAuth app credentials for any platforms you want to connect (Meetup, Eventbrite)
 
 ### Setup
 
@@ -42,55 +62,62 @@ SocialiseHub automates the operational side of running an events business. It us
 # Install dependencies
 npm install
 
-# Copy environment config
-cp .env.example .env
-# Edit .env with your API keys
+# Run the dev server (Express + Vite)
+npm run dev:web
 
 # Run tests
-npm test
+npm run test:run
 
-# Build
-npm run build
+# Build everything
+npm run build:all
 ```
 
 ### Environment Variables
 
+Set these in your shell environment — do not edit `.env` files directly.
+
 | Variable | Description |
 |---|---|
-| `MEETUP_API_KEY` | Meetup API key for event publishing |
-| `ANTHROPIC_API_KEY` | Anthropic API key (for CI bug-fixer agent) |
+| `MEETUP_CLIENT_ID` | Meetup OAuth app client ID |
+| `MEETUP_CLIENT_SECRET` | Meetup OAuth app client secret |
+| `EVENTBRITE_CLIENT_ID` | Eventbrite OAuth app client ID |
+| `EVENTBRITE_CLIENT_SECRET` | Eventbrite OAuth app client secret |
+| `ENCRYPTION_KEY` | 32-byte hex key for AES-256-GCM token encryption |
+| `PORT` | Server port (default: 3000) |
 
 ---
 
-## Project Structure
+## Running in Web Mode
 
+SocialiseHub is designed to run as a web app that can be loaded in Chrome. The Chrome extension connects to the local Express server.
+
+```bash
+# Start both Express API and Vite dev server
+npm run dev:web
 ```
-/src
-  /agents          # AI agent modules (analysis, creation, social)
-  /tools           # Platform API integrations
-  /lib             # Shared utilities
-  /data            # Data models and schemas
 
-/scripts           # CLI scripts and automation
-/.github/workflows # CI/CD pipelines
-/.claude           # Claude Code automation config
+The app will be available at `http://localhost:5173` (Vite) and the API at `http://localhost:3000`.
+
+---
+
+## Database
+
+Events and service connections are stored in a local SQLite database at `data/socialise.db`. The schema is created automatically on first run.
+
+To migrate data from old JSON store files (`data/events.json`, `data/services.json`):
+
+```bash
+npx tsx src/data/migrate-json.ts
 ```
 
 ---
 
-## Development
-
-### Branch Strategy
+## Branch Strategy
 
 | Branch | Purpose |
 |---|---|
-| `development` | Integration branch — PRs target here |
+| `main` | Active development — PRs target here |
 | `production` | Stable releases |
-
-**Workflow:**
-1. Create feature branches from `development`
-2. PRs are auto-validated (lint, test, build) and auto-merged
-3. Merge `development` into `production` for releases
 
 ---
 
