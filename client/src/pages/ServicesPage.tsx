@@ -7,6 +7,8 @@ import {
   disconnectService,
   startOAuth,
   watchOAuthStatus,
+  getOAuthStatus,
+  type OAuthSetupStatus,
 } from '../api/events';
 import { PLATFORM_COLORS, PLATFORM_ICONS } from '../lib/platforms';
 import { CredentialsForm } from '../components/CredentialsForm';
@@ -33,12 +35,14 @@ export function ServicesPage() {
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [waitingOAuth, setWaitingOAuth] = useState<PlatformName | null>(null);
+  const [oauthStatus, setOauthStatus] = useState<Record<string, OAuthSetupStatus>>({});
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await getServices();
+      const [data, status] = await Promise.all([getServices(), getOAuthStatus()]);
       setServices(data);
+      setOauthStatus(status);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load services');
     } finally {
@@ -135,6 +139,8 @@ export function ServicesPage() {
           const icon = PLATFORM_ICONS[svc.platform] ?? '?';
           const isFormOpen = showForm === svc.platform;
           const isWaiting = waitingOAuth === svc.platform;
+          const setup = oauthStatus[svc.platform];
+          const needsSetup = authType === 'oauth' && setup && !setup.configured;
 
           return (
             <div key={svc.platform} style={styles.card}>
@@ -175,12 +181,41 @@ export function ServicesPage() {
                 )}
               </div>
 
+              {/* OAuth not configured — show setup instructions */}
+              {needsSetup && !svc.connected && (
+                <div style={styles.setupSection}>
+                  <p style={styles.setupTitle}>Setup required</p>
+                  <p style={styles.setupText}>
+                    Set these environment variables before connecting:
+                  </p>
+                  <div style={styles.envVars}>
+                    {setup.required?.map((v) => (
+                      <code key={v} style={styles.envVar}>{v}</code>
+                    ))}
+                  </div>
+                  {setup.redirectUri && (
+                    <p style={styles.setupText}>
+                      Redirect URI for your OAuth app:<br />
+                      <code
+                        style={{ ...styles.envVar, cursor: 'pointer' }}
+                        onClick={() => {
+                          navigator.clipboard.writeText(setup.redirectUri!);
+                        }}
+                        title="Click to copy"
+                      >
+                        {setup.redirectUri}
+                      </code>
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Waiting for OAuth — show spinner */}
               {isWaiting && (
                 <div style={styles.waitingSection}>
                   <div style={styles.spinner} />
                   <span style={{ fontSize: 13, color: '#7a7a7a' }}>
-                    Complete the login in your browser, then return here.
+                    Complete the connection in your browser, then return here.
                   </span>
                 </div>
               )}
@@ -204,6 +239,10 @@ export function ServicesPage() {
                   >
                     Disconnect
                   </button>
+                ) : needsSetup ? (
+                  <button style={styles.disabledBtn} disabled>
+                    Connect (setup needed)
+                  </button>
                 ) : isWaiting ? null : authType === 'oauth' ? (
                   <button
                     style={styles.oauthBtn}
@@ -211,8 +250,8 @@ export function ServicesPage() {
                     onClick={() => handleOAuthConnect(svc.platform)}
                   >
                     {connecting === svc.platform
-                      ? 'Opening login...'
-                      : `Login with ${svc.label}`}
+                      ? 'Connecting...'
+                      : `Connect with ${svc.label}`}
                   </button>
                 ) : isFormOpen ? (
                   <button
@@ -384,5 +423,53 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontWeight: 600,
     cursor: 'pointer',
+  },
+  disabledBtn: {
+    padding: '10px 24px',
+    borderRadius: 10,
+    border: 'none',
+    background: '#e0e0e0',
+    color: '#999',
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: 'not-allowed',
+    fontFamily: "'Outfit', sans-serif",
+  },
+  setupSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    padding: '16px',
+    background: '#FFF8E1',
+    borderRadius: 12,
+    border: '1px solid #FFE082',
+  },
+  setupTitle: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#E65100',
+    margin: 0,
+    fontFamily: "'Outfit', sans-serif",
+  },
+  setupText: {
+    fontSize: 12,
+    color: '#666',
+    margin: 0,
+    lineHeight: 1.5,
+  },
+  envVars: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 4,
+  },
+  envVar: {
+    fontSize: 12,
+    fontFamily: "'Courier New', monospace",
+    background: '#fff',
+    padding: '4px 8px',
+    borderRadius: 6,
+    border: '1px solid #e0e0e0',
+    color: '#333',
+    display: 'inline-block',
   },
 };
