@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import type {
   SocialiseEvent,
   CreateEventInput,
@@ -37,6 +37,7 @@ function toDatetimeLocal(isoStr?: string): string {
 export function EventDetailPage() {
   const { id } = useParams();
   const nav = useNavigate();
+  const [searchParams] = useSearchParams();
   const isNew = !id;
 
   const [event, setEvent] = useState<SocialiseEvent | null>(null);
@@ -58,6 +59,16 @@ export function EventDetailPage() {
   const [capacity, setCapacity] = useState(50);
   const [imageUrl, setImageUrl] = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformName[]>([]);
+
+  // Pre-fill date from query param (calendar day click)
+  const prefillDate = searchParams.get('date');
+  const [dateInitialized, setDateInitialized] = useState(false);
+  useEffect(() => {
+    if (isNew && prefillDate && !dateInitialized) {
+      setStartTime(`${prefillDate}T19:00`);
+      setDateInitialized(true);
+    }
+  }, [isNew, prefillDate, dateInitialized]);
   const [optimizing, setOptimizing] = useState(false);
   const [optimizePrompt, setOptimizePrompt] = useState<string | null>(null);
   const [optimizeResponse, setOptimizeResponse] = useState<string | null>(null);
