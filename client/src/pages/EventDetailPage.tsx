@@ -19,6 +19,7 @@ import { PlatformSelector } from '../components/PlatformSelector';
 import { StatusBadge } from '../components/StatusBadge';
 import { ReadinessChecklist } from '../components/ReadinessChecklist';
 import { PLATFORM_COLORS } from '../lib/platforms';
+import { useToast } from '../context/ToastContext';
 import { checkEventReadiness, isReadyToPublish } from '../../../src/lib/event-readiness';
 
 function toDatetimeLocal(isoStr?: string): string {
@@ -65,6 +66,7 @@ export function EventDetailPage() {
   const [autoSending, setAutoSending] = useState(false);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templateName, setTemplateName] = useState('');
+  const { showToast } = useToast();
 
   useEffect(() => {
     // Always load services for platform selector
@@ -114,10 +116,12 @@ export function EventDetailPage() {
     try {
       if (isNew) {
         const created = await createEvent(buildInput());
+        showToast('Event created', 'success');
         nav(`/events/${created.id}`);
       } else {
         const updated = await updateEvent(id!, buildInput());
         setEvent(updated);
+        showToast('Changes saved', 'success');
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed');
@@ -136,6 +140,8 @@ export function EventDetailPage() {
       setPublishResults(results);
       const updated = await getEvent(id);
       setEvent(updated);
+      const succeeded = results.filter(r => r.success).length;
+      showToast(`Published to ${succeeded} platform${succeeded !== 1 ? 's' : ''}`, 'success');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Publish failed');
     } finally {
@@ -159,6 +165,7 @@ export function EventDetailPage() {
       });
       setShowTemplateModal(false);
       setTemplateName('');
+      showToast('Template saved', 'success');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save template');
     }

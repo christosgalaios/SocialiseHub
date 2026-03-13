@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { SocialiseEvent, Template } from '@shared/types';
 import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate } from '../api/events';
 import { EventCard } from '../components/EventCard';
+import { useToast } from '../context/ToastContext';
 
 type FilterTab = 'all' | 'draft' | 'published' | 'past';
 
@@ -18,6 +19,7 @@ export function EventsPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const nav = useNavigate();
+  const { showToast } = useToast();
 
   const load = async () => {
     try {
@@ -42,8 +44,9 @@ export function EventsPage() {
     try {
       await deleteEvent(id);
       setEvents((prev) => prev.filter((e) => e.id !== id));
+      showToast('Event deleted', 'success');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete');
+      showToast(err instanceof Error ? err.message : 'Failed to delete', 'error');
     }
   };
 
@@ -51,18 +54,20 @@ export function EventsPage() {
     try {
       const event = await createEventFromTemplate(templateId);
       setShowTemplatePicker(false);
+      showToast('Event created from template', 'success');
       nav(`/events/${event.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create from template');
+      showToast(err instanceof Error ? err.message : 'Failed to create from template', 'error');
     }
   };
 
   const handleDuplicate = async (id: string) => {
     try {
       const copy = await duplicateEvent(id);
+      showToast('Event duplicated', 'success');
       nav(`/events/${copy.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to duplicate');
+      showToast(err instanceof Error ? err.message : 'Failed to duplicate', 'error');
     }
   };
 

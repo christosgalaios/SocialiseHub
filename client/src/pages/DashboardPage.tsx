@@ -3,19 +3,20 @@ import type { SocialiseEvent, DashboardSummary } from '@shared/types';
 import { getEvents, getDashboardSummary, syncPull } from '../api/events';
 import { DashboardSummaryCards } from '../components/DashboardSummary';
 import { EventTimeline } from '../components/EventTimeline';
+import { useToast } from '../context/ToastContext';
+
+const SYNC_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
 export function DashboardPage() {
   const [events, setEvents] = useState<SocialiseEvent[]>([]);
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
-  const [syncMsg, setSyncMsg] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { showToast } = useToast();
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
       const [evts, summ] = await Promise.all([
         getEvents(),
         getDashboardSummary().catch(() => null),
@@ -23,27 +24,36 @@ export function DashboardPage() {
       setEvents(evts);
       setSummary(summ);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load dashboard');
+      showToast(err instanceof Error ? err.message : 'Failed to load dashboard', 'error');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [showToast]);
 
-  useEffect(() => { load(); }, [load]);
-
-  const handleSync = async () => {
+  const handleSync = useCallback(async () => {
     setSyncing(true);
-    setSyncMsg(null);
     try {
       const result = await syncPull();
-      setSyncMsg(`Synced ${result.pulled} event${result.pulled !== 1 ? 's' : ''}`);
+      localStorage.setItem('lastSyncAt', new Date().toISOString());
+      showToast(`Synced ${result.pulled} event${result.pulled !== 1 ? 's' : ''}`, 'success');
       await load();
     } catch (err) {
-      setSyncMsg(err instanceof Error ? err.message : 'Sync failed');
+      showToast(err instanceof Error ? err.message : 'Sync failed', 'error');
     } finally {
       setSyncing(false);
     }
-  };
+  }, [showToast, load]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Auto-sync on mount if >30min since last sync
+  useEffect(() => {
+    const lastSyncStr = localStorage.getItem('lastSyncAt');
+    const lastSync = lastSyncStr ? new Date(lastSyncStr).getTime() : 0;
+    if (Date.now() - lastSync > SYNC_INTERVAL_MS) {
+      handleSync();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div>
@@ -53,20 +63,16 @@ export function DashboardPage() {
           <p style={styles.subtitle}>Overview of your events and platforms</p>
         </div>
         <div style={styles.headerActions}>
-          {syncMsg && (
-            <span style={styles.syncMsg}>{syncMsg}</span>
-          )}
+          {syncing && <span style={styles.syncMsg}>Syncing...</span>}
           <button
             style={{ ...styles.syncBtn, opacity: syncing ? 0.7 : 1 }}
             onClick={handleSync}
             disabled={syncing}
           >
-            {syncing ? 'Syncing...' : '↻ Sync Now'}
+            {syncing ? 'Syncing...' : '\u21bb Sync Now'}
           </button>
         </div>
       </div>
-
-      {error && <div style={styles.error}>{error}</div>}
 
       {loading ? (
         <div style={styles.loading}>Loading...</div>
@@ -84,6 +90,7 @@ export function DashboardPage() {
                   byPlatform: { meetup: 0, eventbrite: 0, headfirst: 0 },
                   upcomingEvents: 0,
                   pastEvents: 0,
+                  draftEvents: 0,
                   monthlyTrend: [],
                 }}
               />
@@ -150,15 +157,6 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontFamily: "'Outfit', sans-serif",
     transition: 'opacity 0.2s',
-  },
-  error: {
-    padding: '12px 16px',
-    borderRadius: 12,
-    background: '#fce8e6',
-    color: '#E2725B',
-    fontSize: 14,
-    marginBottom: 20,
-    fontWeight: 500,
   },
   loading: {
     color: '#7a7a7a',

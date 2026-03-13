@@ -9,6 +9,9 @@ import { AppTesterPage } from './pages/AppTesterPage';
 import { TemplatesPage } from './pages/TemplatesPage';
 import { SyncLogPage } from './pages/SyncLogPage';
 import { TerminalPanel } from './components/TerminalPanel';
+import { ToastProvider } from './context/ToastContext';
+import { ToastContainer } from './components/Toast';
+import { SyncStatus } from './components/SyncStatus';
 
 // Typed Electron API exposed via preload
 interface ElectronAPI {
@@ -106,8 +109,10 @@ export function App() {
   const sidebarWidth = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED;
 
   return (
+    <ToastProvider>
     <BrowserRouter>
       <div style={styles.layout}>
+        <ToastContainer />
         {/* Transparent overlay during drag to prevent iframe stealing mouse events */}
         {dragging && <div style={styles.dragOverlay} />}
 
@@ -139,6 +144,9 @@ export function App() {
           </div>
 
           <div style={{ ...styles.sidebarFooter, padding: collapsed ? '16px 8px' : '16px 24px' }}>
+            {/* Sync status */}
+            <SyncStatus collapsed={collapsed} />
+
             {/* Terminal toggle */}
             {isElectron && (
               <button
@@ -224,6 +232,7 @@ export function App() {
         )}
       </div>
     </BrowserRouter>
+    </ToastProvider>
   );
 }
 
