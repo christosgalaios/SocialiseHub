@@ -8,6 +8,8 @@ import type {
   ScrapedEvent,
   DashboardSummary,
   SyncLogEntry,
+  Template,
+  CreateTemplateInput,
 } from '@shared/types';
 
 const BASE = '/api';
@@ -176,6 +178,38 @@ export async function syncPull(): Promise<{ pulled: number }> {
 export async function getSyncLog(limit = 50): Promise<SyncLogEntry[]> {
   const res = await fetch(`${BASE}/sync/log?limit=${limit}`);
   const body = await json<{ data: SyncLogEntry[] }>(res);
+  return body.data;
+}
+
+// ── Templates ─────────────────────────────────────────
+
+export async function getTemplates(): Promise<Template[]> {
+  const res = await fetch(`${BASE}/templates`);
+  const body = await json<{ data: Template[] }>(res);
+  return body.data;
+}
+
+export async function createTemplate(input: CreateTemplateInput): Promise<Template> {
+  const res = await fetch(`${BASE}/templates`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  const body = await json<{ data: Template }>(res);
+  return body.data;
+}
+
+export async function deleteTemplate(id: string): Promise<void> {
+  const res = await fetch(`${BASE}/templates/${id}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(body.error || res.statusText);
+  }
+}
+
+export async function createEventFromTemplate(templateId: string): Promise<SocialiseEvent> {
+  const res = await fetch(`${BASE}/templates/${templateId}/create-event`, { method: 'POST' });
+  const body = await json<{ data: SocialiseEvent }>(res);
   return body.data;
 }
 

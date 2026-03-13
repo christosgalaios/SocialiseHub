@@ -6,6 +6,7 @@ import { EventDetailPage } from './pages/EventDetailPage';
 import { ServicesPage } from './pages/ServicesPage';
 import { EventGeneratorPage } from './pages/EventGeneratorPage';
 import { AppTesterPage } from './pages/AppTesterPage';
+import { TemplatesPage } from './pages/TemplatesPage';
 import { SyncLogPage } from './pages/SyncLogPage';
 import { TerminalPanel } from './components/TerminalPanel';
 
@@ -27,6 +28,7 @@ const isElectron = !!electronAPI?.isElectron;
 const navItems = [
   { to: '/', label: 'Dashboard', icon: '📊' },
   { to: '/events', label: 'Events', icon: '📅' },
+  { to: '/templates', label: 'Templates', icon: '📄' },
   { to: '/generator', label: 'Generator', icon: '💡' },
   { to: '/services', label: 'Services', icon: '🔗' },
   { to: '/sync-log', label: 'Sync Log', icon: '📋' },
@@ -191,6 +193,7 @@ export function App() {
               <Route path="/events" element={<EventsPage />} />
               <Route path="/events/new" element={<EventDetailPage />} />
               <Route path="/events/:id" element={<EventDetailPage />} />
+              <Route path="/templates" element={<TemplatesPage />} />
               <Route path="/generator" element={<EventGeneratorPage />} />
               <Route path="/services" element={<ServicesPage />} />
               <Route path="/sync-log" element={<SyncLogPage />} />

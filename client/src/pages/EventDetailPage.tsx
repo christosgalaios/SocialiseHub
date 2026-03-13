@@ -13,6 +13,7 @@ import {
   updateEvent,
   publishEvent,
   getServices,
+  createTemplate,
 } from '../api/events';
 import { PlatformSelector } from '../components/PlatformSelector';
 import { StatusBadge } from '../components/StatusBadge';
@@ -62,6 +63,8 @@ export function EventDetailPage() {
   const [showOptimizeModal, setShowOptimizeModal] = useState(false);
   const [optimizeCopied, setOptimizeCopied] = useState(false);
   const [autoSending, setAutoSending] = useState(false);
+  const [showTemplateModal, setShowTemplateModal] = useState(false);
+  const [templateName, setTemplateName] = useState('');
 
   useEffect(() => {
     // Always load services for platform selector
@@ -137,6 +140,27 @@ export function EventDetailPage() {
       setError(err instanceof Error ? err.message : 'Publish failed');
     } finally {
       setPublishing(false);
+    }
+  };
+
+  const handleSaveTemplate = async () => {
+    if (!templateName.trim()) return;
+    try {
+      await createTemplate({
+        name: templateName.trim(),
+        title,
+        description,
+        venue,
+        durationMinutes,
+        price,
+        capacity,
+        imageUrl: imageUrl || undefined,
+        platforms: selectedPlatforms,
+      });
+      setShowTemplateModal(false);
+      setTemplateName('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save template');
     }
   };
 
@@ -414,6 +438,13 @@ export function EventDetailPage() {
             <>
               <button
                 type="button"
+                style={styles.templateBtn}
+                onClick={() => { setTemplateName(title); setShowTemplateModal(true); }}
+              >
+                Save as Template
+              </button>
+              <button
+                type="button"
                 disabled={optimizing}
                 style={{
                   ...styles.optimizeBtn,
@@ -475,6 +506,38 @@ export function EventDetailPage() {
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Save as Template Modal */}
+      {showTemplateModal && (
+        <div style={styles.overlay} onClick={() => setShowTemplateModal(false)}>
+          <div style={{ ...styles.modal, maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>Save as Template</h2>
+              <button style={styles.closeBtn} onClick={() => setShowTemplateModal(false)}>✕</button>
+            </div>
+            <div style={{ padding: '20px 28px' }}>
+              <label style={styles.field}>
+                <span style={styles.label}>Template Name</span>
+                <input
+                  style={styles.input}
+                  value={templateName}
+                  onChange={(e) => setTemplateName(e.target.value)}
+                  placeholder="e.g. Weekly Social, Monthly Networking"
+                  autoFocus
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleSaveTemplate(); }}
+                />
+              </label>
+            </div>
+            <div style={styles.modalFooter}>
+              <div />
+              <div style={styles.modalActions}>
+                <button style={styles.secondaryBtn} onClick={() => setShowTemplateModal(false)}>Cancel</button>
+                <button style={styles.sendBtn} onClick={handleSaveTemplate}>Save Template</button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -667,6 +730,18 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontFamily: "'Outfit', sans-serif",
     transition: 'background 0.2s, transform 0.1s',
+  },
+  templateBtn: {
+    padding: '12px 28px',
+    borderRadius: 12,
+    border: '1.5px solid #2D5F5D',
+    background: '#e6f4f1',
+    color: '#2D5F5D',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
+    transition: 'opacity 0.2s',
   },
   optimizeBtn: {
     padding: '12px 28px',

@@ -65,6 +65,21 @@ function createSchema(db: Database): void {
       created_at TEXT NOT NULL
     );
 
+    CREATE TABLE IF NOT EXISTS templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      venue TEXT,
+      duration_minutes INTEGER DEFAULT 120,
+      price REAL DEFAULT 0,
+      capacity INTEGER,
+      image_url TEXT,
+      platforms TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
     INSERT OR IGNORE INTO services (platform, connected) VALUES ('meetup', 0);
     INSERT OR IGNORE INTO services (platform, connected) VALUES ('eventbrite', 0);
     INSERT OR IGNORE INTO services (platform, connected) VALUES ('headfirst', 0);

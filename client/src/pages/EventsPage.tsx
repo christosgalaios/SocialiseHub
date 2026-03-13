@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { SocialiseEvent } from '@shared/types';
-import { getEvents, deleteEvent, duplicateEvent } from '../api/events';
+import type { SocialiseEvent, Template } from '@shared/types';
+import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate } from '../api/events';
 import { EventCard } from '../components/EventCard';
 
 type FilterTab = 'all' | 'draft' | 'published' | 'past';
@@ -15,6 +15,8 @@ export function EventsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const nav = useNavigate();
 
   const load = async () => {
@@ -30,7 +32,10 @@ export function EventsPage() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    getTemplates().then(setTemplates).catch(() => {});
+  }, []);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this event?')) return;
@@ -39,6 +44,16 @@ export function EventsPage() {
       setEvents((prev) => prev.filter((e) => e.id !== id));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete');
+    }
+  };
+
+  const handleCreateFromTemplate = async (templateId: string) => {
+    try {
+      const event = await createEventFromTemplate(templateId);
+      setShowTemplatePicker(false);
+      nav(`/events/${event.id}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create from template');
     }
   };
 
@@ -81,9 +96,35 @@ export function EventsPage() {
             {filtered.length} event{filtered.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <button style={styles.createBtn} onClick={() => nav('/events/new')}>
-          + New Event
-        </button>
+        <div style={{ display: 'flex', gap: 10 }}>
+          {templates.length > 0 && (
+            <div style={{ position: 'relative' }}>
+              <button
+                style={styles.templateBtn}
+                onClick={() => setShowTemplatePicker(!showTemplatePicker)}
+              >
+                From Template
+              </button>
+              {showTemplatePicker && (
+                <div style={styles.templateDropdown}>
+                  {templates.map((t) => (
+                    <button
+                      key={t.id}
+                      style={styles.templateItem}
+                      onClick={() => handleCreateFromTemplate(t.id)}
+                    >
+                      <span style={{ fontWeight: 600 }}>{t.name}</span>
+                      <span style={{ fontSize: 12, color: '#7a7a7a' }}>{t.title}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <button style={styles.createBtn} onClick={() => nav('/events/new')}>
+            + New Event
+          </button>
+        </div>
       </div>
 
       <div style={styles.tabs}>
@@ -153,6 +194,45 @@ const styles: Record<string, React.CSSProperties> = {
   subtitle: {
     fontSize: 14,
     color: '#7a7a7a',
+  },
+  templateBtn: {
+    padding: '12px 24px',
+    borderRadius: 12,
+    border: '1.5px solid #2D5F5D',
+    background: '#e6f4f1',
+    color: '#2D5F5D',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
+  },
+  templateDropdown: {
+    position: 'absolute' as const,
+    top: '100%',
+    right: 0,
+    marginTop: 8,
+    background: '#fff',
+    borderRadius: 12,
+    border: '1px solid #e8e6e1',
+    boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+    minWidth: 240,
+    zIndex: 100,
+    overflow: 'hidden',
+  },
+  templateItem: {
+    display: 'flex',
+    flexDirection: 'column' as const,
+    gap: 2,
+    padding: '12px 16px',
+    border: 'none',
+    background: 'none',
+    width: '100%',
+    textAlign: 'left' as const,
+    cursor: 'pointer',
+    fontSize: 14,
+    color: '#080810',
+    borderBottom: '1px solid #f0eeeb',
+    transition: 'background 0.1s',
   },
   createBtn: {
     padding: '12px 24px',

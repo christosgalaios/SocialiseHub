@@ -92,6 +92,25 @@ export interface EventIdea {
   category: string;
 }
 
+// ── Templates ──────────────────────────────────────────
+
+export interface Template {
+  id: string;
+  name: string;
+  title: string;
+  description: string;
+  venue: string;
+  durationMinutes: number;
+  price: number;
+  capacity: number;
+  imageUrl?: string;
+  platforms: PlatformName[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateTemplateInput = Omit<Template, 'id' | 'createdAt' | 'updatedAt'>;
+
 // ── API Responses ───────────────────────────────────────
 
 export interface ApiResponse<T> {
