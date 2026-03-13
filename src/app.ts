@@ -68,7 +68,7 @@ export function createApp(deps?: AppDeps): express.Express {
     res.json({ status: 'ok', version: VERSION });
   });
 
-  const marketAnalyzer = new MarketAnalyzer(serviceStore as never);
+  const marketAnalyzer = new MarketAnalyzer(platformEventStore);
 
   app.use(
     '/api/events',
@@ -76,7 +76,7 @@ export function createApp(deps?: AppDeps): express.Express {
   );
   app.use('/api/services', createServicesRouter(serviceStore));
   app.use('/api/sync', createSyncRouter(syncLogStore, platformEventStore, publishService, eventStore, serviceStore));
-  app.use('/api/generator', createGeneratorRouter(eventStore as never, marketAnalyzer));
+  app.use('/api/generator', createGeneratorRouter(eventStore as never, marketAnalyzer, platformEventStore));
   // 404 for unknown API routes (before SPA fallback)
   app.all('/api/{*path}', (_req: Request, res: Response) => {
     res.status(404).json({ error: 'Not found' });

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import type { SqliteEventStore } from '../data/sqlite-event-store.js';
 import type { MarketAnalyzer } from '../agents/market-analyzer.js';
+import type { PlatformEventStore } from '../data/platform-event-store.js';
 import type { ScrapedEvent, SocialiseEvent } from '../shared/types.js';
 
 /**
@@ -14,6 +15,7 @@ import type { ScrapedEvent, SocialiseEvent } from '../shared/types.js';
 export function createGeneratorRouter(
   eventStore: SqliteEventStore,
   analyzer: MarketAnalyzer,
+  platformEventStore?: PlatformEventStore,
 ): Router {
   const router = Router();
 
@@ -86,6 +88,33 @@ export function createGeneratorRouter(
     }
   });
 
+  /**
+   * POST /api/generator/optimize/:id
+   * Composes an SEO optimization prompt for an existing event.
+   * Analyzes current event details and suggests improved title, description, tags.
+   */
+  router.post('/optimize/:id', async (req, res, next) => {
+    try {
+      const event = eventStore.getById(req.params.id);
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      // Gather context: similar events from synced data
+      const allSynced = platformEventStore?.getAll() ?? [];
+      const similarEvents = allSynced
+        .filter((pe) => pe.title && pe.title !== event.title)
+        .slice(0, 20);
+
+      const pastEvents = eventStore.getAll();
+
+      const prompt = composeOptimizePrompt(event, similarEvents, pastEvents);
+      res.json({ data: { prompt } });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }
 
@@ -152,4 +181,103 @@ Based on the market data above, please:
 3. **Rank the ideas** from most promising to least, with a brief explanation of your ranking.
 
 Please be specific, creative, and data-driven. Avoid generic suggestions — reference actual market gaps you identified.`;
+}
+
+// ── SEO Optimization Prompt ─────────────────────────────
+
+interface SimilarEvent {
+  title: string;
+  date?: string;
+  venue?: string;
+  status: string;
+}
+
+function composeOptimizePrompt(
+  event: SocialiseEvent,
+  similarEvents: SimilarEvent[],
+  pastEvents: SocialiseEvent[],
+): string {
+  const today = new Date().toISOString().split('T')[0];
+
+  const similarList = similarEvents.length > 0
+    ? similarEvents
+        .map((e) => `  - "${e.title}" | ${e.date ?? 'No date'} | ${e.venue ?? 'No venue'} | ${e.status}`)
+        .join('\n')
+    : '  (No similar events available)';
+
+  const pastSummary = pastEvents
+    .filter((e) => e.id !== event.id)
+    .slice(-10)
+    .map((e) => `  - "${e.title}" | ${e.venue} | ${e.status}`)
+    .join('\n') || '  (No other events)';
+
+  return `You are an SEO and event marketing specialist for **Socialise**, a social events company in Bristol, UK. Your job is to optimise an existing event listing to maximise discoverability, click-through rate, and attendance.
+
+## Today's Date
+${today}
+
+## Current Event Details
+- **Title:** ${event.title}
+- **Description:** ${event.description || '(empty)'}
+- **Date:** ${event.start_time}
+- **Venue:** ${event.venue || '(not set)'}
+- **Price:** £${event.price}
+- **Capacity:** ${event.capacity}
+- **Image URL:** ${event.imageUrl || '(none)'}
+- **Status:** ${event.status}
+
+## Similar Events on the Platform
+${similarList}
+
+## Socialise's Other Events
+${pastSummary}
+
+## Your Task
+Analyse this event and provide an optimised version. For each field, explain what you changed and why.
+
+### 1. **Optimised Title**
+- Make it search-friendly (include location, key activity, audience)
+- Keep it under 80 characters
+- Make it compelling — would you click on this?
+
+### 2. **Optimised Description**
+- Lead with the value proposition (what attendees get)
+- Include relevant keywords naturally (Bristol, social, the activity type)
+- Structure with short paragraphs, bullet points for scanability
+- Include a clear call-to-action
+- 150-300 words ideal
+
+### 3. **Suggested Tags/Keywords**
+- 5-10 SEO-relevant tags for platform search algorithms
+- Mix of broad (e.g., "Bristol events") and specific (e.g., "networking for professionals")
+
+### 4. **Image Recommendations**
+- What kind of image would work best for this event?
+- Suggested alt text for accessibility and SEO
+- Ideal dimensions/aspect ratio for Meetup and Eventbrite
+
+### 5. **Timing & Pricing Suggestions**
+- Is the date/time optimal for this type of event?
+- Is the price competitive based on similar events?
+
+### 6. **Overall SEO Score**
+Rate the current listing 1-10 and the optimised version 1-10, with brief justification.
+
+Please format your response as structured JSON so the app can auto-apply changes:
+\`\`\`json
+{
+  "title": "Optimised title here",
+  "description": "Optimised description here",
+  "tags": ["tag1", "tag2", ...],
+  "imageAlt": "Suggested alt text",
+  "imageSuggestion": "Description of ideal image",
+  "timingSuggestion": "Your timing advice",
+  "pricingSuggestion": "Your pricing advice",
+  "currentScore": 4,
+  "optimisedScore": 8,
+  "rationale": "Brief explanation of key changes"
+}
+\`\`\`
+
+Follow the JSON with your detailed reasoning for each change.`;
 }

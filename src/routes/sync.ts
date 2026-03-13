@@ -100,6 +100,7 @@ export function createSyncRouter(
       let eventsThisMonth = 0;
       let upcomingEvents = 0;
       let pastEvents = 0;
+      let draftEvents = 0;
 
       // Build monthly trend for last 6 months
       const monthlyMap = new Map<string, number>();
@@ -111,6 +112,8 @@ export function createSyncRouter(
 
       for (const evt of allEvents) {
         byPlatform[evt.platform] = (byPlatform[evt.platform] ?? 0) + 1;
+
+        if (evt.status === 'draft') draftEvents++;
 
         const date = evt.date ? new Date(evt.date) : null;
         if (date) {
@@ -138,6 +141,7 @@ export function createSyncRouter(
         byPlatform,
         upcomingEvents,
         pastEvents,
+        draftEvents,
         monthlyTrend,
       };
 

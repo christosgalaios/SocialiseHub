@@ -78,6 +78,7 @@ export interface ScrapedEvent {
   attendees?: number;
   platform: PlatformName;
   url: string;
+  status?: string;
 }
 
 export interface EventIdea {
@@ -112,7 +113,7 @@ export interface PlatformEvent {
   title: string;
   date?: string;
   venue?: string;
-  status: 'active' | 'cancelled' | 'past';
+  status: 'active' | 'draft' | 'cancelled' | 'past';
   rawData?: string;
   syncedAt: string;
   publishedAt?: string;
@@ -150,6 +151,7 @@ export interface DashboardSummary {
   byPlatform: Record<PlatformName, number>;
   upcomingEvents: number;
   pastEvents: number;
+  draftEvents: number;
   /** Events per month for the last 6 months, oldest first */
   monthlyTrend: { month: string; count: number }[];
 }

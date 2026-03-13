@@ -16,6 +16,7 @@ export function DashboardSummaryCards({ summary }: DashboardSummaryProps) {
       <div style={styles.row}>
         <StatCard label="Total Events" value={summary.totalEvents} />
         <StatCard label="Upcoming" value={summary.upcomingEvents ?? 0} accent="#2D5F5D" />
+        <StatCard label="Drafts" value={summary.draftEvents ?? 0} accent="#d4a017" />
         <StatCard label="Past" value={summary.pastEvents ?? 0} accent="#7a7a7a" />
         <StatCard label="This Week" value={summary.eventsThisWeek} />
         <StatCard label="This Month" value={summary.eventsThisMonth} />

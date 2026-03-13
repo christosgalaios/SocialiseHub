@@ -240,7 +240,7 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
 
         // Fetch upcoming events (ACTIVE + DRAFT)
         await fetchAllWithStatus('ACTIVE', 'active');
-        await fetchAllWithStatus('DRAFT', 'active');
+        await fetchAllWithStatus('DRAFT', 'draft');
 
         // Fetch past events (PAST + CANCELLED + CANCELLED_PERM)
         await fetchAllWithStatus('PAST', 'past');

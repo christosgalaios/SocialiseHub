@@ -54,6 +54,10 @@ export function EventDetailPage() {
   const [capacity, setCapacity] = useState(50);
   const [imageUrl, setImageUrl] = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformName[]>([]);
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizePrompt, setOptimizePrompt] = useState<string | null>(null);
+  const [showOptimizeModal, setShowOptimizeModal] = useState(false);
+  const [optimizeCopied, setOptimizeCopied] = useState(false);
 
   useEffect(() => {
     // Always load services for platform selector
@@ -129,6 +133,47 @@ export function EventDetailPage() {
       setError(err instanceof Error ? err.message : 'Publish failed');
     } finally {
       setPublishing(false);
+    }
+  };
+
+  const handleOptimize = async () => {
+    if (!id) return;
+    setOptimizing(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/generator/optimize/${id}`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(body.error || res.statusText);
+      }
+      const body = (await res.json()) as { data: { prompt: string } };
+      setOptimizePrompt(body.data.prompt);
+      setShowOptimizeModal(true);
+      setOptimizeCopied(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Optimize failed');
+    } finally {
+      setOptimizing(false);
+    }
+  };
+
+  const handleCopyOptimize = async () => {
+    if (!optimizePrompt) return;
+    try {
+      const w = window as Window & { electronAPI?: { copyToClipboard: (t: string) => Promise<void>; focusClaudePanel: () => Promise<void> } };
+      if (w.electronAPI?.copyToClipboard) {
+        await w.electronAPI.copyToClipboard(optimizePrompt);
+      } else {
+        await navigator.clipboard.writeText(optimizePrompt);
+      }
+      setOptimizeCopied(true);
+      if (w.electronAPI?.focusClaudePanel) {
+        await w.electronAPI.focusClaudePanel();
+      } else {
+        window.open('https://claude.ai/new', '_blank');
+      }
+    } catch {
+      setError('Failed to copy to clipboard');
     }
   };
 
@@ -274,17 +319,30 @@ export function EventDetailPage() {
           </button>
 
           {!isNew && (
-            <button
-              type="button"
-              disabled={publishing || selectedPlatforms.length === 0}
-              style={{
-                ...styles.publishBtn,
-                opacity: publishing || selectedPlatforms.length === 0 ? 0.7 : 1,
-              }}
-              onClick={handlePublish}
-            >
-              {publishing ? 'Publishing...' : 'Publish'}
-            </button>
+            <>
+              <button
+                type="button"
+                disabled={optimizing}
+                style={{
+                  ...styles.optimizeBtn,
+                  opacity: optimizing ? 0.7 : 1,
+                }}
+                onClick={handleOptimize}
+              >
+                {optimizing ? 'Analyzing...' : 'SEO Optimize'}
+              </button>
+              <button
+                type="button"
+                disabled={publishing || selectedPlatforms.length === 0}
+                style={{
+                  ...styles.publishBtn,
+                  opacity: publishing || selectedPlatforms.length === 0 ? 0.7 : 1,
+                }}
+                onClick={handlePublish}
+              >
+                {publishing ? 'Publishing...' : 'Publish'}
+              </button>
+            </>
           )}
         </div>
       </form>
@@ -315,6 +373,38 @@ export function EventDetailPage() {
                 )}
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* SEO Optimize Modal */}
+      {showOptimizeModal && optimizePrompt && (
+        <div style={styles.overlay} onClick={() => setShowOptimizeModal(false)}>
+          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h2 style={styles.modalTitle}>SEO Optimization Prompt</h2>
+              <button style={styles.closeBtn} onClick={() => setShowOptimizeModal(false)}>
+                ✕
+              </button>
+            </div>
+            <div style={styles.promptBox}>
+              <pre style={styles.promptText}>{optimizePrompt}</pre>
+            </div>
+            <div style={styles.modalFooter}>
+              <p style={styles.modalHint}>
+                {optimizeCopied
+                  ? 'Copied! Paste into Claude and hit Enter.'
+                  : 'Copy the prompt and send to Claude for optimization suggestions'}
+              </p>
+              <div style={styles.modalActions}>
+                <button style={styles.secondaryBtn} onClick={() => setShowOptimizeModal(false)}>
+                  Cancel
+                </button>
+                <button style={styles.sendBtn} onClick={handleCopyOptimize}>
+                  {optimizeCopied ? 'Copied — Focus Claude' : 'Copy & Open Claude'}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -439,6 +529,18 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: "'Outfit', sans-serif",
     transition: 'background 0.2s, transform 0.1s',
   },
+  optimizeBtn: {
+    padding: '12px 28px',
+    borderRadius: 12,
+    border: '1.5px solid #d4a017',
+    background: '#fffbeb',
+    color: '#92700c',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
+    transition: 'opacity 0.2s',
+  },
   publishBtn: {
     padding: '12px 28px',
     borderRadius: 12,
@@ -450,6 +552,108 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontFamily: "'Outfit', sans-serif",
     transition: 'opacity 0.2s',
+  },
+  overlay: {
+    position: 'fixed',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    background: 'rgba(0,0,0,0.5)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 1000,
+    padding: 24,
+  },
+  modal: {
+    background: '#fff',
+    borderRadius: 20,
+    width: '100%',
+    maxWidth: 720,
+    maxHeight: '85vh',
+    display: 'flex',
+    flexDirection: 'column',
+    boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
+  },
+  modalHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '20px 28px',
+    borderBottom: '1px solid #e8e6e1',
+  },
+  modalTitle: {
+    fontFamily: "'Outfit', sans-serif",
+    fontSize: 18,
+    fontWeight: 700,
+    color: '#080810',
+    margin: 0,
+  },
+  closeBtn: {
+    background: 'none',
+    border: 'none',
+    fontSize: 18,
+    color: '#999',
+    cursor: 'pointer',
+    padding: '4px 8px',
+    borderRadius: 8,
+  },
+  promptBox: {
+    flex: 1,
+    overflow: 'auto',
+    padding: '20px 28px',
+  },
+  promptText: {
+    fontFamily: "'Courier New', monospace",
+    fontSize: 12,
+    lineHeight: 1.7,
+    color: '#333',
+    whiteSpace: 'pre-wrap',
+    wordBreak: 'break-word',
+    margin: 0,
+  },
+  modalFooter: {
+    padding: '16px 28px',
+    borderTop: '1px solid #e8e6e1',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 16,
+  },
+  modalHint: {
+    fontSize: 12,
+    color: '#7a7a7a',
+    margin: 0,
+    flex: 1,
+  },
+  modalActions: {
+    display: 'flex',
+    gap: 10,
+    flexShrink: 0,
+  },
+  secondaryBtn: {
+    padding: '10px 18px',
+    borderRadius: 10,
+    border: '1.5px solid #ddd',
+    background: '#fff',
+    color: '#555',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
+  },
+  sendBtn: {
+    padding: '10px 20px',
+    borderRadius: 10,
+    border: 'none',
+    background: '#2D5F5D',
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
+    whiteSpace: 'nowrap',
   },
   publishSection: {
     marginTop: 40,
