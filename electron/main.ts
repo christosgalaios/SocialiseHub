@@ -663,13 +663,20 @@ app.whenReady().then(async () => {
             }
 
             const steps = stepFn();
+
+            if (!mainWindow || !automationView) {
+              res.writeHead(503, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ success: false, error: 'App window not available' }));
+              return;
+            }
+
             const config2 = loadConfig();
             const panelWidth = config2.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
-            showAutomationView(mainWindow!, panelWidth);
+            showAutomationView(mainWindow, panelWidth);
 
             // Import and create engine from the automation view's webContents
             const { AutomationEngine } = await import('../dist/automation/engine.js');
-            const engine = new AutomationEngine(automationView!.webContents as never);
+            const engine = new AutomationEngine(automationView.webContents as never);
 
             // Forward status updates to the renderer
             engine.onStatus((status: { step: number; totalSteps: number; description: string; state: string }) => {

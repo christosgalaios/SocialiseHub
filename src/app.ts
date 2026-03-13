@@ -68,7 +68,6 @@ export function createApp(deps?: AppDeps): express.Express {
     res.json({ status: 'ok', version: VERSION });
   });
 
-  const port = Number(process.env.PORT) || 3000;
   const marketAnalyzer = new MarketAnalyzer(serviceStore as never);
 
   app.use(
@@ -78,6 +77,11 @@ export function createApp(deps?: AppDeps): express.Express {
   app.use('/api/services', createServicesRouter(serviceStore));
   app.use('/api/sync', createSyncRouter(syncLogStore, platformEventStore, publishService, eventStore, serviceStore));
   app.use('/api/generator', createGeneratorRouter(eventStore as never, marketAnalyzer));
+  // 404 for unknown API routes (before SPA fallback)
+  app.all('/api/{*path}', (_req: Request, res: Response) => {
+    res.status(404).json({ error: 'Not found' });
+  });
+
   // Serve built frontend — single-server setup
   const clientDir = join(process.cwd(), 'dist-client');
   if (existsSync(clientDir)) {

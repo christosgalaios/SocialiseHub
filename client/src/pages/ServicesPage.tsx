@@ -23,7 +23,7 @@ declare global {
       cancelAutomation: () => Promise<void>;
       resumeAutomation: () => Promise<void>;
       onAutomationStatus: (cb: (status: { step: number; totalSteps: number; description: string; state: string }) => void) => () => void;
-      onAutomationResult: (cb: (result: { success: boolean; error?: string }) => void) => () => void;
+      onAutomationResult: (cb: (result: { success: boolean; error?: string; data?: unknown }) => void) => () => void;
     };
   }
 }

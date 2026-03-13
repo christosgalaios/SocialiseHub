@@ -53,8 +53,9 @@ export class EventbriteAutomationClient implements PlatformClient {
       externalId: String(e.externalId ?? ''),
       title: String(e.title ?? ''),
       externalUrl: String(e.url ?? ''),
-      startTime: String(e.date ?? ''),
+      date: String(e.date ?? ''),
       venue: '',
+      status: 'active' as const,
       syncedAt: new Date().toISOString(),
     }));
   }
