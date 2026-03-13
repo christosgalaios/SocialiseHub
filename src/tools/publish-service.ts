@@ -9,16 +9,21 @@ export class PublishService {
   }
 
   async publish(event: SocialiseEvent, platforms: PlatformName[]): Promise<PlatformPublishResult[]> {
-    const results = await Promise.allSettled(
-      platforms.map(async (p): Promise<PlatformPublishResult> => {
-        const client = this.clients[p];
-        if (!client) return { platform: p, success: false, error: `${p} not configured` };
-        return client.createEvent(event);
-      }),
-    );
-    return results.map((r, i) =>
-      r.status === 'fulfilled' ? r.value : { platform: platforms[i], success: false, error: String(r.reason) },
-    );
+    // Sequential execution — browser automation can only run one platform at a time
+    const results: PlatformPublishResult[] = [];
+    for (const p of platforms) {
+      const client = this.clients[p];
+      if (!client) {
+        results.push({ platform: p, success: false, error: `${p} not configured` });
+        continue;
+      }
+      try {
+        results.push(await client.createEvent(event));
+      } catch (err) {
+        results.push({ platform: p, success: false, error: String(err) });
+      }
+    }
+    return results;
   }
 
   async update(externalId: string, event: SocialiseEvent, platform: PlatformName): Promise<PlatformPublishResult> {
