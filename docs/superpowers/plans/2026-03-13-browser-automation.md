@@ -671,14 +671,14 @@ Inside `app.whenReady()`, after the Express server starts, add the internal brid
       req.on('end', async () => {
         try {
           const request = JSON.parse(body);
-          // TODO: Task 5+ will wire this to platform scripts
-          // For now, show the automation view and return a placeholder
+          // Placeholder — Task 14 replaces this block with real platform dispatch.
+          // Until then, bridge requests return a stub error so callers handle gracefully.
           const config = loadConfig();
           const panelWidth = config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
           showAutomationView(mainWindow!, panelWidth);
 
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: false, error: 'Platform scripts not yet implemented' }));
+          res.end(JSON.stringify({ success: false, error: 'Platform scripts not yet wired — see Task 14' }));
         } catch (err) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: false, error: String(err) }));
@@ -824,7 +824,7 @@ const PUBLISH_SELECTORS = {
   descriptionEditor: '[data-testid="event-description"] [contenteditable], .ql-editor, [contenteditable="true"]',
   dateInput: '[data-testid="event-date-input"], input[type="date"], input[name="date"]',
   timeInput: '[data-testid="event-time-input"], input[type="time"], input[name="time"]',
-  publishButton: '[data-testid="publish-button"], button[type="submit"]:last-of-type, button:has-text("Publish")',
+  publishButton: '[data-testid="publish-button"], button[type="submit"]:last-of-type',
 };
 
 /**
@@ -1266,7 +1266,7 @@ git commit -m "refactor: change PublishService to sequential execution for brows
 **Files:**
 - Modify: `src/app.ts`
 - Modify: `src/shared/types.ts`
-- Remove: `src/routes/auth.ts` (or empty it)
+- Modify: `src/routes/auth.ts` — remove auth router import and route from app.ts (file deletion deferred to Task 15)
 - Modify: `client/src/api/events.ts` — remove OAuth functions
 
 - [ ] **Step 1: Update shared types — remove OAuth auth types**
@@ -1404,17 +1404,477 @@ git commit -m "refactor: simplify ServicesPage for browser automation — remove
 **Files:**
 - Create: `src/automation/eventbrite.ts`
 - Create: `src/automation/eventbrite.test.ts`
+- Create: `src/automation/eventbrite-client.ts`
+- Create: `src/automation/eventbrite-client.test.ts`
 
-Follow the same pattern as Meetup: connect, publish, scrape functions returning `AutomationStep[]`. Eventbrite uses a multi-step wizard for event creation — each step waits longer (15s timeout).
+Eventbrite uses a multi-step wizard for event creation. Each step uses 15s timeouts because wizard transitions are slow. External ID is extracted from the URL pattern `eventbrite.com/myevent?eid={eventId}`.
 
-- [ ] **Step 1: Implement eventbrite.ts** with `eventbriteConnectSteps()`, `eventbritePublishSteps(event)`, `eventbriteScrapeSteps()`
+- [ ] **Step 1: Implement eventbrite.ts**
+
+```typescript
+// src/automation/eventbrite.ts
+import type { AutomationStep } from './types.js';
+import type { SocialiseEvent } from '../shared/types.js';
+
+const SELECTORS = {
+  loggedInNav: '[data-testid="user-nav"], .global-header__avatar, .user-menu',
+  orgIdLink: 'a[href*="/organizations/"]',
+};
+
+const PUBLISH_SELECTORS = {
+  titleInput: '[data-testid="event-title-input"], input[name="title"], #event-title',
+  descriptionEditor: '[data-testid="event-description"] [contenteditable], .ql-editor, [contenteditable="true"]',
+  dateInput: '[data-testid="start-date"], input[name="startDate"], input[type="date"]',
+  timeInput: '[data-testid="start-time"], input[name="startTime"], input[type="time"]',
+  ticketTypeSelector: '[data-testid="ticket-type-selector"], .ticket-type-toggle',
+  freeTicketOption: '[data-testid="free-ticket"], button:contains("Free"), .ticket-free-option',
+  paidTicketOption: '[data-testid="paid-ticket"], button:contains("Paid"), .ticket-paid-option',
+  ticketPriceInput: '[data-testid="ticket-price"], input[name="price"]',
+  ticketQuantityInput: '[data-testid="ticket-quantity"], input[name="quantity"]',
+  venueInput: '[data-testid="venue-input"], input[name="venue"], #venue-search',
+  nextButton: '[data-testid="next-step"], button.eds-btn--submit, button[type="submit"]',
+  publishButton: '[data-testid="publish-button"], button[data-testid="publish"], button.eds-btn--submit:last-of-type',
+};
+
+/**
+ * Steps to check if the user is logged into Eventbrite.
+ * Returns: lastEvalResult = { loggedIn: boolean, organizationId?: string }
+ */
+export function eventbriteConnectSteps(): AutomationStep[] {
+  return [
+    {
+      action: 'navigate',
+      url: 'https://www.eventbrite.com/',
+      description: 'Opening Eventbrite...',
+    },
+    {
+      action: 'waitForSelector',
+      selector: 'body',
+      timeout: 10_000,
+      description: 'Waiting for page to load...',
+    },
+    {
+      action: 'evaluate',
+      script: `(() => {
+        const nav = document.querySelector('${SELECTORS.loggedInNav}');
+        if (!nav) return JSON.stringify({ loggedIn: false });
+        const orgLink = document.querySelector('${SELECTORS.orgIdLink}');
+        const orgMatch = orgLink?.getAttribute('href')?.match(/organizations\\/(\\d+)/);
+        return JSON.stringify({ loggedIn: true, organizationId: orgMatch ? orgMatch[1] : null });
+      })()`,
+      description: 'Checking login status...',
+    },
+  ];
+}
+
+/**
+ * Steps to publish an event on Eventbrite via the multi-step wizard.
+ * Timeout: 15s per step (wizard transitions are slow).
+ */
+export function eventbritePublishSteps(event: SocialiseEvent): AutomationStep[] {
+  const startDate = new Date(event.start_time);
+  const dateStr = startDate.toISOString().split('T')[0];
+  const timeStr = startDate.toTimeString().slice(0, 5);
+
+  return [
+    {
+      action: 'navigate',
+      url: 'https://www.eventbrite.com/create',
+      description: 'Opening event creation wizard...',
+    },
+    // Step 1: Basic info
+    {
+      action: 'waitForSelector',
+      selector: PUBLISH_SELECTORS.titleInput,
+      timeout: 15_000,
+      description: 'Waiting for title field...',
+    },
+    {
+      action: 'fill',
+      selector: PUBLISH_SELECTORS.titleInput,
+      value: event.title,
+      description: `Filling title: "${event.title}"`,
+    },
+    {
+      action: 'evaluate',
+      script: `(() => {
+        const editor = document.querySelector('${PUBLISH_SELECTORS.descriptionEditor}');
+        if (editor) {
+          editor.innerHTML = ${JSON.stringify(event.description)};
+          editor.dispatchEvent(new Event('input', { bubbles: true }));
+          return true;
+        }
+        return false;
+      })()`,
+      description: 'Filling description...',
+    },
+    // Date/time step
+    {
+      action: 'fill',
+      selector: PUBLISH_SELECTORS.dateInput,
+      value: dateStr,
+      description: `Setting date: ${dateStr}`,
+    },
+    {
+      action: 'fill',
+      selector: PUBLISH_SELECTORS.timeInput,
+      value: timeStr,
+      description: `Setting time: ${timeStr}`,
+    },
+    // Location step
+    ...(event.venue ? [
+      {
+        action: 'fill' as const,
+        selector: PUBLISH_SELECTORS.venueInput,
+        value: event.venue,
+        description: `Setting venue: ${event.venue}`,
+      },
+    ] : []),
+    // Tickets step — free or paid
+    ...(event.price && event.price > 0 ? [
+      {
+        action: 'click' as const,
+        selector: PUBLISH_SELECTORS.paidTicketOption,
+        description: 'Selecting paid ticket type...',
+      },
+      {
+        action: 'fill' as const,
+        selector: PUBLISH_SELECTORS.ticketPriceInput,
+        value: String(event.price),
+        description: `Setting ticket price: £${event.price}`,
+      },
+    ] : [
+      {
+        action: 'click' as const,
+        selector: PUBLISH_SELECTORS.freeTicketOption,
+        description: 'Selecting free ticket type...',
+      },
+    ]),
+    // Capacity
+    ...(event.capacity ? [
+      {
+        action: 'fill' as const,
+        selector: PUBLISH_SELECTORS.ticketQuantityInput,
+        value: String(event.capacity),
+        description: `Setting capacity: ${event.capacity}`,
+      },
+    ] : []),
+    // Publish
+    {
+      action: 'click',
+      selector: PUBLISH_SELECTORS.publishButton,
+      description: 'Publishing event...',
+    },
+    {
+      action: 'waitForNavigation',
+      timeout: 15_000,
+      description: 'Waiting for confirmation...',
+    },
+    {
+      action: 'evaluate',
+      script: `(() => {
+        const url = window.location.href;
+        const eidMatch = url.match(/eid=(\\d+)/);
+        const pathMatch = url.match(/event\\/(\\d+)/);
+        const externalId = eidMatch ? eidMatch[1] : pathMatch ? pathMatch[1] : null;
+        return JSON.stringify({ externalId, externalUrl: url });
+      })()`,
+      description: 'Extracting event ID...',
+    },
+  ];
+}
+
+/**
+ * Steps to scrape events from Eventbrite organizations dashboard.
+ */
+export function eventbriteScrapeSteps(): AutomationStep[] {
+  return [
+    {
+      action: 'navigate',
+      url: 'https://www.eventbrite.com/organizations/events/',
+      description: 'Opening events dashboard...',
+    },
+    {
+      action: 'waitForSelector',
+      selector: '[data-testid="event-list-item"], .event-list-item, table tbody tr',
+      timeout: 15_000,
+      description: 'Waiting for events list to load...',
+    },
+    {
+      action: 'evaluate',
+      script: `(() => {
+        const rows = document.querySelectorAll('[data-testid="event-list-item"], .event-list-item, table tbody tr');
+        const events = [];
+        for (const row of rows) {
+          const link = row.querySelector('a[href*="/event/"], a[href*="eid="]');
+          const href = link?.getAttribute('href') ?? '';
+          const eidMatch = href.match(/eid=(\\d+)/) ?? href.match(/event\\/(\\d+)/);
+          const title = row.querySelector('[data-testid="event-name"], .event-name, td:first-child a')?.textContent?.trim() ?? '';
+          const dateEl = row.querySelector('time, [data-testid="event-date"], td:nth-child(2)');
+          const date = dateEl?.getAttribute('datetime') ?? dateEl?.textContent?.trim() ?? '';
+          const status = row.querySelector('[data-testid="event-status"], .event-status')?.textContent?.trim() ?? '';
+          if (title) {
+            events.push({
+              externalId: eidMatch ? eidMatch[1] : href,
+              title,
+              date,
+              status,
+              url: href.startsWith('http') ? href : 'https://www.eventbrite.com' + href,
+            });
+          }
+        }
+        return JSON.stringify(events);
+      })()`,
+      description: 'Scraping event data...',
+    },
+  ];
+}
+```
+
 - [ ] **Step 2: Write tests**
-- [ ] **Step 3: Run tests** — `npx vitest run src/automation/eventbrite.test.ts`
-- [ ] **Step 4: Create EventbriteAutomationClient** (same pattern as `meetup-client.ts`)
-- [ ] **Step 5: Commit**
+
+```typescript
+// src/automation/eventbrite.test.ts
+import { describe, it, expect } from 'vitest';
+import { eventbriteConnectSteps, eventbritePublishSteps, eventbriteScrapeSteps } from './eventbrite.js';
+import type { SocialiseEvent } from '../shared/types.js';
+
+const mockEvent: SocialiseEvent = {
+  id: '1',
+  title: 'Test Event',
+  description: 'A test description',
+  start_time: '2026-04-01T19:00:00Z',
+  duration_minutes: 120,
+  venue: 'Test Venue',
+  price: 0,
+  capacity: 100,
+  status: 'draft',
+  platforms: [],
+  createdAt: '2026-03-13T00:00:00Z',
+  updatedAt: '2026-03-13T00:00:00Z',
+};
+
+describe('eventbriteConnectSteps', () => {
+  it('navigates to eventbrite.com', () => {
+    const steps = eventbriteConnectSteps();
+    expect(steps[0].action).toBe('navigate');
+    expect(steps[0].url).toContain('eventbrite.com');
+  });
+
+  it('includes evaluate step checking login', () => {
+    const steps = eventbriteConnectSteps();
+    const evalStep = steps.find(s => s.action === 'evaluate');
+    expect(evalStep).toBeDefined();
+    expect(evalStep!.script).toContain('loggedIn');
+  });
+
+  it('all steps have descriptions', () => {
+    for (const step of eventbriteConnectSteps()) {
+      expect(step.description).toBeTruthy();
+    }
+  });
+});
+
+describe('eventbritePublishSteps', () => {
+  it('navigates to eventbrite.com/create', () => {
+    const steps = eventbritePublishSteps(mockEvent);
+    expect(steps[0].url).toContain('eventbrite.com/create');
+  });
+
+  it('fills the title', () => {
+    const steps = eventbritePublishSteps(mockEvent);
+    const fillTitle = steps.find(s => s.action === 'fill' && s.description.includes('title'));
+    expect(fillTitle).toBeDefined();
+    expect(fillTitle!.value).toBe('Test Event');
+  });
+
+  it('uses 15s timeout for form load', () => {
+    const steps = eventbritePublishSteps(mockEvent);
+    const waitStep = steps.find(s => s.action === 'waitForSelector');
+    expect(waitStep!.timeout).toBe(15_000);
+  });
+
+  it('selects free ticket for price=0', () => {
+    const steps = eventbritePublishSteps(mockEvent);
+    const freeClick = steps.find(s => s.description.includes('free ticket'));
+    expect(freeClick).toBeDefined();
+  });
+
+  it('selects paid ticket and sets price for price>0', () => {
+    const paidEvent = { ...mockEvent, price: 10 };
+    const steps = eventbritePublishSteps(paidEvent);
+    const paidClick = steps.find(s => s.description.includes('paid ticket'));
+    const priceStep = steps.find(s => s.description.includes('price'));
+    expect(paidClick).toBeDefined();
+    expect(priceStep).toBeDefined();
+    expect(priceStep!.value).toBe('10');
+  });
+
+  it('ends with evaluate extracting event ID from eid param', () => {
+    const steps = eventbritePublishSteps(mockEvent);
+    const lastStep = steps[steps.length - 1];
+    expect(lastStep.action).toBe('evaluate');
+    expect(lastStep.script).toContain('eid=');
+    expect(lastStep.script).toContain('externalId');
+  });
+});
+
+describe('eventbriteScrapeSteps', () => {
+  it('navigates to organizations events page', () => {
+    const steps = eventbriteScrapeSteps();
+    expect(steps[0].url).toContain('organizations/events');
+  });
+
+  it('includes evaluate extracting event data', () => {
+    const steps = eventbriteScrapeSteps();
+    const evalStep = steps.find(s => s.action === 'evaluate');
+    expect(evalStep).toBeDefined();
+    expect(evalStep!.script).toContain('externalId');
+    expect(evalStep!.script).toContain('title');
+  });
+});
+```
+
+- [ ] **Step 3: Run tests**
+
+Run: `npx vitest run src/automation/eventbrite.test.ts`
+Expected: All PASS
+
+- [ ] **Step 4: Create EventbriteAutomationClient**
+
+```typescript
+// src/automation/eventbrite-client.ts
+import type { PlatformClient } from '../tools/platform-client.js';
+import type { SocialiseEvent, PlatformEvent, PlatformPublishResult } from '../shared/types.js';
+import { requestAutomation } from './bridge.js';
+
+export class EventbriteAutomationClient implements PlatformClient {
+  readonly platform = 'eventbrite' as const;
+
+  async validateConnection(): Promise<boolean> {
+    const result = await requestAutomation({ platform: 'eventbrite', action: 'connect' });
+    if (!result.success) return false;
+    const data = typeof result.data?.lastEvalResult === 'string'
+      ? JSON.parse(result.data.lastEvalResult) : result.data?.lastEvalResult;
+    return data?.loggedIn === true;
+  }
+
+  async createEvent(event: SocialiseEvent): Promise<PlatformPublishResult> {
+    const result = await requestAutomation({ platform: 'eventbrite', action: 'publish', data: event });
+    if (!result.success) {
+      return { platform: 'eventbrite', success: false, error: result.error ?? 'Publish failed' };
+    }
+    const data = typeof result.data?.lastEvalResult === 'string'
+      ? JSON.parse(result.data.lastEvalResult) : result.data?.lastEvalResult;
+    return {
+      platform: 'eventbrite',
+      success: true,
+      externalId: data?.externalId ?? undefined,
+      externalUrl: data?.externalUrl ?? undefined,
+    };
+  }
+
+  async updateEvent(externalId: string, event: SocialiseEvent): Promise<PlatformPublishResult> {
+    const result = await requestAutomation({ platform: 'eventbrite', action: 'update', data: event, externalId });
+    if (!result.success) {
+      return { platform: 'eventbrite', success: false, error: result.error ?? 'Update failed' };
+    }
+    return { platform: 'eventbrite', success: true, externalId };
+  }
+
+  async cancelEvent(externalId: string): Promise<{ success: boolean; error?: string }> {
+    const result = await requestAutomation({ platform: 'eventbrite', action: 'cancel', externalId });
+    return { success: result.success, error: result.error };
+  }
+
+  async fetchEvents(): Promise<PlatformEvent[]> {
+    const result = await requestAutomation({ platform: 'eventbrite', action: 'scrape' });
+    if (!result.success) return [];
+    const events = typeof result.data?.lastEvalResult === 'string'
+      ? JSON.parse(result.data.lastEvalResult) : [];
+    return events.map((e: Record<string, unknown>) => ({
+      id: '',
+      platform: 'eventbrite' as const,
+      externalId: String(e.externalId ?? ''),
+      title: String(e.title ?? ''),
+      externalUrl: String(e.url ?? ''),
+      startTime: String(e.date ?? ''),
+      venue: '',
+      syncedAt: new Date().toISOString(),
+    }));
+  }
+}
+```
+
+- [ ] **Step 5: Write client tests**
+
+```typescript
+// src/automation/eventbrite-client.test.ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { EventbriteAutomationClient } from './eventbrite-client.js';
+
+vi.mock('./bridge.js', () => ({
+  requestAutomation: vi.fn(),
+}));
+
+import { requestAutomation } from './bridge.js';
+const mockRequest = requestAutomation as ReturnType<typeof vi.fn>;
+
+describe('EventbriteAutomationClient', () => {
+  let client: EventbriteAutomationClient;
+
+  beforeEach(() => {
+    client = new EventbriteAutomationClient();
+    mockRequest.mockReset();
+  });
+
+  it('validateConnection returns true when logged in', async () => {
+    mockRequest.mockResolvedValue({
+      success: true,
+      data: { lastEvalResult: '{"loggedIn":true,"organizationId":"123"}' },
+    });
+    expect(await client.validateConnection()).toBe(true);
+  });
+
+  it('validateConnection returns false when not logged in', async () => {
+    mockRequest.mockResolvedValue({
+      success: true,
+      data: { lastEvalResult: '{"loggedIn":false}' },
+    });
+    expect(await client.validateConnection()).toBe(false);
+  });
+
+  it('createEvent returns publish result with externalId', async () => {
+    mockRequest.mockResolvedValue({
+      success: true,
+      data: { lastEvalResult: '{"externalId":"99","externalUrl":"https://eventbrite.com/myevent?eid=99"}' },
+    });
+    const result = await client.createEvent({ id: '1', title: 'Test' } as never);
+    expect(result.success).toBe(true);
+    expect(result.externalId).toBe('99');
+  });
+
+  it('fetchEvents returns parsed events', async () => {
+    mockRequest.mockResolvedValue({
+      success: true,
+      data: { lastEvalResult: '[{"externalId":"1","title":"EB Event","url":"https://eventbrite.com/e/1","date":"2026-04-01"}]' },
+    });
+    const events = await client.fetchEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0].platform).toBe('eventbrite');
+  });
+});
+```
+
+- [ ] **Step 6: Run all tests**
+
+Run: `npx vitest run src/automation/eventbrite.test.ts src/automation/eventbrite-client.test.ts`
+Expected: All PASS
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/automation/eventbrite.ts src/automation/eventbrite.test.ts src/automation/eventbrite-client.ts
+git add src/automation/eventbrite.ts src/automation/eventbrite.test.ts src/automation/eventbrite-client.ts src/automation/eventbrite-client.test.ts
 git commit -m "feat: add Eventbrite browser automation scripts and client"
 ```
 
@@ -1425,17 +1885,448 @@ git commit -m "feat: add Eventbrite browser automation scripts and client"
 **Files:**
 - Create: `src/automation/headfirst.ts`
 - Create: `src/automation/headfirst.test.ts`
+- Create: `src/automation/headfirst-client.ts`
+- Create: `src/automation/headfirst-client.test.ts`
 
-Headfirst Bristol uses a simple HTML form — no complex editor or wizard issues.
+Headfirst Bristol uses a simple HTML form — no complex editor or wizard. Plain textarea for description, standard form fields.
 
-- [ ] **Step 1: Implement headfirst.ts** with `headfirstConnectSteps()`, `headfirstPublishSteps(event)`, `headfirstScrapeSteps()`
+- [ ] **Step 1: Implement headfirst.ts**
+
+```typescript
+// src/automation/headfirst.ts
+import type { AutomationStep } from './types.js';
+import type { SocialiseEvent } from '../shared/types.js';
+
+const SELECTORS = {
+  loggedInIndicator: '.user-menu, .account-nav, a[href*="/logout"], a[href*="/account"]',
+};
+
+const FORM_SELECTORS = {
+  titleInput: 'input[name="title"], input[name="event_name"], #event-title',
+  descriptionTextarea: 'textarea[name="description"], textarea[name="event_description"], #event-description',
+  dateInput: 'input[name="date"], input[type="date"], #event-date',
+  timeInput: 'input[name="time"], input[type="time"], #event-time',
+  venueDropdown: 'select[name="venue"], select[name="venue_id"], #event-venue',
+  venueTextInput: 'input[name="venue"], input[name="venue_name"]',
+  priceInput: 'input[name="price"], input[name="ticket_price"], #event-price',
+  submitButton: 'button[type="submit"], input[type="submit"]',
+};
+
+/**
+ * Steps to check if the user is logged into Headfirst Bristol.
+ * Returns: lastEvalResult = { loggedIn: boolean }
+ */
+export function headfirstConnectSteps(): AutomationStep[] {
+  return [
+    {
+      action: 'navigate',
+      url: 'https://www.headfirstbristol.co.uk/',
+      description: 'Opening Headfirst Bristol...',
+    },
+    {
+      action: 'waitForSelector',
+      selector: 'body',
+      timeout: 10_000,
+      description: 'Waiting for page to load...',
+    },
+    {
+      action: 'evaluate',
+      script: `(() => {
+        const indicator = document.querySelector('${SELECTORS.loggedInIndicator}');
+        return JSON.stringify({ loggedIn: !!indicator });
+      })()`,
+      description: 'Checking login status...',
+    },
+  ];
+}
+
+/**
+ * Steps to publish an event on Headfirst Bristol.
+ * Uses a simple HTML form — no complex editor or wizard.
+ */
+export function headfirstPublishSteps(event: SocialiseEvent): AutomationStep[] {
+  const startDate = new Date(event.start_time);
+  const dateStr = startDate.toISOString().split('T')[0];
+  const timeStr = startDate.toTimeString().slice(0, 5);
+
+  return [
+    {
+      action: 'navigate',
+      url: 'https://www.headfirstbristol.co.uk/submit-event',
+      description: 'Opening event submission form...',
+    },
+    {
+      action: 'waitForSelector',
+      selector: FORM_SELECTORS.titleInput,
+      timeout: 10_000,
+      description: 'Waiting for form to load...',
+    },
+    {
+      action: 'fill',
+      selector: FORM_SELECTORS.titleInput,
+      value: event.title,
+      description: `Filling title: "${event.title}"`,
+    },
+    {
+      action: 'fill',
+      selector: FORM_SELECTORS.descriptionTextarea,
+      value: event.description,
+      description: 'Filling description...',
+    },
+    {
+      action: 'fill',
+      selector: FORM_SELECTORS.dateInput,
+      value: dateStr,
+      description: `Setting date: ${dateStr}`,
+    },
+    {
+      action: 'fill',
+      selector: FORM_SELECTORS.timeInput,
+      value: timeStr,
+      description: `Setting time: ${timeStr}`,
+    },
+    // Venue — try dropdown first, fall back to text input
+    ...(event.venue ? [
+      {
+        action: 'evaluate' as const,
+        script: `(() => {
+          const dropdown = document.querySelector('${FORM_SELECTORS.venueDropdown}');
+          if (dropdown) {
+            const options = Array.from(dropdown.querySelectorAll('option'));
+            const match = options.find(o => o.textContent?.toLowerCase().includes(${JSON.stringify(event.venue.toLowerCase())}));
+            if (match) { dropdown.value = match.value; dropdown.dispatchEvent(new Event('change', { bubbles: true })); return 'dropdown'; }
+          }
+          const textInput = document.querySelector('${FORM_SELECTORS.venueTextInput}');
+          if (textInput) { textInput.value = ${JSON.stringify(event.venue)}; textInput.dispatchEvent(new Event('input', { bubbles: true })); return 'text'; }
+          return 'not_found';
+        })()`,
+        description: `Setting venue: ${event.venue}`,
+      },
+    ] : []),
+    // Price
+    ...(event.price !== undefined ? [
+      {
+        action: 'fill' as const,
+        selector: FORM_SELECTORS.priceInput,
+        value: String(event.price),
+        description: `Setting price: £${event.price}`,
+      },
+    ] : []),
+    {
+      action: 'click',
+      selector: FORM_SELECTORS.submitButton,
+      description: 'Submitting event...',
+    },
+    {
+      action: 'waitForNavigation',
+      timeout: 10_000,
+      description: 'Waiting for confirmation...',
+    },
+    {
+      action: 'evaluate',
+      script: `(() => {
+        const url = window.location.href;
+        const idMatch = url.match(/event\\/(\\d+)/) ?? url.match(/(\\d+)/);
+        return JSON.stringify({
+          externalId: idMatch ? idMatch[1] : null,
+          externalUrl: url,
+        });
+      })()`,
+      description: 'Extracting event ID...',
+    },
+  ];
+}
+
+/**
+ * Steps to scrape events from a Headfirst Bristol user listing.
+ */
+export function headfirstScrapeSteps(): AutomationStep[] {
+  return [
+    {
+      action: 'navigate',
+      url: 'https://www.headfirstbristol.co.uk/my-events',
+      description: 'Opening my events...',
+    },
+    {
+      action: 'waitForSelector',
+      selector: '.event-card, .event-listing, a[href*="/event/"]',
+      timeout: 10_000,
+      description: 'Waiting for events to load...',
+    },
+    {
+      action: 'evaluate',
+      script: `(() => {
+        const items = document.querySelectorAll('.event-card, .event-listing, [data-event-id]');
+        const events = [];
+        for (const item of items) {
+          const link = item.querySelector('a[href*="/event/"]') ?? item.closest('a');
+          const href = link?.getAttribute('href') ?? '';
+          const idMatch = href.match(/event\\/(\\d+)/);
+          const title = item.querySelector('h2, h3, .event-title')?.textContent?.trim() ?? '';
+          const dateEl = item.querySelector('time, .event-date');
+          const date = dateEl?.getAttribute('datetime') ?? dateEl?.textContent?.trim() ?? '';
+          const venue = item.querySelector('.event-venue, .venue')?.textContent?.trim() ?? '';
+          if (title) {
+            events.push({
+              externalId: idMatch ? idMatch[1] : href,
+              title,
+              date,
+              venue,
+              url: href.startsWith('http') ? href : 'https://www.headfirstbristol.co.uk' + href,
+            });
+          }
+        }
+        return JSON.stringify(events);
+      })()`,
+      description: 'Scraping event data...',
+    },
+  ];
+}
+```
+
 - [ ] **Step 2: Write tests**
-- [ ] **Step 3: Run tests** — `npx vitest run src/automation/headfirst.test.ts`
+
+```typescript
+// src/automation/headfirst.test.ts
+import { describe, it, expect } from 'vitest';
+import { headfirstConnectSteps, headfirstPublishSteps, headfirstScrapeSteps } from './headfirst.js';
+import type { SocialiseEvent } from '../shared/types.js';
+
+const mockEvent: SocialiseEvent = {
+  id: '1',
+  title: 'Test Event',
+  description: 'A test description',
+  start_time: '2026-04-01T19:00:00Z',
+  duration_minutes: 120,
+  venue: 'The Lanes',
+  price: 5,
+  capacity: 50,
+  status: 'draft',
+  platforms: [],
+  createdAt: '2026-03-13T00:00:00Z',
+  updatedAt: '2026-03-13T00:00:00Z',
+};
+
+describe('headfirstConnectSteps', () => {
+  it('navigates to headfirstbristol.co.uk', () => {
+    const steps = headfirstConnectSteps();
+    expect(steps[0].action).toBe('navigate');
+    expect(steps[0].url).toContain('headfirstbristol.co.uk');
+  });
+
+  it('includes evaluate step checking login', () => {
+    const steps = headfirstConnectSteps();
+    const evalStep = steps.find(s => s.action === 'evaluate');
+    expect(evalStep).toBeDefined();
+    expect(evalStep!.script).toContain('loggedIn');
+  });
+
+  it('all steps have descriptions', () => {
+    for (const step of headfirstConnectSteps()) {
+      expect(step.description).toBeTruthy();
+    }
+  });
+});
+
+describe('headfirstPublishSteps', () => {
+  it('navigates to submit-event page', () => {
+    const steps = headfirstPublishSteps(mockEvent);
+    expect(steps[0].url).toContain('submit-event');
+  });
+
+  it('fills title with plain fill action', () => {
+    const steps = headfirstPublishSteps(mockEvent);
+    const fillTitle = steps.find(s => s.action === 'fill' && s.description.includes('title'));
+    expect(fillTitle).toBeDefined();
+    expect(fillTitle!.value).toBe('Test Event');
+  });
+
+  it('fills description as plain text (textarea, not contenteditable)', () => {
+    const steps = headfirstPublishSteps(mockEvent);
+    const fillDesc = steps.find(s => s.action === 'fill' && s.description.includes('description'));
+    expect(fillDesc).toBeDefined();
+    expect(fillDesc!.selector).toContain('textarea');
+  });
+
+  it('handles venue with dropdown-first strategy', () => {
+    const steps = headfirstPublishSteps(mockEvent);
+    const venueStep = steps.find(s => s.description.includes('venue'));
+    expect(venueStep).toBeDefined();
+    expect(venueStep!.script).toContain('dropdown');
+  });
+
+  it('sets the price', () => {
+    const steps = headfirstPublishSteps(mockEvent);
+    const priceStep = steps.find(s => s.description.includes('price'));
+    expect(priceStep).toBeDefined();
+    expect(priceStep!.value).toBe('5');
+  });
+
+  it('ends with evaluate extracting event ID', () => {
+    const steps = headfirstPublishSteps(mockEvent);
+    const lastStep = steps[steps.length - 1];
+    expect(lastStep.action).toBe('evaluate');
+    expect(lastStep.script).toContain('externalId');
+  });
+});
+
+describe('headfirstScrapeSteps', () => {
+  it('navigates to my-events page', () => {
+    const steps = headfirstScrapeSteps();
+    expect(steps[0].url).toContain('my-events');
+  });
+
+  it('includes evaluate extracting event data', () => {
+    const steps = headfirstScrapeSteps();
+    const evalStep = steps.find(s => s.action === 'evaluate');
+    expect(evalStep).toBeDefined();
+    expect(evalStep!.script).toContain('externalId');
+    expect(evalStep!.script).toContain('title');
+  });
+});
+```
+
+- [ ] **Step 3: Run tests**
+
+Run: `npx vitest run src/automation/headfirst.test.ts`
+Expected: All PASS
+
 - [ ] **Step 4: Create HeadfirstAutomationClient**
-- [ ] **Step 5: Commit**
+
+```typescript
+// src/automation/headfirst-client.ts
+import type { PlatformClient } from '../tools/platform-client.js';
+import type { SocialiseEvent, PlatformEvent, PlatformPublishResult } from '../shared/types.js';
+import { requestAutomation } from './bridge.js';
+
+export class HeadfirstAutomationClient implements PlatformClient {
+  readonly platform = 'headfirst' as const;
+
+  async validateConnection(): Promise<boolean> {
+    const result = await requestAutomation({ platform: 'headfirst', action: 'connect' });
+    if (!result.success) return false;
+    const data = typeof result.data?.lastEvalResult === 'string'
+      ? JSON.parse(result.data.lastEvalResult) : result.data?.lastEvalResult;
+    return data?.loggedIn === true;
+  }
+
+  async createEvent(event: SocialiseEvent): Promise<PlatformPublishResult> {
+    const result = await requestAutomation({ platform: 'headfirst', action: 'publish', data: event });
+    if (!result.success) {
+      return { platform: 'headfirst', success: false, error: result.error ?? 'Publish failed' };
+    }
+    const data = typeof result.data?.lastEvalResult === 'string'
+      ? JSON.parse(result.data.lastEvalResult) : result.data?.lastEvalResult;
+    return {
+      platform: 'headfirst',
+      success: true,
+      externalId: data?.externalId ?? undefined,
+      externalUrl: data?.externalUrl ?? undefined,
+    };
+  }
+
+  async updateEvent(externalId: string, event: SocialiseEvent): Promise<PlatformPublishResult> {
+    const result = await requestAutomation({ platform: 'headfirst', action: 'update', data: event, externalId });
+    if (!result.success) {
+      return { platform: 'headfirst', success: false, error: result.error ?? 'Update failed' };
+    }
+    return { platform: 'headfirst', success: true, externalId };
+  }
+
+  async cancelEvent(externalId: string): Promise<{ success: boolean; error?: string }> {
+    const result = await requestAutomation({ platform: 'headfirst', action: 'cancel', externalId });
+    return { success: result.success, error: result.error };
+  }
+
+  async fetchEvents(): Promise<PlatformEvent[]> {
+    const result = await requestAutomation({ platform: 'headfirst', action: 'scrape' });
+    if (!result.success) return [];
+    const events = typeof result.data?.lastEvalResult === 'string'
+      ? JSON.parse(result.data.lastEvalResult) : [];
+    return events.map((e: Record<string, unknown>) => ({
+      id: '',
+      platform: 'headfirst' as const,
+      externalId: String(e.externalId ?? ''),
+      title: String(e.title ?? ''),
+      externalUrl: String(e.url ?? ''),
+      startTime: String(e.date ?? ''),
+      venue: String(e.venue ?? ''),
+      syncedAt: new Date().toISOString(),
+    }));
+  }
+}
+```
+
+- [ ] **Step 5: Write client tests**
+
+```typescript
+// src/automation/headfirst-client.test.ts
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { HeadfirstAutomationClient } from './headfirst-client.js';
+
+vi.mock('./bridge.js', () => ({
+  requestAutomation: vi.fn(),
+}));
+
+import { requestAutomation } from './bridge.js';
+const mockRequest = requestAutomation as ReturnType<typeof vi.fn>;
+
+describe('HeadfirstAutomationClient', () => {
+  let client: HeadfirstAutomationClient;
+
+  beforeEach(() => {
+    client = new HeadfirstAutomationClient();
+    mockRequest.mockReset();
+  });
+
+  it('validateConnection returns true when logged in', async () => {
+    mockRequest.mockResolvedValue({
+      success: true,
+      data: { lastEvalResult: '{"loggedIn":true}' },
+    });
+    expect(await client.validateConnection()).toBe(true);
+  });
+
+  it('validateConnection returns false when not logged in', async () => {
+    mockRequest.mockResolvedValue({
+      success: true,
+      data: { lastEvalResult: '{"loggedIn":false}' },
+    });
+    expect(await client.validateConnection()).toBe(false);
+  });
+
+  it('createEvent returns result with externalId', async () => {
+    mockRequest.mockResolvedValue({
+      success: true,
+      data: { lastEvalResult: '{"externalId":"42","externalUrl":"https://headfirstbristol.co.uk/event/42"}' },
+    });
+    const result = await client.createEvent({ id: '1', title: 'Test' } as never);
+    expect(result.success).toBe(true);
+    expect(result.externalId).toBe('42');
+  });
+
+  it('fetchEvents returns parsed events', async () => {
+    mockRequest.mockResolvedValue({
+      success: true,
+      data: { lastEvalResult: '[{"externalId":"1","title":"HF Event","url":"https://headfirstbristol.co.uk/event/1","date":"2026-04-01","venue":"The Lanes"}]' },
+    });
+    const events = await client.fetchEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0].platform).toBe('headfirst');
+    expect(events[0].venue).toBe('The Lanes');
+  });
+});
+```
+
+- [ ] **Step 6: Run all tests**
+
+Run: `npx vitest run src/automation/headfirst.test.ts src/automation/headfirst-client.test.ts`
+Expected: All PASS
+
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/automation/headfirst.ts src/automation/headfirst.test.ts src/automation/headfirst-client.ts
+git add src/automation/headfirst.ts src/automation/headfirst.test.ts src/automation/headfirst-client.ts src/automation/headfirst-client.test.ts
 git commit -m "feat: add Headfirst Bristol browser automation scripts and client"
 ```
 
@@ -1452,18 +2343,72 @@ Update the bridge server's `/automation/execute` handler to dispatch to the corr
 
 - [ ] **Step 1: Import platform scripts and implement dispatch**
 
-```typescript
-// In the bridge server handler, replace the placeholder:
-const { meetupConnectSteps, meetupPublishSteps, meetupScrapeSteps } = await import('../dist/automation/meetup.js');
-// ... similar for eventbrite and headfirst
+Replace the placeholder handler in `electron/main.ts` bridge server (`req.url === '/automation/execute'` block) with the full dispatch:
 
-// Dispatch based on request.platform and request.action to get the right steps
-// Run them through the AutomationEngine
-// Return the result
+```typescript
+        try {
+          const request = JSON.parse(body);
+          const { meetupConnectSteps, meetupPublishSteps, meetupScrapeSteps } = await import('../dist/automation/meetup.js');
+          const { eventbriteConnectSteps, eventbritePublishSteps, eventbriteScrapeSteps } = await import('../dist/automation/eventbrite.js');
+          const { headfirstConnectSteps, headfirstPublishSteps, headfirstScrapeSteps } = await import('../dist/automation/headfirst.js');
+
+          // Resolve the step generator for this platform + action
+          type StepFn = () => AutomationStep[];
+          const dispatch: Record<string, Record<string, StepFn | undefined>> = {
+            meetup: {
+              connect: () => meetupConnectSteps(),
+              publish: () => meetupPublishSteps(request.data, request.data?.groupUrlname ?? ''),
+              scrape: () => meetupScrapeSteps(request.data?.groupUrlname ?? ''),
+            },
+            eventbrite: {
+              connect: () => eventbriteConnectSteps(),
+              publish: () => eventbritePublishSteps(request.data),
+              scrape: () => eventbriteScrapeSteps(),
+            },
+            headfirst: {
+              connect: () => headfirstConnectSteps(),
+              publish: () => headfirstPublishSteps(request.data),
+              scrape: () => headfirstScrapeSteps(),
+            },
+          };
+
+          const stepFn = dispatch[request.platform]?.[request.action];
+          if (!stepFn) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, error: `Unsupported: ${request.platform}/${request.action}` }));
+            return;
+          }
+
+          const steps = stepFn();
+          const config = loadConfig();
+          const panelWidth = config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
+          showAutomationView(mainWindow!, panelWidth);
+
+          // automationEngine is a module-level AutomationEngine instance
+          // initialized with the automationView's webContents
+          const result = await automationEngine.run({ platform: request.platform, action: request.action, data: request.data, steps });
+
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(result));
+        } catch (err) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: String(err) }));
+        }
 ```
 
-- [ ] **Step 2: Test end-to-end** by running the Electron app and clicking Connect on a platform
-- [ ] **Step 3: Commit**
+- [ ] **Step 2: Ensure AutomationEngine instance is created at app startup**
+
+Add to `app.whenReady()`, after creating the automation view:
+
+```typescript
+const { AutomationEngine } = await import('../dist/automation/engine.js');
+const automationEngine = new AutomationEngine(automationView.webContents);
+```
+
+Hoist `automationEngine` to module level so the bridge handler can access it.
+
+- [ ] **Step 3: Test end-to-end** by running the Electron app and clicking Connect on a platform
+- [ ] **Step 4: Commit**
 
 ```bash
 git add electron/main.ts
