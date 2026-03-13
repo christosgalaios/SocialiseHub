@@ -33,6 +33,7 @@ if not exist "dist-client" (
 if not exist "dist-electron" (
   echo  Building Electron...
   call npx tsc -p electron/tsconfig.json
+  call npx tsc -p electron/tsconfig.preload.json
   echo.
 )
 

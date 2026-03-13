@@ -114,17 +114,9 @@ export async function disconnectService(
 // ── Automation ──────────────────────────────────────────
 
 export async function startAutomation(platform: PlatformName, action: string, data?: unknown): Promise<void> {
-  console.log('[automation] startAutomation called', { platform, action });
-  console.log('[automation] window.electronAPI:', window.electronAPI);
-  console.log('[automation] typeof window.electronAPI:', typeof window.electronAPI);
-  console.log('[automation] keys:', window.electronAPI ? Object.keys(window.electronAPI) : 'N/A');
   const api = (window as unknown as { electronAPI?: Record<string, unknown> }).electronAPI;
   if (api && typeof api.startAutomation === 'function') {
-    console.log('[automation] calling electronAPI.startAutomation');
     await (api.startAutomation as Function)({ platform, action, data });
-    console.log('[automation] electronAPI.startAutomation returned');
-  } else {
-    console.log('[automation] startAutomation not available on electronAPI');
   }
 }
 
