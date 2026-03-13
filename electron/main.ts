@@ -568,6 +568,41 @@ app.whenReady().then(async () => {
   try {
     const port = await startExpressServer();
 
+    // ── Internal automation bridge server ──
+    // Separate from the main Express server — only listens on 127.0.0.1
+    const http = await import('node:http');
+    const bridgeServer = http.createServer(async (req, res) => {
+      if (req.method === 'POST' && req.url === '/automation/execute') {
+        let body = '';
+        req.on('data', (chunk: string) => { body += chunk; });
+        req.on('end', async () => {
+          try {
+            const request = JSON.parse(body);
+            // Placeholder — Task 14 replaces this block with real platform dispatch.
+            // Until then, bridge requests return a stub error so callers handle gracefully.
+            void request;
+            const config2 = loadConfig();
+            const panelWidth = config2.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
+            showAutomationView(mainWindow!, panelWidth);
+
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, error: 'Platform scripts not yet wired — see Task 14' }));
+          } catch (err) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: false, error: String(err) }));
+          }
+        });
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+
+    const { getBridgePort } = await import('../dist/automation/bridge.js' as string);
+    bridgeServer.listen(getBridgePort(), '127.0.0.1', () => {
+      console.log(`Automation bridge listening on http://127.0.0.1:${getBridgePort()}`);
+    });
+
     // Load Claude extension (auto-detect from Chrome, or use saved path)
     const hasExtension = await loadChromeExtension(config);
 
