@@ -29,66 +29,101 @@ export function meetupConnectSteps(): AutomationStep[] {
       timeout: 10_000,
       description: 'Waiting for page to load...',
     },
-    // Use Meetup's internal GraphQL API to get the user's groups — much more reliable than DOM scraping
+    // Extract groups from Next.js page data and Apollo cache
     {
       action: 'evaluate',
       script: `(async () => {
         try {
-          // First check if we're logged in by calling the self endpoint
-          const selfRes = await fetch('https://www.meetup.com/gql2', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'include',
-            body: JSON.stringify({
-              operationName: 'selfGroups',
-              variables: {},
-              extensions: {},
-              query: 'query selfGroups { self { id name memberships { pageInfo { hasNextPage } edges { node { group { id urlname name isOrganizer } } } } } }'
-            })
-          });
-          const selfData = await selfRes.json();
-          const memberships = selfData?.data?.self?.memberships?.edges ?? [];
-          const groups = memberships.map(e => ({
-            urlname: e.node.group.urlname,
-            name: e.node.group.name,
-            isOrganizer: e.node.group.isOrganizer ?? false,
-          }));
+          // Strategy 1: Check __NEXT_DATA__ for embedded group data
+          const nextData = window.__NEXT_DATA__;
+          let groups = [];
 
-          if (groups.length > 0) {
-            const organizer = groups.filter(g => g.isOrganizer);
-            const result = organizer.length > 0 ? organizer : groups;
-            return JSON.stringify({ loggedIn: true, groups, groupUrlname: result[0]?.urlname ?? null });
+          if (nextData) {
+            // Walk the entire Next.js data tree looking for group objects with urlname
+            const found = new Map();
+            const walk = (obj, depth) => {
+              if (!obj || depth > 10) return;
+              if (typeof obj !== 'object') return;
+              // A group object typically has urlname + name
+              if (obj.urlname && obj.name && typeof obj.urlname === 'string' && typeof obj.name === 'string') {
+                if (!found.has(obj.urlname)) {
+                  found.set(obj.urlname, {
+                    urlname: obj.urlname,
+                    name: obj.name,
+                    isOrganizer: obj.isOrganizer === true || obj.membershipMetadata?.role === 'ORGANIZER',
+                  });
+                }
+              }
+              if (Array.isArray(obj)) {
+                for (const item of obj) walk(item, depth + 1);
+              } else {
+                for (const val of Object.values(obj)) walk(val, depth + 1);
+              }
+            };
+            walk(nextData, 0);
+            groups = Array.from(found.values());
           }
 
-          // Fallback: try the REST API
-          const restRes = await fetch('https://api.meetup.com/self/groups?only=urlname,name,organizer', {
-            credentials: 'include',
-          });
-          if (restRes.ok) {
-            const restGroups = await restRes.json();
-            const mapped = restGroups.map(g => ({
-              urlname: g.urlname,
-              name: g.name,
-              isOrganizer: g.organizer?.member_id != null,
-            }));
-            const organizer = mapped.filter(g => g.isOrganizer);
-            const result = organizer.length > 0 ? organizer : mapped;
-            return JSON.stringify({ loggedIn: true, groups: mapped, groupUrlname: result[0]?.urlname ?? null });
+          // Strategy 2: Check Apollo Client cache (window.__APOLLO_STATE__ or similar)
+          if (groups.length === 0) {
+            const apolloState = window.__APOLLO_STATE__ || window.__NEXT_DATA__?.props?.pageProps?.__APOLLO_STATE__;
+            if (apolloState) {
+              const found = new Map();
+              for (const [key, val] of Object.entries(apolloState)) {
+                if (key.startsWith('Group:') && val && val.urlname) {
+                  found.set(val.urlname, {
+                    urlname: val.urlname,
+                    name: val.name || val.urlname,
+                    isOrganizer: val.isOrganizer === true,
+                  });
+                }
+              }
+              groups = Array.from(found.values());
+            }
           }
 
-          // Last fallback: scrape links from page
-          const links = Array.from(document.querySelectorAll('a[href*="meetup.com/"]'));
-          const scraped = [];
-          const seen = new Set();
-          const skip = new Set(['home','groups','messages','notifications','settings','find','topics','apps','about','help','pro','login','register','account','events','blog','media','meetup','your-events','profile','members','resources']);
-          for (const link of links) {
-            const href = link.getAttribute('href') ?? '';
-            const m = href.match(/meetup\\.com\\/([a-zA-Z][a-zA-Z0-9-]{2,})\\/?(?:[?#]|$)/);
-            if (!m || skip.has(m[1].toLowerCase()) || seen.has(m[1])) continue;
-            seen.add(m[1]);
-            scraped.push({ urlname: m[1], name: link.textContent?.trim() ?? m[1], isOrganizer: false });
+          // Strategy 3: Try Meetup's internal /musearch/typeahead endpoint
+          if (groups.length === 0) {
+            try {
+              const res = await fetch('https://www.meetup.com/mu_api/urlname-list', { credentials: 'include' });
+              if (res.ok) {
+                const data = await res.json();
+                if (Array.isArray(data)) {
+                  groups = data.map(g => ({ urlname: g.urlname || g, name: g.name || g.urlname || g, isOrganizer: false }));
+                }
+              }
+            } catch {}
           }
-          return JSON.stringify({ loggedIn: true, groups: scraped, groupUrlname: scraped[0]?.urlname ?? null });
+
+          // Strategy 4: Extract from the page's React fiber tree
+          if (groups.length === 0) {
+            const rootEl = document.getElementById('__next') || document.getElementById('root');
+            if (rootEl && rootEl._reactRootContainer) {
+              // Can't easily traverse fiber, skip
+            }
+          }
+
+          // Strategy 5: Look for group links that are NOT in nav/footer
+          if (groups.length === 0) {
+            const mainContent = document.querySelector('main, [role="main"], #__next > div > div:nth-child(2)') || document.body;
+            const links = Array.from(mainContent.querySelectorAll('a[href*="/"]'));
+            const skip = new Set(['home','groups','messages','notifications','settings','find','topics','apps','about','help','pro','login','register','account','events','blog','media','meetup','your-events','profile','members','resources','start','logout','cities','sitemap','meetup-pro','cookie-policy','terms','privacy','lp','swarm','recommended']);
+            const seen = new Set();
+            for (const link of links) {
+              const href = link.getAttribute('href') ?? '';
+              const m = href.match(/\\/([a-zA-Z][a-zA-Z0-9-]{2,})\\/?$/);
+              if (!m || skip.has(m[1].toLowerCase()) || seen.has(m[1])) continue;
+              // Only consider links inside the main content area, not nav/footer
+              if (link.closest('nav, footer, header')) continue;
+              seen.add(m[1]);
+              groups.push({ urlname: m[1], name: link.textContent?.trim() || m[1], isOrganizer: false });
+            }
+          }
+
+          const loggedIn = !!document.querySelector('${SELECTORS.loggedInAvatar}') || !!nextData?.props?.pageProps?.self || groups.length > 0;
+          const organizer = groups.filter(g => g.isOrganizer);
+          const result = organizer.length > 0 ? organizer : groups;
+          return JSON.stringify({ loggedIn, groups, groupUrlname: result[0]?.urlname ?? null });
         } catch (err) {
           return JSON.stringify({ loggedIn: false, error: String(err) });
         }
