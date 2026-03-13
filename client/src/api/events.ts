@@ -80,6 +80,12 @@ export async function publishEvent(
   return body.data;
 }
 
+export async function duplicateEvent(id: string): Promise<SocialiseEvent> {
+  const res = await fetch(`${BASE}/events/${id}/duplicate`, { method: 'POST' });
+  const body = await json<{ data: SocialiseEvent }>(res);
+  return body.data;
+}
+
 // ── Services ────────────────────────────────────────────
 
 export async function getServices(): Promise<ServiceConnection[]> {

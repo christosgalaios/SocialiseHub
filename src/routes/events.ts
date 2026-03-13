@@ -66,6 +66,28 @@ export function createEventsRouter(
     }
   });
 
+  router.post('/:id/duplicate', (req, res, next) => {
+    try {
+      const original = store.getById(req.params.id);
+      if (!original) return res.status(404).json({ error: 'Event not found' });
+
+      const copy = store.create({
+        title: `Copy of ${original.title}`,
+        description: original.description,
+        start_time: new Date().toISOString(),
+        duration_minutes: original.duration_minutes,
+        venue: original.venue,
+        price: original.price,
+        capacity: original.capacity,
+        imageUrl: original.imageUrl,
+      });
+
+      res.status(201).json({ data: copy });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.post('/:id/publish', async (req, res, next) => {
     try {
       const platforms = req.body.platforms as PlatformName[] | undefined;

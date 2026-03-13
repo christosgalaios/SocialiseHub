@@ -6,9 +6,11 @@ import { PlatformBadge } from './PlatformBadge';
 export function EventCard({
   event,
   onDelete,
+  onDuplicate,
 }: {
   event: SocialiseEvent;
   onDelete: (id: string) => void;
+  onDuplicate: (id: string) => void;
 }) {
   const nav = useNavigate();
 
@@ -63,6 +65,15 @@ export function EventCard({
             <span style={styles.price}>
               {event.price === 0 ? 'Free' : `£${event.price}`}
             </span>
+            <button
+              style={styles.dupBtn}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDuplicate(event.id);
+              }}
+            >
+              Duplicate
+            </button>
             <button
               style={styles.deleteBtn}
               onClick={(e) => {
@@ -155,6 +166,16 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     fontFamily: "'Outfit', sans-serif",
     color: '#2D5F5D',
+  },
+  dupBtn: {
+    fontSize: 12,
+    color: '#2D5F5D',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '4px 8px',
+    borderRadius: 6,
+    fontWeight: 600,
   },
   deleteBtn: {
     fontSize: 12,
