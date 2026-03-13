@@ -52,6 +52,7 @@ export function EventDetailPage() {
   const [venue, setVenue] = useState('');
   const [price, setPrice] = useState(0);
   const [capacity, setCapacity] = useState(50);
+  const [imageUrl, setImageUrl] = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformName[]>([]);
 
   useEffect(() => {
@@ -73,6 +74,7 @@ export function EventDetailPage() {
         setVenue(ev.venue);
         setPrice(ev.price);
         setCapacity(ev.capacity);
+        setImageUrl(ev.imageUrl ?? '');
         setSelectedPlatforms(ev.platforms.map((p) => p.platform));
       })
       .catch((err: unknown) =>
@@ -90,6 +92,7 @@ export function EventDetailPage() {
     venue,
     price,
     capacity,
+    imageUrl: imageUrl || undefined,
     platforms: selectedPlatforms,
   });
 
@@ -237,6 +240,26 @@ export function EventDetailPage() {
             placeholder="Describe your event..."
             required
           />
+        </label>
+
+        <label style={styles.field}>
+          <span style={styles.label}>Image URL</span>
+          <input
+            style={styles.input}
+            value={imageUrl}
+            onChange={(e) => setImageUrl(e.target.value)}
+            placeholder="https://example.com/event-image.jpg"
+            type="url"
+          />
+          {imageUrl && (
+            <img
+              src={imageUrl}
+              alt="Event preview"
+              style={styles.imagePreview}
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+              onLoad={(e) => { (e.target as HTMLImageElement).style.display = 'block'; }}
+            />
+          )}
         </label>
 
         <PlatformSelector
@@ -487,5 +510,13 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 12,
     color: '#aaa',
     fontFamily: 'monospace',
+  },
+  imagePreview: {
+    marginTop: 8,
+    maxWidth: '100%',
+    maxHeight: 200,
+    borderRadius: 12,
+    objectFit: 'cover' as const,
+    border: '1px solid #e8e6e1',
   },
 };

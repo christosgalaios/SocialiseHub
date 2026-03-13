@@ -148,6 +148,10 @@ export interface DashboardSummary {
   eventsThisWeek: number;
   eventsThisMonth: number;
   byPlatform: Record<PlatformName, number>;
+  upcomingEvents: number;
+  pastEvents: number;
+  /** Events per month for the last 6 months, oldest first */
+  monthlyTrend: { month: string; count: number }[];
 }
 
 // ── Unified Event (for dashboard display) ──────────────

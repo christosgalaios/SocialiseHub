@@ -82,6 +82,9 @@ export function DashboardPage() {
                   eventsThisWeek: 0,
                   eventsThisMonth: 0,
                   byPlatform: { meetup: 0, eventbrite: 0, headfirst: 0 },
+                  upcomingEvents: 0,
+                  pastEvents: 0,
+                  monthlyTrend: [],
                 }}
               />
             </div>

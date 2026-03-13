@@ -98,6 +98,16 @@ export function createSyncRouter(
 
       let eventsThisWeek = 0;
       let eventsThisMonth = 0;
+      let upcomingEvents = 0;
+      let pastEvents = 0;
+
+      // Build monthly trend for last 6 months
+      const monthlyMap = new Map<string, number>();
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        monthlyMap.set(key, 0);
+      }
 
       for (const evt of allEvents) {
         byPlatform[evt.platform] = (byPlatform[evt.platform] ?? 0) + 1;
@@ -106,14 +116,29 @@ export function createSyncRouter(
         if (date) {
           if (date >= weekStart) eventsThisWeek++;
           if (date >= monthStart) eventsThisMonth++;
+          if (date >= now) upcomingEvents++;
+          else pastEvents++;
+
+          const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          if (monthlyMap.has(monthKey)) {
+            monthlyMap.set(monthKey, monthlyMap.get(monthKey)! + 1);
+          }
         }
       }
+
+      const monthlyTrend = Array.from(monthlyMap.entries()).map(([month, count]) => ({
+        month,
+        count,
+      }));
 
       const summary: DashboardSummary = {
         totalEvents: allEvents.length,
         eventsThisWeek,
         eventsThisMonth,
         byPlatform,
+        upcomingEvents,
+        pastEvents,
+        monthlyTrend,
       };
 
       res.json({ data: summary });

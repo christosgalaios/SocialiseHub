@@ -19,50 +19,60 @@ export function EventCard({
       role="button"
       tabIndex={0}
     >
-      <div style={styles.header}>
-        <h3 style={styles.title}>{event.title}</h3>
-        <StatusBadge status={event.status} />
-      </div>
-
-      <div style={styles.meta}>
-        <span>
-          {new Date(event.start_time).toLocaleDateString('en-GB', {
-            day: 'numeric',
-            month: 'short',
-            year: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
-        </span>
-        <span style={styles.dot} />
-        <span>{event.venue}</span>
-      </div>
-
-      <p style={styles.desc}>
-        {event.description.length > 100
-          ? event.description.slice(0, 100) + '...'
-          : event.description}
-      </p>
-
-      <div style={styles.footer}>
-        <div style={styles.platforms}>
-          {event.platforms.map((ps) => (
-            <PlatformBadge key={ps.platform} ps={ps} />
-          ))}
+      {event.imageUrl && (
+        <img
+          src={event.imageUrl}
+          alt={event.title}
+          style={styles.cardImage}
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+      )}
+      <div style={{ ...styles.cardBody, paddingTop: event.imageUrl ? 12 : 22 }}>
+        <div style={styles.header}>
+          <h3 style={styles.title}>{event.title}</h3>
+          <StatusBadge status={event.status} />
         </div>
-        <div style={styles.actions}>
-          <span style={styles.price}>
-            {event.price === 0 ? 'Free' : `£${event.price}`}
+
+        <div style={styles.meta}>
+          <span>
+            {new Date(event.start_time).toLocaleDateString('en-GB', {
+              day: 'numeric',
+              month: 'short',
+              year: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
           </span>
-          <button
-            style={styles.deleteBtn}
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(event.id);
-            }}
-          >
-            Delete
-          </button>
+          <span style={styles.dot} />
+          <span>{event.venue}</span>
+        </div>
+
+        <p style={styles.desc}>
+          {event.description.length > 100
+            ? event.description.slice(0, 100) + '...'
+            : event.description}
+        </p>
+
+        <div style={styles.footer}>
+          <div style={styles.platforms}>
+            {event.platforms.map((ps) => (
+              <PlatformBadge key={ps.platform} ps={ps} />
+            ))}
+          </div>
+          <div style={styles.actions}>
+            <span style={styles.price}>
+              {event.price === 0 ? 'Free' : `£${event.price}`}
+            </span>
+            <button
+              style={styles.deleteBtn}
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(event.id);
+              }}
+            >
+              Delete
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -73,12 +83,24 @@ const styles: Record<string, React.CSSProperties> = {
   card: {
     background: '#fff',
     borderRadius: 16,
-    padding: '22px 26px',
     border: '1px solid #e8e6e1',
     cursor: 'pointer',
     transition: 'box-shadow 0.2s, transform 0.2s',
     display: 'flex',
     flexDirection: 'column',
+    gap: 12,
+    overflow: 'hidden',
+    padding: '0 0 0 0',
+  },
+  cardImage: {
+    width: '100%',
+    height: 140,
+    objectFit: 'cover' as const,
+  },
+  cardBody: {
+    padding: '0 22px 22px',
+    display: 'flex',
+    flexDirection: 'column' as const,
     gap: 12,
   },
   header: {
