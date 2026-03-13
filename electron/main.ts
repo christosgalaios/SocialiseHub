@@ -408,10 +408,8 @@ function createMainWindow(port: number, config: AppConfig, hasExtension: boolean
   } else {
     appView.webContents.loadURL(`http://localhost:${port}`);
   }
-  // Open DevTools in dev mode only
-  if (isDev) {
-    appView.webContents.openDevTools({ mode: 'detach' });
-  }
+  // Open DevTools — temporarily enabled for debugging automation
+  appView.webContents.openDevTools({ mode: 'detach' });
 
   // Load Claude panel — always use claude.ai for maximum reliability.
   // The extension's content scripts inject into appView for DOM access,
@@ -591,6 +589,7 @@ function setupIpcHandlers(config: AppConfig): void {
       });
 
       const result = await currentEngine.run(steps);
+      console.log('[automation] result:', JSON.stringify(result));
       appView?.webContents.send('automation:result', result);
       currentEngine = null;
     } catch (err) {

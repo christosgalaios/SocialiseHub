@@ -17,44 +17,7 @@ const PUBLISH_SELECTORS = {
 };
 
 export function meetupConnectSteps(): AutomationStep[] {
-  // Helper script shared between home and profile page extraction
-  const extractGroupsScript = `(() => {
-    const links = Array.from(document.querySelectorAll('a[href]'));
-    const groups = [];
-    const seen = new Set();
-    const skipPaths = new Set(['home','groups','messages','notifications','settings','find',
-      'topics','apps','about','help','pro','login','register','account','events','blog',
-      'media','lp','swarm','meetup','your-events','recommended','profile','members',
-      'resources','cookie-policy','terms','privacy']);
-
-    for (const link of links) {
-      const href = link.getAttribute('href') ?? '';
-      let urlname = null;
-      // Absolute: https://www.meetup.com/group-name/
-      const absMatch = href.match(/meetup\\.com\\/([a-zA-Z][a-zA-Z0-9-]{2,})\\/?(?:\\?|#|$)/);
-      if (absMatch) urlname = absMatch[1];
-      // Relative: /group-name/
-      if (!urlname) {
-        const relMatch = href.match(/^\\/([a-zA-Z][a-zA-Z0-9-]{2,})\\/?(?:\\?|#|$)/);
-        if (relMatch) urlname = relMatch[1];
-      }
-      if (!urlname || skipPaths.has(urlname.toLowerCase()) || seen.has(urlname)) continue;
-      seen.add(urlname);
-
-      const card = link.closest('[class*="card"], [class*="Card"], li, article, div[class]') ?? link;
-      const name = card.querySelector('h3, h2, [class*="name"], [class*="Name"]')?.textContent?.trim()
-        ?? link.textContent?.trim() ?? urlname;
-      const isOrganizer = /organiz/i.test(card.textContent ?? '');
-      groups.push({ urlname, name, isOrganizer });
-    }
-
-    const organizer = groups.filter(g => g.isOrganizer);
-    const result = organizer.length > 0 ? organizer : groups;
-    return JSON.stringify({ loggedIn: true, groups: result, groupUrlname: result[0]?.urlname ?? null });
-  })()`;
-
   return [
-    // Step 1: Go to home page and check login
     {
       action: 'navigate',
       url: 'https://www.meetup.com/home/',
@@ -66,22 +29,70 @@ export function meetupConnectSteps(): AutomationStep[] {
       timeout: 10_000,
       description: 'Waiting for page to load...',
     },
-    // Step 2: Navigate to "Your Groups" page — most reliable for finding organizer groups
-    {
-      action: 'navigate',
-      url: 'https://www.meetup.com/find/?source=GROUPS',
-      description: 'Opening your groups...',
-    },
-    {
-      action: 'waitForSelector',
-      selector: 'body',
-      timeout: 10_000,
-      description: 'Waiting for groups page...',
-    },
-    // Step 3: Extract groups from the page
+    // Use Meetup's internal GraphQL API to get the user's groups — much more reliable than DOM scraping
     {
       action: 'evaluate',
-      script: extractGroupsScript,
+      script: `(async () => {
+        try {
+          // First check if we're logged in by calling the self endpoint
+          const selfRes = await fetch('https://www.meetup.com/gql2', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              operationName: 'selfGroups',
+              variables: {},
+              extensions: {},
+              query: 'query selfGroups { self { id name memberships { pageInfo { hasNextPage } edges { node { group { id urlname name isOrganizer } } } } } }'
+            })
+          });
+          const selfData = await selfRes.json();
+          const memberships = selfData?.data?.self?.memberships?.edges ?? [];
+          const groups = memberships.map(e => ({
+            urlname: e.node.group.urlname,
+            name: e.node.group.name,
+            isOrganizer: e.node.group.isOrganizer ?? false,
+          }));
+
+          if (groups.length > 0) {
+            const organizer = groups.filter(g => g.isOrganizer);
+            const result = organizer.length > 0 ? organizer : groups;
+            return JSON.stringify({ loggedIn: true, groups, groupUrlname: result[0]?.urlname ?? null });
+          }
+
+          // Fallback: try the REST API
+          const restRes = await fetch('https://api.meetup.com/self/groups?only=urlname,name,organizer', {
+            credentials: 'include',
+          });
+          if (restRes.ok) {
+            const restGroups = await restRes.json();
+            const mapped = restGroups.map(g => ({
+              urlname: g.urlname,
+              name: g.name,
+              isOrganizer: g.organizer?.member_id != null,
+            }));
+            const organizer = mapped.filter(g => g.isOrganizer);
+            const result = organizer.length > 0 ? organizer : mapped;
+            return JSON.stringify({ loggedIn: true, groups: mapped, groupUrlname: result[0]?.urlname ?? null });
+          }
+
+          // Last fallback: scrape links from page
+          const links = Array.from(document.querySelectorAll('a[href*="meetup.com/"]'));
+          const scraped = [];
+          const seen = new Set();
+          const skip = new Set(['home','groups','messages','notifications','settings','find','topics','apps','about','help','pro','login','register','account','events','blog','media','meetup','your-events','profile','members','resources']);
+          for (const link of links) {
+            const href = link.getAttribute('href') ?? '';
+            const m = href.match(/meetup\\.com\\/([a-zA-Z][a-zA-Z0-9-]{2,})\\/?(?:[?#]|$)/);
+            if (!m || skip.has(m[1].toLowerCase()) || seen.has(m[1])) continue;
+            seen.add(m[1]);
+            scraped.push({ urlname: m[1], name: link.textContent?.trim() ?? m[1], isOrganizer: false });
+          }
+          return JSON.stringify({ loggedIn: true, groups: scraped, groupUrlname: scraped[0]?.urlname ?? null });
+        } catch (err) {
+          return JSON.stringify({ loggedIn: false, error: String(err) });
+        }
+      })()`,
       description: 'Finding your organizer groups...',
     },
   ];
