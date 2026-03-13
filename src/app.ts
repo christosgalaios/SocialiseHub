@@ -11,7 +11,6 @@ import { PublishService } from './tools/publish-service.js';
 import { createEventsRouter } from './routes/events.js';
 import { createServicesRouter } from './routes/services.js';
 import { createSyncRouter } from './routes/sync.js';
-import { createAuthRouter } from './routes/auth.js';
 import { createGeneratorRouter } from './routes/generator.js';
 import { MarketAnalyzer } from './agents/market-analyzer.js';
 
@@ -65,8 +64,6 @@ export function createApp(deps?: AppDeps): express.Express {
   app.use('/api/services', createServicesRouter(serviceStore));
   app.use('/api/sync', createSyncRouter(syncLogStore, platformEventStore, publishService, eventStore, serviceStore));
   app.use('/api/generator', createGeneratorRouter(eventStore as never, marketAnalyzer));
-  app.use('/auth', createAuthRouter(serviceStore, port));
-
   // Serve built frontend — single-server setup
   const clientDir = join(process.cwd(), 'dist-client');
   if (existsSync(clientDir)) {

@@ -91,16 +91,6 @@ export interface EventIdea {
   category: string;
 }
 
-// ── Auth ────────────────────────────────────────────────
-
-export type PlatformAuthType = 'oauth' | 'credentials';
-
-export const PLATFORM_AUTH_TYPES: Record<PlatformName, PlatformAuthType> = {
-  meetup: 'oauth',
-  eventbrite: 'oauth',
-  headfirst: 'credentials',
-};
-
 // ── API Responses ───────────────────────────────────────
 
 export interface ApiResponse<T> {

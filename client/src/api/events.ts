@@ -111,49 +111,18 @@ export async function disconnectService(
   return body.data;
 }
 
-// ── OAuth ──────────────────────────────────────────────
+// ── Automation ──────────────────────────────────────────
 
-export async function startOAuth(
-  platform: PlatformName,
-): Promise<{ authUrl: string }> {
-  const res = await fetch(`/auth/${platform}/start`, {
-    method: 'POST',
-  });
-  return json<{ authUrl: string }>(res);
+export async function startAutomation(platform: PlatformName, action: string, data?: unknown): Promise<void> {
+  if (window.electronAPI) {
+    await (window.electronAPI as Record<string, Function>).startAutomation({ platform, action, data });
+  }
 }
 
-export interface OAuthSetupStatus {
-  configured: boolean;
-  required?: string[];
-  redirectUri?: string;
-}
-
-export async function getOAuthStatus(): Promise<Record<string, OAuthSetupStatus>> {
-  const res = await fetch('/auth/status');
-  const body = await json<{ data: Record<string, OAuthSetupStatus> }>(res);
-  return body.data;
-}
-
-/**
- * Subscribes to an SSE stream that emits when OAuth completes.
- * Returns a cleanup function to abort the connection.
- */
-export function watchOAuthStatus(
-  platform: PlatformName,
-  onConnected: () => void,
-): () => void {
-  const es = new EventSource(`/auth/${platform}/status`);
-  es.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      if (data.connected) {
-        onConnected();
-        es.close();
-      }
-    } catch { /* ignore */ }
-  };
-  es.onerror = () => es.close();
-  return () => es.close();
+export async function cancelAutomation(): Promise<void> {
+  if (window.electronAPI) {
+    await (window.electronAPI as Record<string, Function>).cancelAutomation();
+  }
 }
 
 // ── Event Generator ────────────────────────────────────

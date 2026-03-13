@@ -1,14 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { ServiceConnection, PlatformName } from '@shared/types';
-import { PLATFORM_AUTH_TYPES } from '@shared/types';
 import {
   getServices,
   connectService,
   disconnectService,
-  startOAuth,
-  watchOAuthStatus,
-  getOAuthStatus,
-  type OAuthSetupStatus,
 } from '../api/events';
 import { PLATFORM_COLORS, PLATFORM_ICONS } from '../lib/platforms';
 import { CredentialsForm } from '../components/CredentialsForm';
@@ -27,6 +22,9 @@ declare global {
   }
 }
 
+// Platforms that require browser automation (session-based login)
+const AUTOMATION_PLATFORMS: PlatformName[] = ['meetup', 'eventbrite'];
+
 export function ServicesPage() {
   const [services, setServices] = useState<ServiceConnection[]>([]);
   const [loading, setLoading] = useState(true);
@@ -34,15 +32,12 @@ export function ServicesPage() {
   const [showForm, setShowForm] = useState<PlatformName | null>(null);
   const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
-  const [waitingOAuth, setWaitingOAuth] = useState<PlatformName | null>(null);
-  const [oauthStatus, setOauthStatus] = useState<Record<string, OAuthSetupStatus>>({});
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const [data, status] = await Promise.all([getServices(), getOAuthStatus()]);
+      const data = await getServices();
       setServices(data);
-      setOauthStatus(status);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load services');
     } finally {
@@ -51,42 +46,6 @@ export function ServicesPage() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
-
-  // ── OAuth flow ─────────────────────────────────────────
-  const handleOAuthConnect = async (platform: PlatformName) => {
-    setConnecting(platform);
-    setError(null);
-    try {
-      const { authUrl } = await startOAuth(platform);
-
-      // Open in Electron's default browser or fallback to window.open
-      if (window.electronAPI?.isElectron) {
-        await window.electronAPI.openExternal(authUrl);
-      } else {
-        window.open(authUrl, '_blank');
-      }
-
-      // Start watching for completion
-      setWaitingOAuth(platform);
-      setConnecting(null);
-
-      const cleanup = watchOAuthStatus(platform, () => {
-        setWaitingOAuth(null);
-        load(); // Reload services to get updated status
-      });
-
-      // Clean up after 5 minutes max
-      setTimeout(() => {
-        cleanup();
-        setWaitingOAuth((current) =>
-          current === platform ? null : current,
-        );
-      }, 5 * 60 * 1000);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'OAuth failed');
-      setConnecting(null);
-    }
-  };
 
   // ── Credential form flow (Headfirst only) ──────────────
   const handleCredentialConnect = async (platform: PlatformName, credentials?: Record<string, string>) => {
@@ -134,13 +93,10 @@ export function ServicesPage() {
 
       <div style={styles.grid}>
         {services.map((svc) => {
-          const authType = PLATFORM_AUTH_TYPES[svc.platform];
+          const isAutomation = AUTOMATION_PLATFORMS.includes(svc.platform);
           const color = PLATFORM_COLORS[svc.platform] ?? '#E2725B';
           const icon = PLATFORM_ICONS[svc.platform] ?? '?';
           const isFormOpen = showForm === svc.platform;
-          const isWaiting = waitingOAuth === svc.platform;
-          const setup = oauthStatus[svc.platform];
-          const needsSetup = authType === 'oauth' && setup && !setup.configured;
 
           return (
             <div key={svc.platform} style={styles.card}>
@@ -168,11 +124,7 @@ export function ServicesPage() {
                     color: svc.connected ? '#2D5F5D' : '#7a7a7a',
                   }}
                 >
-                  {svc.connected
-                    ? 'Connected'
-                    : isWaiting
-                      ? 'Waiting for login...'
-                      : 'Not connected'}
+                  {svc.connected ? 'Connected' : 'Not connected'}
                 </span>
                 {svc.connectedAt && (
                   <span style={styles.connectedAt}>
@@ -181,47 +133,17 @@ export function ServicesPage() {
                 )}
               </div>
 
-              {/* OAuth not configured — show setup instructions */}
-              {needsSetup && !svc.connected && (
-                <div style={styles.setupSection}>
-                  <p style={styles.setupTitle}>Setup required</p>
-                  <p style={styles.setupText}>
-                    Set these environment variables before connecting:
+              {/* Automation note for Meetup/Eventbrite */}
+              {isAutomation && !svc.connected && (
+                <div style={styles.automationSection}>
+                  <p style={styles.automationText}>
+                    Uses browser automation — connect via the automation panel.
                   </p>
-                  <div style={styles.envVars}>
-                    {setup.required?.map((v) => (
-                      <code key={v} style={styles.envVar}>{v}</code>
-                    ))}
-                  </div>
-                  {setup.redirectUri && (
-                    <p style={styles.setupText}>
-                      Redirect URI for your OAuth app:<br />
-                      <code
-                        style={{ ...styles.envVar, cursor: 'pointer' }}
-                        onClick={() => {
-                          navigator.clipboard.writeText(setup.redirectUri!);
-                        }}
-                        title="Click to copy"
-                      >
-                        {setup.redirectUri}
-                      </code>
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {/* Waiting for OAuth — show spinner */}
-              {isWaiting && (
-                <div style={styles.waitingSection}>
-                  <div style={styles.spinner} />
-                  <span style={{ fontSize: 13, color: '#7a7a7a' }}>
-                    Complete the connection in your browser, then return here.
-                  </span>
                 </div>
               )}
 
               {/* Credential form (Headfirst only) */}
-              {isFormOpen && authType === 'credentials' && (
+              {isFormOpen && !isAutomation && (
                 <CredentialsForm
                   loading={connecting === svc.platform}
                   error={error ?? undefined}
@@ -239,19 +161,9 @@ export function ServicesPage() {
                   >
                     Disconnect
                   </button>
-                ) : needsSetup ? (
+                ) : isAutomation ? (
                   <button style={styles.disabledBtn} disabled>
-                    Connect (setup needed)
-                  </button>
-                ) : isWaiting ? null : authType === 'oauth' ? (
-                  <button
-                    style={styles.oauthBtn}
-                    disabled={connecting === svc.platform}
-                    onClick={() => handleOAuthConnect(svc.platform)}
-                  >
-                    {connecting === svc.platform
-                      ? 'Connecting...'
-                      : `Connect with ${svc.label}`}
+                    Via automation
                   </button>
                 ) : isFormOpen ? (
                   <button
@@ -341,57 +253,19 @@ const styles: Record<string, React.CSSProperties> = {
   cardStatus: { display: 'flex', alignItems: 'center', gap: 8 },
   statusDot: { width: 8, height: 8, borderRadius: '50%' },
   connectedAt: { fontSize: 12, color: '#aaa' },
-  waitingSection: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: 12,
-    padding: '16px',
-    background: '#f0f9f0',
+  automationSection: {
+    padding: '12px 16px',
+    background: '#F0F4FF',
     borderRadius: 12,
+    border: '1px solid #D0D8FF',
   },
-  spinner: {
-    width: 18,
-    height: 18,
-    border: '2.5px solid #ddd',
-    borderTopColor: '#2D5F5D',
-    borderRadius: '50%',
-    animation: 'spin 0.8s linear infinite',
-    flexShrink: 0,
-  },
-  formSection: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 12,
-    padding: '16px',
-    background: '#FAFAF6',
-    borderRadius: 12,
-  },
-  field: { display: 'flex', flexDirection: 'column', gap: 4 },
-  fieldLabel: {
+  automationText: {
     fontSize: 12,
-    fontWeight: 600,
-    color: '#555',
-    fontFamily: "'Outfit', sans-serif",
-  },
-  input: {
-    padding: '8px 12px',
-    borderRadius: 10,
-    border: '1px solid #ddd',
-    fontSize: 14,
-    outline: 'none',
+    color: '#4455AA',
+    margin: 0,
+    lineHeight: 1.5,
   },
   cardActions: { display: 'flex', gap: 8, marginTop: 4 },
-  oauthBtn: {
-    padding: '10px 24px',
-    borderRadius: 10,
-    border: 'none',
-    background: '#2D5F5D',
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: 'pointer',
-    fontFamily: "'Outfit', sans-serif",
-  },
   connectBtn: {
     padding: '8px 20px',
     borderRadius: 10,
@@ -434,42 +308,5 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     cursor: 'not-allowed',
     fontFamily: "'Outfit', sans-serif",
-  },
-  setupSection: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 8,
-    padding: '16px',
-    background: '#FFF8E1',
-    borderRadius: 12,
-    border: '1px solid #FFE082',
-  },
-  setupTitle: {
-    fontSize: 13,
-    fontWeight: 700,
-    color: '#E65100',
-    margin: 0,
-    fontFamily: "'Outfit', sans-serif",
-  },
-  setupText: {
-    fontSize: 12,
-    color: '#666',
-    margin: 0,
-    lineHeight: 1.5,
-  },
-  envVars: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 4,
-  },
-  envVar: {
-    fontSize: 12,
-    fontFamily: "'Courier New', monospace",
-    background: '#fff',
-    padding: '4px 8px',
-    borderRadius: 6,
-    border: '1px solid #e0e0e0',
-    color: '#333',
-    display: 'inline-block',
   },
 };
