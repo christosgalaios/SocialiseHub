@@ -2,11 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import type { ServiceConnection, PlatformName } from '@shared/types';
 import {
   getServices,
-  connectService,
   disconnectService,
+  startAutomation,
 } from '../api/events';
 import { PLATFORM_COLORS, PLATFORM_ICONS } from '../lib/platforms';
-import { CredentialsForm } from '../components/CredentialsForm';
 
 // Electron API (available when running inside Electron)
 declare global {
@@ -18,20 +17,28 @@ declare global {
       toggleClaudePanel: () => Promise<boolean>;
       focusClaudePanel: () => Promise<void>;
       isClaudePanelOpen: () => Promise<boolean>;
+      startAutomation: (request: { platform: string; action: string; data?: unknown }) => Promise<void>;
+      cancelAutomation: () => Promise<void>;
+      resumeAutomation: () => Promise<void>;
+      onAutomationStatus: (cb: (status: { step: number; totalSteps: number; description: string; state: string }) => void) => () => void;
+      onAutomationResult: (cb: (result: { success: boolean; error?: string }) => void) => () => void;
     };
   }
 }
 
-// Platforms that require browser automation (session-based login)
-const AUTOMATION_PLATFORMS: PlatformName[] = ['meetup', 'eventbrite'];
+interface AutomationStatus {
+  step: number;
+  totalSteps: number;
+  description: string;
+  state: string;
+}
 
 export function ServicesPage() {
   const [services, setServices] = useState<ServiceConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState<PlatformName | null>(null);
-  const [showForm, setShowForm] = useState<PlatformName | null>(null);
-  const [formValues, setFormValues] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [automationStatus, setAutomationStatus] = useState<AutomationStatus | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -47,21 +54,39 @@ export function ServicesPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  // ── Credential form flow (Headfirst only) ──────────────
-  const handleCredentialConnect = async (platform: PlatformName, credentials?: Record<string, string>) => {
+  // Subscribe to automation status and result events
+  useEffect(() => {
+    const electronAPI = window.electronAPI;
+    if (!electronAPI) return;
+
+    const unsubStatus = electronAPI.onAutomationStatus((status) => {
+      setAutomationStatus(status);
+    });
+
+    const unsubResult = electronAPI.onAutomationResult((result) => {
+      setAutomationStatus(null);
+      setConnecting(null);
+      if (!result.success) {
+        setError(result.error ?? 'Automation failed');
+      } else {
+        load();
+      }
+    });
+
+    return () => {
+      unsubStatus();
+      unsubResult();
+    };
+  }, [load]);
+
+  const handleConnect = async (platform: PlatformName) => {
     setConnecting(platform);
     setError(null);
+    setAutomationStatus(null);
     try {
-      const creds = credentials ?? formValues;
-      const updated = await connectService(platform, creds);
-      setServices((prev) =>
-        prev.map((s) => (s.platform === platform ? updated : s)),
-      );
-      setShowForm(null);
-      setFormValues({});
+      await startAutomation(platform, 'connect');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Connection failed');
-    } finally {
       setConnecting(null);
     }
   };
@@ -91,12 +116,26 @@ export function ServicesPage() {
 
       {error && <div style={styles.error}>{error}</div>}
 
+      {automationStatus && (
+        <div style={styles.automationProgress}>
+          <div style={styles.automationProgressBar}>
+            <div
+              style={{
+                ...styles.automationProgressFill,
+                width: `${Math.round((automationStatus.step / automationStatus.totalSteps) * 100)}%`,
+              }}
+            />
+          </div>
+          <p style={styles.automationProgressText}>
+            Step {automationStatus.step}/{automationStatus.totalSteps}: {automationStatus.description}
+          </p>
+        </div>
+      )}
+
       <div style={styles.grid}>
         {services.map((svc) => {
-          const isAutomation = AUTOMATION_PLATFORMS.includes(svc.platform);
           const color = PLATFORM_COLORS[svc.platform] ?? '#E2725B';
           const icon = PLATFORM_ICONS[svc.platform] ?? '?';
-          const isFormOpen = showForm === svc.platform;
 
           return (
             <div key={svc.platform} style={styles.card}>
@@ -133,24 +172,12 @@ export function ServicesPage() {
                 )}
               </div>
 
-              {/* Automation note for Meetup/Eventbrite */}
-              {isAutomation && !svc.connected && (
+              {connecting === svc.platform && automationStatus && (
                 <div style={styles.automationSection}>
                   <p style={styles.automationText}>
-                    Uses browser automation — connect via the automation panel.
+                    {automationStatus.description}
                   </p>
                 </div>
-              )}
-
-              {/* Credential form (Headfirst only) */}
-              {isFormOpen && !isAutomation && (
-                <CredentialsForm
-                  loading={connecting === svc.platform}
-                  error={error ?? undefined}
-                  onSubmit={(email, password) => {
-                    handleCredentialConnect(svc.platform, { email, password });
-                  }}
-                />
               )}
 
               <div style={styles.cardActions}>
@@ -161,29 +188,13 @@ export function ServicesPage() {
                   >
                     Disconnect
                   </button>
-                ) : isAutomation ? (
-                  <button style={styles.disabledBtn} disabled>
-                    Via automation
-                  </button>
-                ) : isFormOpen ? (
-                  <button
-                    style={styles.cancelBtn}
-                    onClick={() => {
-                      setShowForm(null);
-                      setFormValues({});
-                    }}
-                  >
-                    Cancel
-                  </button>
                 ) : (
                   <button
                     style={styles.connectBtn}
-                    onClick={() => {
-                      setShowForm(svc.platform);
-                      setFormValues({});
-                    }}
+                    onClick={() => handleConnect(svc.platform)}
+                    disabled={connecting === svc.platform}
                   >
-                    Connect
+                    {connecting === svc.platform ? 'Connecting...' : 'Connect'}
                   </button>
                 )}
               </div>
@@ -213,6 +224,31 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     marginBottom: 20,
     fontWeight: 500,
+  },
+  automationProgress: {
+    padding: '12px 16px',
+    borderRadius: 12,
+    background: '#F0F4FF',
+    border: '1px solid #D0D8FF',
+    marginBottom: 20,
+  },
+  automationProgressBar: {
+    height: 6,
+    borderRadius: 3,
+    background: '#D0D8FF',
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  automationProgressFill: {
+    height: '100%',
+    background: '#4455AA',
+    borderRadius: 3,
+    transition: 'width 0.3s ease',
+  },
+  automationProgressText: {
+    fontSize: 12,
+    color: '#4455AA',
+    margin: 0,
   },
   grid: {
     display: 'grid',
@@ -286,27 +322,6 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     fontWeight: 700,
     cursor: 'pointer',
-    fontFamily: "'Outfit', sans-serif",
-  },
-  cancelBtn: {
-    padding: '8px 20px',
-    borderRadius: 10,
-    border: '1px solid #ddd',
-    background: '#fff',
-    color: '#7a7a7a',
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: 'pointer',
-  },
-  disabledBtn: {
-    padding: '10px 24px',
-    borderRadius: 10,
-    border: 'none',
-    background: '#e0e0e0',
-    color: '#999',
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: 'not-allowed',
     fontFamily: "'Outfit', sans-serif",
   },
 };
