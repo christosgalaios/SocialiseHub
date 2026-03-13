@@ -5,8 +5,7 @@ describe('validateCreateEventInput', () => {
   const validInput = {
     title: 'Test Event',
     description: 'A test',
-    date: '2026-04-15',
-    time: '19:00',
+    start_time: '2026-04-15T19:00:00Z',
     venue: 'The Venue',
     price: 10,
     capacity: 50,

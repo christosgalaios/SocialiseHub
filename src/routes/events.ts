@@ -1,26 +1,31 @@
 import { Router } from 'express';
-import type { EventStore } from '../data/store.js';
-import type { EventCreator } from '../agents/event-creator.js';
+import type { SqliteEventStore } from '../data/sqlite-event-store.js';
+import type { PublishService } from '../tools/publish-service.js';
+import type { PlatformEventStore } from '../data/platform-event-store.js';
+import type { SyncLogStore } from '../data/sync-log-store.js';
 import type { PlatformName } from '../shared/types.js';
+import { validateCreateEventInput } from '../lib/validate.js';
 
 export function createEventsRouter(
-  store: EventStore,
-  creator: EventCreator,
+  store: SqliteEventStore,
+  publishService: PublishService,
+  platformEventStore: PlatformEventStore,
+  syncLogStore: SyncLogStore,
 ): Router {
   const router = Router();
 
-  router.get('/', async (_req, res, next) => {
+  router.get('/', (_req, res, next) => {
     try {
-      const events = await store.getAll();
+      const events = store.getAll();
       res.json({ data: events, total: events.length });
     } catch (err) {
       next(err);
     }
   });
 
-  router.get('/:id', async (req, res, next) => {
+  router.get('/:id', (req, res, next) => {
     try {
-      const event = await store.getById(req.params.id);
+      const event = store.getById(req.params.id);
       if (!event) return res.status(404).json({ error: 'Event not found' });
       res.json({ data: event });
     } catch (err) {
@@ -28,21 +33,22 @@ export function createEventsRouter(
     }
   });
 
-  router.post('/', async (req, res, next) => {
+  router.post('/', (req, res, next) => {
     try {
-      const event = await creator.create(req.body);
+      const validation = validateCreateEventInput(req.body);
+      if (!validation.valid) {
+        return res.status(400).json({ error: `Validation failed: ${validation.errors.join(', ')}` });
+      }
+      const event = store.create(req.body);
       res.status(201).json({ data: event });
     } catch (err) {
-      if (err instanceof Error && err.message.startsWith('Validation')) {
-        return res.status(400).json({ error: err.message });
-      }
       next(err);
     }
   });
 
-  router.put('/:id', async (req, res, next) => {
+  router.put('/:id', (req, res, next) => {
     try {
-      const event = await store.update(req.params.id, req.body);
+      const event = store.update(req.params.id, req.body);
       if (!event) return res.status(404).json({ error: 'Event not found' });
       res.json({ data: event });
     } catch (err) {
@@ -50,9 +56,9 @@ export function createEventsRouter(
     }
   });
 
-  router.delete('/:id', async (req, res, next) => {
+  router.delete('/:id', (req, res, next) => {
     try {
-      const deleted = await store.delete(req.params.id);
+      const deleted = store.delete(req.params.id);
       if (!deleted) return res.status(404).json({ error: 'Event not found' });
       res.status(204).end();
     } catch (err) {
@@ -66,15 +72,48 @@ export function createEventsRouter(
       if (!platforms?.length) {
         return res.status(400).json({ error: 'No platforms specified' });
       }
-      const results = await creator.publish(req.params.id, platforms);
+
+      const event = store.getById(req.params.id);
+      if (!event) {
+        return res.status(404).json({ error: 'Event not found' });
+      }
+
+      const results = await publishService.publish(event, platforms);
+
+      // Record results in platform event store and sync log
+      for (const result of results) {
+        if (result.success && result.externalId) {
+          platformEventStore.upsert({
+            eventId: event.id,
+            platform: result.platform,
+            externalId: result.externalId,
+            externalUrl: result.externalUrl,
+            title: event.title,
+            date: event.start_time,
+            venue: event.venue,
+            status: 'active',
+            publishedAt: new Date().toISOString(),
+          });
+        }
+
+        syncLogStore.log({
+          platform: result.platform,
+          action: 'publish',
+          eventId: event.id,
+          externalId: result.externalId,
+          status: result.success ? 'success' : 'error',
+          message: result.error,
+        });
+      }
+
+      // Update event status if any platform succeeded
+      const anySucceeded = results.some((r) => r.success);
+      if (anySucceeded) {
+        store.updateStatus(event.id, 'published');
+      }
+
       res.json({ data: results });
     } catch (err) {
-      if (
-        err instanceof Error &&
-        err.message.includes('not found')
-      ) {
-        return res.status(404).json({ error: err.message });
-      }
       next(err);
     }
   });

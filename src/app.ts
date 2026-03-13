@@ -1,13 +1,16 @@
 import express, { type Request, type Response, type NextFunction } from 'express';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { EventStore, ServiceStore } from './data/store.js';
-import { EventCreator } from './agents/event-creator.js';
-import { MeetupClient } from './tools/meetup.js';
-import { EventbriteClient } from './tools/eventbrite.js';
-import { HeadfirstClient } from './tools/headfirst.js';
+import type { Database } from './data/database.js';
+import { createDatabase } from './data/database.js';
+import { SqliteEventStore } from './data/sqlite-event-store.js';
+import { SqliteServiceStore } from './data/sqlite-service-store.js';
+import { PlatformEventStore } from './data/platform-event-store.js';
+import { SyncLogStore } from './data/sync-log-store.js';
+import { PublishService } from './tools/publish-service.js';
 import { createEventsRouter } from './routes/events.js';
 import { createServicesRouter } from './routes/services.js';
+import { createSyncRouter } from './routes/sync.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createGeneratorRouter } from './routes/generator.js';
 import { MarketAnalyzer } from './agents/market-analyzer.js';
@@ -15,26 +18,20 @@ import { MarketAnalyzer } from './agents/market-analyzer.js';
 export const VERSION = '0.1.0';
 
 export interface AppDeps {
-  eventStore?: EventStore;
-  serviceStore?: ServiceStore;
+  db?: Database;
 }
 
 export function createApp(deps?: AppDeps): express.Express {
   const dataDir = join(process.cwd(), 'data');
-  const eventStore =
-    deps?.eventStore ?? new EventStore(join(dataDir, 'events.json'));
-  const serviceStore =
-    deps?.serviceStore ?? new ServiceStore(join(dataDir, 'services.json'));
+  const db = deps?.db ?? createDatabase(join(dataDir, 'socialise.db'));
 
-  const meetup = new MeetupClient();
-  const eventbrite = new EventbriteClient();
-  const headfirst = new HeadfirstClient();
-  const creator = new EventCreator({
-    store: eventStore,
-    meetup,
-    eventbrite,
-    headfirst,
-  });
+  const eventStore = new SqliteEventStore(db);
+  const serviceStore = new SqliteServiceStore(db);
+  const platformEventStore = new PlatformEventStore(db);
+  const syncLogStore = new SyncLogStore(db);
+
+  // PublishService initialized with empty clients — real clients come in Tasks 12-14
+  const publishService = new PublishService({});
 
   const app = express();
 
@@ -59,12 +56,16 @@ export function createApp(deps?: AppDeps): express.Express {
   });
 
   const port = Number(process.env.PORT) || 3000;
-  const marketAnalyzer = new MarketAnalyzer(serviceStore);
+  const marketAnalyzer = new MarketAnalyzer(serviceStore as never);
 
-  app.use('/api/events', createEventsRouter(eventStore, creator));
+  app.use(
+    '/api/events',
+    createEventsRouter(eventStore, publishService, platformEventStore, syncLogStore),
+  );
   app.use('/api/services', createServicesRouter(serviceStore));
-  app.use('/api/generator', createGeneratorRouter(eventStore, marketAnalyzer));
-  app.use('/auth', createAuthRouter(serviceStore, port));
+  app.use('/api/sync', createSyncRouter(syncLogStore, platformEventStore));
+  app.use('/api/generator', createGeneratorRouter(eventStore as never, marketAnalyzer));
+  app.use('/auth', createAuthRouter(serviceStore as never, port));
 
   // Serve built frontend — single-server setup
   const clientDir = join(process.cwd(), 'dist-client');

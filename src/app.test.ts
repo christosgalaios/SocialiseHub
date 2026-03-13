@@ -1,16 +1,11 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { createApp } from './app.js';
-import { EventStore, ServiceStore } from './data/store.js';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { createDatabase } from './data/database.js';
 
 function createTestApp() {
-  const dir = join(tmpdir(), `socialise-test-${Date.now()}`);
-  return createApp({
-    eventStore: new EventStore(join(dir, 'events.json')),
-    serviceStore: new ServiceStore(join(dir, 'services.json')),
-  });
+  const db = createDatabase(':memory:');
+  return createApp({ db });
 }
 
 describe('App', () => {
@@ -35,8 +30,7 @@ describe('App', () => {
       .send({
         title: 'Test Event',
         description: 'A test event',
-        date: '2026-04-15',
-        time: '19:00',
+        start_time: '2026-04-15T19:00:00Z',
         venue: 'Test Venue',
         price: 10,
         capacity: 50,
@@ -65,7 +59,7 @@ describe('App', () => {
     const res = await request(app).get('/api/services');
     expect(res.status).toBe(200);
     expect(res.body.data).toHaveLength(3);
-    expect(res.body.data[0].platform).toBe('meetup');
+    expect(res.body.data[0].platform).toBe('eventbrite');
     expect(res.body.data[0].connected).toBe(false);
   });
 
@@ -77,5 +71,21 @@ describe('App', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.connected).toBe(true);
     expect(res.body.data.connectedAt).toBeDefined();
+  });
+
+  it('GET /api/sync/log returns empty log', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/sync/log');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.total).toBe(0);
+  });
+
+  it('GET /api/sync/dashboard/summary returns stats', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/sync/dashboard/summary');
+    expect(res.status).toBe(200);
+    expect(res.body.data.totalEvents).toBe(0);
+    expect(res.body.data.byPlatform).toEqual({ meetup: 0, eventbrite: 0, headfirst: 0 });
   });
 });
