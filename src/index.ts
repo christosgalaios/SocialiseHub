@@ -20,8 +20,8 @@ export function main() {
   return server;
 }
 
-/* v8 ignore next 3 */
-const isDirectRun = import.meta.url === `file:///${process.argv[1]?.replace(/\\/g, '/')}`;
-if (isDirectRun) {
-  main();
-}
+/* v8 ignore next 5 */
+const scriptPath = process.argv[1]?.replace(/\\/g, '/');
+const moduleUrl = import.meta.url.replace(/^file:\/\/\//, '').replace(/^file:\/\//, '');
+const isDirectRun = scriptPath && moduleUrl.endsWith(scriptPath.replace(/^\//, ''));
+if (isDirectRun) main();
