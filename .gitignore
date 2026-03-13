@@ -24,6 +24,9 @@ Thumbs.db
 *.swp
 *.swo
 
+# Worktrees
+.worktrees/
+
 # Coverage
 coverage/
 
