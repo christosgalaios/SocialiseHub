@@ -239,9 +239,15 @@ export function headfirstScrapeSteps(): AutomationStep[] {
         // Scrape future events first (default view)
         await scrapeCurrentPage('active');
 
-        // Navigate to past events tab
+        // Navigate to past events tab — poll for new links instead of fixed wait
+        const beforeIds = new Set([...document.querySelectorAll('a[href*="#/events/"]')].map(a => a.href));
         window.location.hash = '#/events/past';
-        await new Promise(r => setTimeout(r, 1000));
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 500));
+          const current = document.querySelectorAll('a[href*="#/events/"]');
+          const newLinks = [...current].some(a => !beforeIds.has(a.href));
+          if (newLinks || i > 3) break;
+        }
         await scrapeCurrentPage('past');
 
         return JSON.stringify(allEvents);

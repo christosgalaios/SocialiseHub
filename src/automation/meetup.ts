@@ -249,13 +249,6 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
           }
         }
 
-        if (allEvents.length === 0) {
-          // Check if there was an error
-          if (!upcomingResp.ok) return JSON.stringify({ error: 'GraphQL returned ' + upcomingResp.status });
-          const json = await upcomingResp.clone().json().catch(() => ({}));
-          if (json.errors) return JSON.stringify({ error: json.errors[0]?.message ?? 'GraphQL error' });
-        }
-
         return JSON.stringify(allEvents);
       })()`,
       description: 'Fetching upcoming and past events via API...',

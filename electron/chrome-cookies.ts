@@ -122,6 +122,10 @@ function decryptCookieValue(encrypted: Buffer, masterKey: Buffer): string | null
     }
   }
 
+  // v20+ = App-Bound Encryption — requires SYSTEM DPAPI which isn't
+  // available to desktop apps. Skip these cookies silently.
+  if (prefix === 'v20') return null;
+
   // Older DPAPI-only encryption (pre-Chrome 80) — not common anymore
   return null;
 }
