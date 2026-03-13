@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { ServiceConnection, PlatformName } from '@shared/types';
 import {
   getServices,
+  connectService,
   disconnectService,
   startAutomation,
 } from '../api/events';
@@ -37,6 +38,7 @@ export function ServicesPage() {
   const [services, setServices] = useState<ServiceConnection[]>([]);
   const [loading, setLoading] = useState(true);
   const [connecting, setConnecting] = useState<PlatformName | null>(null);
+  const connectingRef = useRef<PlatformName | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [automationStatus, setAutomationStatus] = useState<AutomationStatus | null>(null);
 
@@ -63,11 +65,19 @@ export function ServicesPage() {
       setAutomationStatus(status);
     });
 
-    const unsubResult = electronAPI.onAutomationResult((result) => {
+    const unsubResult = electronAPI.onAutomationResult(async (result) => {
+      const platform = connectingRef.current;
       setAutomationStatus(null);
       setConnecting(null);
+      connectingRef.current = null;
       if (!result.success) {
         setError(result.error ?? 'Automation failed');
+      } else if (platform) {
+        // Mark service as connected in the database
+        try {
+          await connectService(platform, { automationConnected: 'true' });
+        } catch { /* ignore — load() will refresh anyway */ }
+        load();
       } else {
         load();
       }
@@ -81,6 +91,7 @@ export function ServicesPage() {
 
   const handleConnect = async (platform: PlatformName) => {
     setConnecting(platform);
+    connectingRef.current = platform;
     setError(null);
     setAutomationStatus(null);
     try {
