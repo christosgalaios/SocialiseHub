@@ -68,7 +68,7 @@ export function EventDetailPage() {
     if (isNew && !defaultsApplied) {
       const settings = loadSettings();
       if (settings.defaultDuration) setDurationMinutes(settings.defaultDuration);
-      if (settings.defaultPrice) setPrice(settings.defaultPrice);
+      if (settings.defaultPrice !== undefined) setPrice(settings.defaultPrice);
       if (settings.defaultVenue) setVenue(settings.defaultVenue);
       if (settings.defaultPlatforms.length) setSelectedPlatforms(settings.defaultPlatforms);
       if (prefillDate) setStartTime(`${prefillDate}T19:00`);

@@ -1,3 +1,5 @@
+const shimmerStyle = <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>;
+
 export function Skeleton({ width, height = 16, style }: { width?: string | number; height?: number; style?: React.CSSProperties }) {
   return (
     <div
@@ -34,7 +36,7 @@ export function CardSkeleton() {
 export function GridSkeleton({ count = 6 }: { count?: number }) {
   return (
     <>
-      <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
+      {shimmerStyle}
       <div style={styles.grid}>
         {Array.from({ length: count }).map((_, i) => (
           <CardSkeleton key={i} />
@@ -47,7 +49,7 @@ export function GridSkeleton({ count = 6 }: { count?: number }) {
 export function ListSkeleton({ rows = 4 }: { rows?: number }) {
   return (
     <>
-      <style>{`@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
+      {shimmerStyle}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {Array.from({ length: rows }).map((_, i) => (
           <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
