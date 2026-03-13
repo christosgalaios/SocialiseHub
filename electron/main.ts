@@ -618,7 +618,7 @@ app.whenReady().then(async () => {
             const engine = new AutomationEngine(automationView!.webContents as never);
 
             // Forward status updates to the renderer
-            engine.onStatus((status: Record<string, unknown>) => {
+            engine.onStatus((status: { step: number; totalSteps: number; description: string; state: string }) => {
               appView?.webContents.send('automation:status', status);
             });
 
