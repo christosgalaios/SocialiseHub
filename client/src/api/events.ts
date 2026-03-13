@@ -122,6 +122,18 @@ export async function startOAuth(
   return json<{ authUrl: string }>(res);
 }
 
+export interface OAuthSetupStatus {
+  configured: boolean;
+  required?: string[];
+  redirectUri?: string;
+}
+
+export async function getOAuthStatus(): Promise<Record<string, OAuthSetupStatus>> {
+  const res = await fetch('/auth/status');
+  const body = await json<{ data: Record<string, OAuthSetupStatus> }>(res);
+  return body.data;
+}
+
 /**
  * Subscribes to an SSE stream that emits when OAuth completes.
  * Returns a cleanup function to abort the connection.

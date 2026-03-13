@@ -53,6 +53,26 @@ export function createAuthRouter(serviceStore: SqliteServiceStore, port: number)
   const router = Router();
 
   /**
+   * GET /auth/status
+   * Returns which platforms have OAuth credentials configured.
+   */
+  router.get('/status', (_req, res) => {
+    const port = Number(process.env.PORT) || 3000;
+    const statuses: Record<string, { configured: boolean; required?: string[]; redirectUri?: string }> = {};
+    for (const [platform, config] of Object.entries(OAUTH_CONFIGS)) {
+      if (!config) continue;
+      const hasClientId = !!process.env[config.clientIdEnv];
+      const hasClientSecret = !!process.env[config.clientSecretEnv];
+      statuses[platform] = {
+        configured: hasClientId && hasClientSecret,
+        required: !hasClientId || !hasClientSecret ? [config.clientIdEnv, config.clientSecretEnv] : undefined,
+        redirectUri: `http://localhost:${port}/auth/callback/${platform}`,
+      };
+    }
+    res.json({ data: statuses });
+  });
+
+  /**
    * POST /auth/:platform/start
    * Returns { authUrl } for the frontend to open in the browser.
    */
@@ -69,8 +89,17 @@ export function createAuthRouter(serviceStore: SqliteServiceStore, port: number)
 
     const clientId = process.env[config.clientIdEnv];
     if (!clientId) {
-      return res.status(500).json({
-        error: `${config.clientIdEnv} environment variable not set`,
+      const setupUrls: Record<string, string> = {
+        meetup: 'https://www.meetup.com/api/oauth/list',
+        eventbrite: 'https://www.eventbrite.com/platform/api#/introduction/authentication',
+      };
+      return res.status(400).json({
+        error: `OAuth not configured for ${platform}. Set ${config.clientIdEnv} and ${config.clientSecretEnv} environment variables.`,
+        setup: {
+          required: [config.clientIdEnv, config.clientSecretEnv],
+          redirectUri: `http://localhost:${port}/auth/callback/${platform}`,
+          docs: setupUrls[platform] ?? '',
+        },
       });
     }
 
