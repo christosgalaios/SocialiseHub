@@ -4,6 +4,7 @@ import { getEvents, getDashboardSummary, syncPull } from '../api/events';
 import { DashboardSummaryCards } from '../components/DashboardSummary';
 import { EventTimeline } from '../components/EventTimeline';
 import { useToast } from '../context/ToastContext';
+import { ListSkeleton } from '../components/Skeleton';
 
 const SYNC_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -75,7 +76,7 @@ export function DashboardPage() {
       </div>
 
       {loading ? (
-        <div style={styles.loading}>Loading...</div>
+        <ListSkeleton rows={6} />
       ) : (
         <>
           {summary ? (

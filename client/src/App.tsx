@@ -13,6 +13,7 @@ import { TerminalPanel } from './components/TerminalPanel';
 import { ToastProvider } from './context/ToastContext';
 import { ToastContainer } from './components/Toast';
 import { SyncStatus } from './components/SyncStatus';
+import { SettingsPage } from './pages/SettingsPage';
 
 // Typed Electron API exposed via preload
 interface ElectronAPI {
@@ -29,14 +30,18 @@ interface ElectronAPI {
 const electronAPI = (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
 const isElectron = !!electronAPI?.isElectron;
 
-const navItems = [
+const primaryNav = [
   { to: '/', label: 'Dashboard', icon: '📊' },
   { to: '/events', label: 'Events', icon: '📅' },
   { to: '/calendar', label: 'Calendar', icon: '🗓' },
   { to: '/templates', label: 'Templates', icon: '📄' },
   { to: '/generator', label: 'Generator', icon: '💡' },
+];
+
+const secondaryNav = [
   { to: '/services', label: 'Services', icon: '🔗' },
   { to: '/sync-log', label: 'Sync Log', icon: '📋' },
+  { to: '/settings', label: 'Settings', icon: '⚙' },
 ];
 
 const SIDEBAR_EXPANDED = 240;
@@ -126,11 +131,30 @@ export function App() {
           </div>
 
           <div style={{ ...styles.navLinks, padding: collapsed ? '12px 8px' : '12px 12px' }}>
-            {navItems.map((item) => (
+            {primaryNav.map((item) => (
               <NavLink
                 key={item.to}
                 to={item.to}
                 end={item.to === '/'}
+                title={collapsed ? item.label : undefined}
+                style={({ isActive }) => ({
+                  ...styles.navLink,
+                  ...(isActive ? styles.navLinkActive : {}),
+                  justifyContent: collapsed ? 'center' : 'flex-start',
+                  padding: collapsed ? '12px 0' : '12px 14px',
+                })}
+              >
+                <span style={{ fontSize: 16 }}>{item.icon}</span>
+                {!collapsed && item.label}
+              </NavLink>
+            ))}
+
+            <div style={styles.navDivider} />
+
+            {secondaryNav.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
                 title={collapsed ? item.label : undefined}
                 style={({ isActive }) => ({
                   ...styles.navLink,
@@ -208,6 +232,7 @@ export function App() {
               <Route path="/generator" element={<EventGeneratorPage />} />
               <Route path="/services" element={<ServicesPage />} />
               <Route path="/sync-log" element={<SyncLogPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
               <Route path="/tester" element={<AppTesterPage />} />
             </Routes>
           </main>
@@ -305,6 +330,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     transition: 'all 0.2s',
     whiteSpace: 'nowrap',
+  },
+  navDivider: {
+    height: 1,
+    background: 'rgba(255,255,255,0.06)',
+    margin: '8px 0',
   },
   navLinkActive: {
     background: 'rgba(226,114,91,0.15)',

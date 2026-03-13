@@ -20,6 +20,7 @@ import { StatusBadge } from '../components/StatusBadge';
 import { ReadinessChecklist } from '../components/ReadinessChecklist';
 import { PLATFORM_COLORS } from '../lib/platforms';
 import { useToast } from '../context/ToastContext';
+import { loadSettings } from '../lib/settings';
 import { checkEventReadiness, isReadyToPublish } from '../../../src/lib/event-readiness';
 
 function toDatetimeLocal(isoStr?: string): string {
@@ -62,13 +63,18 @@ export function EventDetailPage() {
 
   // Pre-fill date from query param (calendar day click)
   const prefillDate = searchParams.get('date');
-  const [dateInitialized, setDateInitialized] = useState(false);
+  const [defaultsApplied, setDefaultsApplied] = useState(false);
   useEffect(() => {
-    if (isNew && prefillDate && !dateInitialized) {
-      setStartTime(`${prefillDate}T19:00`);
-      setDateInitialized(true);
+    if (isNew && !defaultsApplied) {
+      const settings = loadSettings();
+      if (settings.defaultDuration) setDurationMinutes(settings.defaultDuration);
+      if (settings.defaultPrice) setPrice(settings.defaultPrice);
+      if (settings.defaultVenue) setVenue(settings.defaultVenue);
+      if (settings.defaultPlatforms.length) setSelectedPlatforms(settings.defaultPlatforms);
+      if (prefillDate) setStartTime(`${prefillDate}T19:00`);
+      setDefaultsApplied(true);
     }
-  }, [isNew, prefillDate, dateInitialized]);
+  }, [isNew, prefillDate, defaultsApplied]);
   const [optimizing, setOptimizing] = useState(false);
   const [optimizePrompt, setOptimizePrompt] = useState<string | null>(null);
   const [optimizeResponse, setOptimizeResponse] = useState<string | null>(null);

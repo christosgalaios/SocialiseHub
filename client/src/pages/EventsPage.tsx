@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { SocialiseEvent, Template } from '@shared/types';
 import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate } from '../api/events';
 import { EventCard } from '../components/EventCard';
+import { GridSkeleton } from '../components/Skeleton';
 import { useToast } from '../context/ToastContext';
 
 type FilterTab = 'all' | 'draft' | 'published' | 'past';
@@ -156,7 +157,7 @@ export function EventsPage() {
       {error && <div style={styles.error}>{error}</div>}
 
       {loading ? (
-        <p style={styles.loading}>Loading events...</p>
+        <GridSkeleton count={6} />
       ) : filtered.length === 0 ? (
         <div style={styles.empty}>
           <p style={styles.emptyTitle}>No events found</p>
