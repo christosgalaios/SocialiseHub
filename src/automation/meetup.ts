@@ -17,7 +17,44 @@ const PUBLISH_SELECTORS = {
 };
 
 export function meetupConnectSteps(): AutomationStep[] {
+  // Helper script shared between home and profile page extraction
+  const extractGroupsScript = `(() => {
+    const links = Array.from(document.querySelectorAll('a[href]'));
+    const groups = [];
+    const seen = new Set();
+    const skipPaths = new Set(['home','groups','messages','notifications','settings','find',
+      'topics','apps','about','help','pro','login','register','account','events','blog',
+      'media','lp','swarm','meetup','your-events','recommended','profile','members',
+      'resources','cookie-policy','terms','privacy']);
+
+    for (const link of links) {
+      const href = link.getAttribute('href') ?? '';
+      let urlname = null;
+      // Absolute: https://www.meetup.com/group-name/
+      const absMatch = href.match(/meetup\\.com\\/([a-zA-Z][a-zA-Z0-9-]{2,})\\/?(?:\\?|#|$)/);
+      if (absMatch) urlname = absMatch[1];
+      // Relative: /group-name/
+      if (!urlname) {
+        const relMatch = href.match(/^\\/([a-zA-Z][a-zA-Z0-9-]{2,})\\/?(?:\\?|#|$)/);
+        if (relMatch) urlname = relMatch[1];
+      }
+      if (!urlname || skipPaths.has(urlname.toLowerCase()) || seen.has(urlname)) continue;
+      seen.add(urlname);
+
+      const card = link.closest('[class*="card"], [class*="Card"], li, article, div[class]') ?? link;
+      const name = card.querySelector('h3, h2, [class*="name"], [class*="Name"]')?.textContent?.trim()
+        ?? link.textContent?.trim() ?? urlname;
+      const isOrganizer = /organiz/i.test(card.textContent ?? '');
+      groups.push({ urlname, name, isOrganizer });
+    }
+
+    const organizer = groups.filter(g => g.isOrganizer);
+    const result = organizer.length > 0 ? organizer : groups;
+    return JSON.stringify({ loggedIn: true, groups: result, groupUrlname: result[0]?.urlname ?? null });
+  })()`;
+
   return [
+    // Step 1: Go to home page and check login
     {
       action: 'navigate',
       url: 'https://www.meetup.com/home/',
@@ -29,20 +66,11 @@ export function meetupConnectSteps(): AutomationStep[] {
       timeout: 10_000,
       description: 'Waiting for page to load...',
     },
-    {
-      action: 'evaluate',
-      script: `(() => {
-        const avatar = document.querySelector('${SELECTORS.loggedInAvatar}');
-        if (!avatar) return JSON.stringify({ loggedIn: false });
-        return JSON.stringify({ loggedIn: true });
-      })()`,
-      description: 'Checking login status...',
-    },
-    // Navigate to the user's groups page to find organizer groups
+    // Step 2: Navigate to "Your Groups" page — most reliable for finding organizer groups
     {
       action: 'navigate',
-      url: 'https://www.meetup.com/groups/',
-      description: 'Finding your groups...',
+      url: 'https://www.meetup.com/find/?source=GROUPS',
+      description: 'Opening your groups...',
     },
     {
       action: 'waitForSelector',
@@ -50,37 +78,11 @@ export function meetupConnectSteps(): AutomationStep[] {
       timeout: 10_000,
       description: 'Waiting for groups page...',
     },
+    // Step 3: Extract groups from the page
     {
       action: 'evaluate',
-      script: `(() => {
-        // Find all group cards/links on the groups page
-        const links = Array.from(document.querySelectorAll('a[href*="meetup.com/"]'));
-        const groups = [];
-        const seen = new Set();
-        for (const link of links) {
-          const href = link.getAttribute('href') ?? '';
-          // Match group URLs like /group-name/ but not /groups/ or /messages/ etc.
-          const match = href.match(/meetup\\.com\\/([a-zA-Z0-9-]+)\\/?$/);
-          if (!match) continue;
-          const urlname = match[1];
-          // Skip non-group paths
-          if (['home', 'groups', 'messages', 'notifications', 'settings', 'find', 'topics', 'apps', 'about', 'help', 'pro'].includes(urlname)) continue;
-          if (seen.has(urlname)) continue;
-          seen.add(urlname);
-          // Try to get the group name from nearby text
-          const card = link.closest('[class*="card"], [class*="Card"], li, article') ?? link;
-          const name = card.querySelector('h3, h2, [class*="name"], [class*="Name"]')?.textContent?.trim()
-            ?? link.textContent?.trim() ?? urlname;
-          // Check if there's an "Organizer" badge nearby
-          const isOrganizer = /organiz/i.test(card.textContent ?? '');
-          groups.push({ urlname, name, isOrganizer });
-        }
-        // Prefer organizer groups, then any groups
-        const organizer = groups.filter(g => g.isOrganizer);
-        const result = organizer.length > 0 ? organizer : groups;
-        return JSON.stringify({ loggedIn: true, groups: result, groupUrlname: result[0]?.urlname ?? null });
-      })()`,
-      description: 'Detecting organizer groups...',
+      script: extractGroupsScript,
+      description: 'Finding your organizer groups...',
     },
   ];
 }
