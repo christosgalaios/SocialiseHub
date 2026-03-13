@@ -219,34 +219,33 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
           };
         }
 
-        // Fetch upcoming events (usually just 1 page)
-        const upcoming = await fetchPage('ACTIVE', null);
-        for (const e of upcoming.edges) {
-          if (seen.has(e.node.id)) continue;
-          seen.add(e.node.id);
-          allEvents.push({
-            externalId: e.node.id, title: e.node.title,
-            date: e.node.dateTime, venue: e.node.venue?.name ?? '',
-            url: e.node.eventUrl, status: 'active',
-          });
+        // Helper: paginate all events for a given status
+        async function fetchAllWithStatus(status, label) {
+          let cursor = null;
+          for (let page = 0; page < 10; page++) {
+            const result = await fetchPage(status, cursor);
+            for (const e of result.edges) {
+              if (seen.has(e.node.id)) continue;
+              seen.add(e.node.id);
+              allEvents.push({
+                externalId: e.node.id, title: e.node.title,
+                date: e.node.dateTime, venue: e.node.venue?.name ?? '',
+                url: e.node.eventUrl, status: label,
+              });
+            }
+            if (!result.hasNext || !result.cursor) break;
+            cursor = result.cursor;
+          }
         }
 
-        // Fetch all past events with pagination (up to 10 pages = 500 events)
-        let cursor = null;
-        for (let page = 0; page < 10; page++) {
-          const result = await fetchPage('PAST', cursor);
-          for (const e of result.edges) {
-            if (seen.has(e.node.id)) continue;
-            seen.add(e.node.id);
-            allEvents.push({
-              externalId: e.node.id, title: e.node.title,
-              date: e.node.dateTime, venue: e.node.venue?.name ?? '',
-              url: e.node.eventUrl, status: 'past',
-            });
-          }
-          if (!result.hasNext || !result.cursor) break;
-          cursor = result.cursor;
-        }
+        // Fetch upcoming events (ACTIVE + DRAFT)
+        await fetchAllWithStatus('ACTIVE', 'active');
+        await fetchAllWithStatus('DRAFT', 'active');
+
+        // Fetch past events (PAST + CANCELLED + CANCELLED_PERM)
+        await fetchAllWithStatus('PAST', 'past');
+        await fetchAllWithStatus('CANCELLED', 'cancelled');
+        await fetchAllWithStatus('CANCELLED_PERM', 'cancelled');
 
         return JSON.stringify(allEvents);
       })()`,
