@@ -580,17 +580,19 @@ function setupIpcHandlers(config: AppConfig): void {
     }
 
     try {
-      // Step 1: Navigate to a new chat if needed, then find the input
+      // Claude.ai DOM structure (verified 2026-03-13):
+      // - Editor: div.tiptap.ProseMirror[contenteditable] (Tiptap/ProseMirror)
+      //   There's also a hidden textarea underneath — must target .tiptap specifically
+      // - Send button: button[aria-label="Send message"] (appears after text entered)
+      // - Stop button: button[aria-label="Stop Response"] (during generation)
+
+      // Step 1: Wait for the Tiptap editor to be ready
       const inputResult = await wc.executeJavaScript(`
         (async () => {
-          // Wait for the input area to be ready
           const maxWait = 15000;
           const start = Date.now();
           while (Date.now() - start < maxWait) {
-            // Claude.ai uses a contenteditable div or ProseMirror editor
-            const editor = document.querySelector('[contenteditable="true"]')
-              || document.querySelector('.ProseMirror')
-              || document.querySelector('textarea');
+            const editor = document.querySelector('.tiptap.ProseMirror');
             if (editor) return 'ready';
             await new Promise(r => setTimeout(r, 500));
           }
@@ -602,51 +604,36 @@ function setupIpcHandlers(config: AppConfig): void {
         return { error: 'Could not find Claude input field — is claude.ai loaded?' };
       }
 
-      // Step 2: Paste prompt into the editor
-      // Uses Electron's clipboard API + webContents.paste() which is the most
-      // reliable method — works without window focus, goes through ProseMirror's
-      // native paste handler. sendInputEvent has known issues on Windows and
-      // requires the window to be focused.
-      const { clipboard } = await import('electron');
-      const previousClipboard = clipboard.readText();
-      clipboard.writeText(prompt);
-
-      // Focus the editor first
-      await wc.executeJavaScript(`
+      // Step 2: Insert prompt text via execCommand('insertText')
+      // This is the most reliable method for Tiptap — it goes through the editor's
+      // own input handling and keeps ProseMirror state in sync.
+      // webContents.paste() can target the wrong element (hidden textarea).
+      // sendInputEvent requires window focus and has Windows issues.
+      const escapedPrompt = JSON.stringify(prompt);
+      const insertResult = await wc.executeJavaScript(`
         (() => {
-          const editor = document.querySelector('[contenteditable="true"]')
-            || document.querySelector('.ProseMirror')
-            || document.querySelector('textarea');
+          const editor = document.querySelector('.tiptap.ProseMirror');
           if (!editor) return 'no-editor';
           editor.focus();
-          return 'focused';
+          document.execCommand('selectAll', false, null);
+          document.execCommand('insertText', false, ${escapedPrompt});
+          return editor.textContent ? 'inserted' : 'empty';
         })()
       `);
 
-      // Use webContents.paste() — direct Electron API, no keyboard simulation needed
-      wc.paste();
+      if (insertResult !== 'inserted') {
+        return { error: 'Failed to insert prompt into editor: ' + insertResult };
+      }
 
-      // Wait for paste to register in the editor
-      await new Promise(r => setTimeout(r, 1000));
-
-      // Restore previous clipboard content
-      clipboard.writeText(previousClipboard);
+      // Brief pause for Tiptap to process input and enable the send button
+      await new Promise(r => setTimeout(r, 500));
 
       // Step 3: Click the send button
-      // Claude.ai selectors verified 2026-03-13 — may need updating when UI changes
       const sendResult = await wc.executeJavaScript(`
         (() => {
-          // Try multiple selectors for the send button
           const btn = document.querySelector('button[aria-label="Send message"]')
-            || document.querySelector('button[aria-label="Send Message"]')
-            || document.querySelector('button[data-testid="send-button"]')
-            || document.querySelector('fieldset button:not([disabled])')
-            || [...document.querySelectorAll('button')].find(b => {
-              const svg = b.querySelector('svg');
-              const inForm = b.closest('fieldset, form, [role="presentation"]');
-              return svg && inForm && !b.disabled;
-            });
-          if (btn) {
+            || document.querySelector('button[aria-label="Send Message"]');
+          if (btn && !btn.disabled) {
             btn.click();
             return 'clicked';
           }
@@ -654,19 +641,8 @@ function setupIpcHandlers(config: AppConfig): void {
         })()
       `);
 
-      // If button click failed, try Enter key as fallback
       if (sendResult === 'no-button') {
-        await wc.executeJavaScript(\`
-          (() => {
-            const editor = document.querySelector('[contenteditable="true"]')
-              || document.querySelector('.ProseMirror');
-            if (editor) {
-              editor.dispatchEvent(new KeyboardEvent('keydown', {
-                key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true
-              }));
-            }
-          })()
-        \`);
+        return { error: 'Send button not found — prompt was inserted but could not be sent' };
       }
 
       // Step 4: Poll for the response to complete
