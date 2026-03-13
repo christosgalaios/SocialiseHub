@@ -84,7 +84,7 @@ describe('headfirstPublishSteps', () => {
 describe('headfirstScrapeSteps', () => {
   it('navigates to my-events page', () => {
     const steps = headfirstScrapeSteps();
-    expect(steps[0].url).toContain('my-events');
+    expect(steps[0].url).toContain('event-manager');
   });
 
   it('includes evaluate extracting event data', () => {

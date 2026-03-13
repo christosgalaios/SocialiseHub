@@ -22,7 +22,7 @@ describe('eventbriteConnectSteps', () => {
   it('navigates to eventbrite.com', () => {
     const steps = eventbriteConnectSteps();
     expect(steps[0].action).toBe('navigate');
-    expect(steps[0].url).toContain('eventbrite.com');
+    expect(steps[0].url).toContain('eventbrite.co.uk');
   });
 
   it('includes evaluate step checking login', () => {
@@ -86,7 +86,7 @@ describe('eventbritePublishSteps', () => {
 describe('eventbriteScrapeSteps', () => {
   it('navigates to organizations events page', () => {
     const steps = eventbriteScrapeSteps();
-    expect(steps[0].url).toContain('organizations/events');
+    expect(steps[0].url).toContain('organizations/home');
   });
 
   it('includes evaluate extracting event data', () => {
