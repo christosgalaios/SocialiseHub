@@ -415,9 +415,6 @@ function createMainWindow(port: number, config: AppConfig, hasExtension: boolean
   } else {
     appView.webContents.loadURL(`http://localhost:${port}`);
   }
-  // Open DevTools — temporarily enabled for debugging automation
-  appView.webContents.openDevTools({ mode: 'detach' });
-
   // Load Claude panel — always use claude.ai for maximum reliability.
   // The extension's content scripts inject into appView for DOM access,
   // while claude.ai in the right panel provides the chat interface.
