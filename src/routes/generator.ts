@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import type { EventStore } from '../data/store.js';
+import type { SqliteEventStore } from '../data/sqlite-event-store.js';
 import type { MarketAnalyzer } from '../agents/market-analyzer.js';
 import type { ScrapedEvent, SocialiseEvent } from '../shared/types.js';
 
@@ -12,7 +12,7 @@ import type { ScrapedEvent, SocialiseEvent } from '../shared/types.js';
  * 3. POST /save     — saves a generated idea as a draft event
  */
 export function createGeneratorRouter(
-  eventStore: EventStore,
+  eventStore: SqliteEventStore,
   analyzer: MarketAnalyzer,
 ): Router {
   const router = Router();
@@ -43,7 +43,7 @@ export function createGeneratorRouter(
       }
 
       // Fetch company's own past events for context
-      const pastEvents = await eventStore.getAll();
+      const pastEvents = eventStore.getAll();
 
       const prompt = composeClaudePrompt(marketData, pastEvents);
       res.json({ data: { prompt } });
@@ -70,7 +70,7 @@ export function createGeneratorRouter(
         return res.status(400).json({ error: 'Title and description are required' });
       }
 
-      const event = await eventStore.create({
+      const event = eventStore.create({
         title,
         description: category ? `[${category}] ${description}` : description,
         venue: venue ?? '',

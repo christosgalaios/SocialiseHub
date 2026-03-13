@@ -1,4 +1,4 @@
-import type { ServiceStore } from '../data/store.js';
+import type { SqliteServiceStore } from '../data/sqlite-service-store.js';
 import type { ScrapedEvent, PlatformName } from '../shared/types.js';
 
 /**
@@ -8,7 +8,7 @@ import type { ScrapedEvent, PlatformName } from '../shared/types.js';
  * and returns structured data for display and AI analysis.
  */
 export class MarketAnalyzer {
-  constructor(private readonly serviceStore: ServiceStore) {}
+  constructor(private readonly serviceStore: SqliteServiceStore) {}
 
   /**
    * Scrape events from all connected platforms.
@@ -36,11 +36,11 @@ export class MarketAnalyzer {
   }
 
   private async scrapeFromPlatform(platform: PlatformName): Promise<ScrapedEvent[]> {
-    const service = await this.serviceStore.getService(platform);
+    const service = this.serviceStore.getService(platform);
 
     // Use real API if connected, otherwise return sample data for demo
-    if (service?.connected && service.credentials?.accessToken) {
-      return this.scrapeWithApi(platform, service.credentials.accessToken);
+    if (service?.connected && service.credentials?.['access_token']) {
+      return this.scrapeWithApi(platform, service.credentials['access_token']);
     }
 
     // Return demo data so the feature is usable without live credentials
