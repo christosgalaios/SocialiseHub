@@ -1,0 +1,142 @@
+#!/usr/bin/env bash
+# Pre-commit hook: blocks commits when .manager-feedback.md has unacknowledged feedback.
+# Bypass with: git commit --no-verify
+
+FEEDBACK_FILE=".manager-feedback.md"
+
+# Skip if file doesn't exist
+if [ ! -f "$FEEDBACK_FILE" ]; then
+  exit 0
+fi
+
+# Read the file, stripping Windows CRLF line endings
+mapfile -t raw_lines < "$FEEDBACK_FILE"
+lines=()
+for raw in "${raw_lines[@]}"; do
+  lines+=("${raw%$'\r'}")  # strip trailing carriage return if present
+done
+total=${#lines[@]}
+
+# Collect ordered list of ## heading positions and their text
+heading_indices=()
+declare -A heading_text_map
+
+idx=0
+for line in "${lines[@]}"; do
+  if [[ "$line" =~ ^##[[:space:]] ]]; then
+    heading_indices+=("$idx")
+    heading_text_map["$idx"]="$line"
+  fi
+  ((idx++))
+done
+
+# Collect all Feedback #N numbers in document order
+feedback_nums=()
+for hi in "${heading_indices[@]}"; do
+  htext="${heading_text_map[$hi]}"
+  if [[ "$htext" =~ ^##[[:space:]]Feedback[[:space:]]#([0-9]+) ]]; then
+    feedback_nums+=("${BASH_REMATCH[1]}")
+  fi
+done
+
+# If no feedback headings found, nothing to check
+if [ ${#feedback_nums[@]} -eq 0 ]; then
+  exit 0
+fi
+
+# Helper: get content of a section (lines after the heading until the next ## heading)
+get_section_content() {
+  local start_idx="$1"
+  local next_heading=$total
+
+  for hi in "${heading_indices[@]}"; do
+    if (( hi > start_idx && hi < next_heading )); then
+      next_heading=$hi
+    fi
+  done
+
+  local content=""
+  for (( i = start_idx + 1; i < next_heading; i++ )); do
+    content+="${lines[$i]}"$'\n'
+  done
+  echo "$content"
+}
+
+# Determine acknowledged status for each Feedback #N
+pending=()
+
+for num in "${feedback_nums[@]}"; do
+  acknowledged=false
+
+  for hi in "${heading_indices[@]}"; do
+    htext="${heading_text_map[$hi]}"
+    content=$(get_section_content "$hi")
+
+    # Case A: The "## Feedback #N ..." heading TEXT itself contains VERIFIED or approved
+    # (manager left a sign-off in the heading, e.g. "## Feedback #5 — Fixes verified, approved")
+    if [[ "$htext" =~ ^##[[:space:]]Feedback[[:space:]]#${num}([[:space:]]|$) ]]; then
+      if echo "$htext" | grep -qiE "(VERIFIED|approved)"; then
+        acknowledged=true
+        break
+      fi
+    fi
+
+    # Case B: Any "## Feedback #M" heading (M != N) whose body references "Feedback #N"
+    # and contains VERIFIED or approved — e.g. Feedback #2 says "Feedback #1 verified and approved"
+    if [[ "$htext" =~ ^##[[:space:]]Feedback[[:space:]]#([0-9]+) ]]; then
+      local_num="${BASH_REMATCH[1]}"
+      if [[ "$local_num" != "$num" ]]; then
+        if echo "$content" | grep -qiE "(VERIFIED|approved)" && \
+           echo "$content" | grep -qE "(Feedback[[:space:]]+#${num}([^0-9]|$)|#${num}[^0-9])"; then
+          acknowledged=true
+          break
+        fi
+      fi
+    fi
+
+    # Case C: An "## Acknowledged" section whose body references Feedback #N
+    # Matches: "Feedback #N", "### Feedback #N:", "### Feedback #3 + #N:", "#N." in a list item
+    if [[ "$htext" =~ ^##[[:space:]]Acknowledged ]]; then
+      if echo "$content" | grep -qiE "(Feedback[[:space:]]+#${num}([^0-9]|$)|#${num}[^0-9])"; then
+        acknowledged=true
+        break
+      fi
+    fi
+  done
+
+  if [ "$acknowledged" = false ]; then
+    # Find the heading title for display
+    title=""
+    for hi in "${heading_indices[@]}"; do
+      htext="${heading_text_map[$hi]}"
+      if [[ "$htext" =~ ^##[[:space:]]Feedback[[:space:]]#${num}([[:space:]]|$) ]]; then
+        title="$htext"
+        break
+      fi
+    done
+    pending+=("$title")
+  fi
+done
+
+if [ ${#pending[@]} -gt 0 ]; then
+  echo ""
+  echo "=========================================================="
+  echo "  COMMIT BLOCKED: Unacknowledged manager feedback"
+  echo "=========================================================="
+  echo ""
+  echo "The following feedback in .manager-feedback.md has not been"
+  echo "acknowledged:"
+  echo ""
+  for item in "${pending[@]}"; do
+    echo "  •  $item"
+  done
+  echo ""
+  echo "Read .manager-feedback.md, address the feedback, and add an"
+  echo "'## Acknowledged' section referencing each item."
+  echo ""
+  echo "To bypass (use sparingly): git commit --no-verify"
+  echo ""
+  exit 1
+fi
+
+exit 0

@@ -55,6 +55,7 @@ Native modules (better-sqlite3) must be rebuilt for Electron with `@electron/reb
 - API keys go in environment variables, never in code
 - Test platform integrations with mocks
 - Sequential automation — one platform at a time (single WebContentsView)
+- Pre-commit hook at `.githooks/pre-commit` checks for unacknowledged manager feedback (configured via `git config core.hooksPath .githooks`)
 
 ## Workflow Rules
 
