@@ -1,8 +1,12 @@
 import { Router } from 'express';
 import { randomUUID } from 'node:crypto';
-import type { ServiceStore } from '../data/store.js';
+import type { SqliteServiceStore } from '../data/sqlite-service-store.js';
 import type { PlatformName } from '../shared/types.js';
 import { VALID_PLATFORMS } from '../shared/types.js';
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 // ── OAuth config per platform ───────────────────────────
 
@@ -45,7 +49,7 @@ setInterval(() => {
 
 // ── Router ──────────────────────────────────────────────
 
-export function createAuthRouter(serviceStore: ServiceStore, port: number): Router {
+export function createAuthRouter(serviceStore: SqliteServiceStore, port: number): Router {
   const router = Router();
 
   /**
@@ -152,14 +156,14 @@ export function createAuthRouter(serviceStore: ServiceStore, port: number): Rout
       const refreshToken = tokenData.refresh_token as string | undefined;
 
       // Store the token in ServiceStore
-      const credentials: Record<string, string> = { accessToken };
-      if (refreshToken) credentials.refreshToken = refreshToken;
+      const credentials: Record<string, string> = { access_token: accessToken };
+      if (refreshToken) credentials.refresh_token = refreshToken;
       if (tokenData.expires_in) {
         const expiresAt = Date.now() + Number(tokenData.expires_in) * 1000;
-        credentials.expiresAt = String(expiresAt);
+        credentials.token_expires_at = String(expiresAt);
       }
 
-      await serviceStore.connect(platform, credentials);
+      serviceStore.connect(platform, credentials);
 
       return res.send(successPage(platform));
     } catch (err) {
@@ -186,10 +190,10 @@ export function createAuthRouter(serviceStore: ServiceStore, port: number): Rout
     // Check every second for up to 5 minutes
     let checks = 0;
     const maxChecks = 300;
-    const interval = setInterval(async () => {
+    const interval = setInterval(() => {
       checks++;
       try {
-        const svc = await serviceStore.getService(platform);
+        const svc = serviceStore.getService(platform);
         if (svc?.connected) {
           res.write(`data: ${JSON.stringify({ connected: true, platform })}\n\n`);
           clearInterval(interval);
@@ -254,7 +258,7 @@ function errorPage(message: string): string {
   <div class="card">
     <div class="icon">❌</div>
     <h1>Connection Failed</h1>
-    <p>${message}</p>
+    <p>${escapeHtml(message)}</p>
   </div>
 </body></html>`;
 }

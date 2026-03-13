@@ -1,12 +1,18 @@
 import { Router } from 'express';
 import type { SyncLogStore } from '../data/sync-log-store.js';
 import type { PlatformEventStore } from '../data/platform-event-store.js';
+import type { SqliteEventStore } from '../data/sqlite-event-store.js';
+import type { SqliteServiceStore } from '../data/sqlite-service-store.js';
+import type { PublishService } from '../tools/publish-service.js';
 import type { DashboardSummary, PlatformName } from '../shared/types.js';
 import { VALID_PLATFORMS } from '../shared/types.js';
 
 export function createSyncRouter(
   syncLogStore: SyncLogStore,
   platformEventStore: PlatformEventStore,
+  publishService: PublishService,
+  eventStore: SqliteEventStore,
+  serviceStore: SqliteServiceStore,
 ): Router {
   const router = Router();
 
@@ -26,10 +32,51 @@ export function createSyncRouter(
 
   /**
    * POST /api/sync/pull
-   * Stub for pulling events from connected platforms.
+   * Pulls events from all connected platforms.
    */
-  router.post('/pull', (_req, res) => {
-    res.json({ pulled: 0 });
+  router.post('/pull', async (_req, res, next) => {
+    try {
+      const services = serviceStore.getAll();
+      let totalPulled = 0;
+
+      for (const svc of services) {
+        if (!svc.connected) continue;
+        const client = publishService.getClient(svc.platform);
+        if (!client) continue;
+
+        try {
+          const events = await client.fetchEvents();
+          for (const pe of events) {
+            platformEventStore.upsert({
+              platform: pe.platform,
+              externalId: pe.externalId,
+              externalUrl: pe.externalUrl,
+              title: pe.title,
+              date: pe.date,
+              venue: pe.venue,
+              status: pe.status,
+              rawData: pe.rawData,
+            });
+          }
+          totalPulled += events.length;
+          syncLogStore.log({
+            platform: svc.platform,
+            action: 'pull',
+            status: 'success',
+            message: `Pulled ${events.length} events`,
+          });
+        } catch (err) {
+          syncLogStore.log({
+            platform: svc.platform,
+            action: 'pull',
+            status: 'error',
+            message: String(err),
+          });
+        }
+      }
+
+      res.json({ data: { pulled: totalPulled } });
+    } catch (err) { next(err); }
   });
 
   /**

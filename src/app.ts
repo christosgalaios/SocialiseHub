@@ -63,9 +63,9 @@ export function createApp(deps?: AppDeps): express.Express {
     createEventsRouter(eventStore, publishService, platformEventStore, syncLogStore),
   );
   app.use('/api/services', createServicesRouter(serviceStore));
-  app.use('/api/sync', createSyncRouter(syncLogStore, platformEventStore));
+  app.use('/api/sync', createSyncRouter(syncLogStore, platformEventStore, publishService, eventStore, serviceStore));
   app.use('/api/generator', createGeneratorRouter(eventStore as never, marketAnalyzer));
-  app.use('/auth', createAuthRouter(serviceStore as never, port));
+  app.use('/auth', createAuthRouter(serviceStore, port));
 
   // Serve built frontend — single-server setup
   const clientDir = join(process.cwd(), 'dist-client');
