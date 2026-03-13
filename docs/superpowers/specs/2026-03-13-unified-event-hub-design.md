@@ -1,7 +1,7 @@
 # Phase 1: Unified Event Hub — Design Spec
 
 **Date:** 2026-03-13
-**Status:** Draft
+**Status:** Approved (v2 — post-review)
 **Scope:** Event creation, publishing, syncing, and unified dashboard across Meetup, Eventbrite, and Headfirst Bristol.
 
 ---
@@ -70,8 +70,9 @@ Socialise manages events across three platforms (Meetup, Eventbrite, Headfirst B
 | id | TEXT PK | UUID |
 | title | TEXT NOT NULL | |
 | description | TEXT | |
-| date | TEXT NOT NULL | ISO date |
-| time | TEXT | HH:MM |
+| start_time | TEXT NOT NULL | ISO 8601 datetime with timezone (Europe/London) |
+| end_time | TEXT | ISO 8601 datetime with timezone |
+| duration_minutes | INTEGER | Fallback if no end_time (default 120) |
 | venue | TEXT | |
 | price | REAL | 0 = free |
 | capacity | INTEGER | |
@@ -126,7 +127,7 @@ Socialise manages events across three platforms (Meetup, Eventbrite, Headfirst B
 
 ### 4.3 Platform Clients
 
-Each platform client implements a common interface:
+Each platform client implements a common interface. The existing clients (`MeetupClient`, `EventbriteClient`, `HeadfirstClient`) and the `EventCreator` agent will be refactored to implement this interface. The `EventCreator` agent's `publish()` orchestration logic moves into a new `PublishService` class that coordinates across platform clients and the sync log. The existing `EventCreator` class is removed.
 
 ```typescript
 interface PlatformClient {
@@ -147,6 +148,22 @@ interface PlatformClient {
 }
 ```
 
+**Field mappings per platform:**
+
+| SocialiseHub field | Meetup GraphQL | Eventbrite REST v3 |
+|--------------------|----------------|-------------------|
+| `title` | `title` | `event.name.html` |
+| `description` | `description` | `event.description.html` |
+| `start_time` | `dateTime` (ISO 8601) | `event.start.utc` + `event.start.timezone` |
+| `end_time` | `duration` (calculated) | `event.end.utc` + `event.end.timezone` |
+| `venue` | `venueId` (lookup required) | `event.venue_id` (lookup required) |
+| `price` | free (Meetup handles tickets externally) | `ticket_classes[].cost` |
+| `capacity` | `rsvpLimit` | `ticket_classes[].quantity_total` |
+
+**Eventbrite three-step publish flow:** create event (draft) → create ticket class → publish event. All three steps required before an event is live.
+
+**Headfirst form submission flow:** GET form page → extract CSRF token and hidden fields → POST with event data + tokens. Session cookies must be maintained across requests.
+
 #### Meetup (GraphQL API)
 
 - **Auth:** OAuth2 via `secure.meetup.com/oauth2/authorize`
@@ -156,6 +173,8 @@ interface PlatformClient {
   - `editEvent` mutation → updates existing event
   - `getGroupEvents` query → fetches all events for the connected group
 - **Requires:** `MEETUP_CLIENT_ID`, `MEETUP_CLIENT_SECRET` env vars
+- **Requires:** `MEETUP_CLIENT_ID`, `MEETUP_CLIENT_SECRET` env vars
+- **Prerequisite:** Meetup's GraphQL API and event_management scope require an approved OAuth consumer application. Must register at meetup.com/api and may require approval time.
 - **Note:** Need to fetch user's groups on first connect to let them choose which group to publish to. Store selected group in `services.extra`.
 
 #### Eventbrite (REST v3 API)
@@ -185,7 +204,7 @@ interface PlatformClient {
 - On dashboard load, fetch events from all connected platforms
 - Store in `platform_events` table with `synced_at` timestamp
 - Events without a matching `event_id` are displayed as "external" (created outside SocialiseHub)
-- Users can optionally "claim" an external event to manage it in SocialiseHub
+- "Claim" functionality deferred to Phase 2 — external events are read-only for now
 
 **Push (publish to platforms):**
 - When user creates/updates an event and selects target platforms
@@ -256,7 +275,7 @@ Simple table showing recent sync operations:
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `GET /api/dashboard/summary` | GET | Aggregated stats for dashboard cards |
-| `GET /api/events/all` | GET | All events (internal + external) for unified view |
+| `GET /api/events/all?limit=50&offset=0&platform=&status=` | GET | Paginated unified view (internal + external) |
 | `POST /api/events/:id/sync` | POST | Pull latest from platforms for this event |
 | `POST /api/sync/pull` | POST | Pull all events from all connected platforms |
 | `GET /api/sync/log` | GET | Recent sync log entries |
@@ -291,8 +310,11 @@ The transition from JSON to SQLite should be seamless:
 
 ## 9. Security
 
-- OAuth tokens stored in SQLite, encrypted at rest using a local key derived from a machine-specific value
-- Headfirst credentials encrypted the same way
+- OAuth tokens and Headfirst credentials encrypted at rest in SQLite using AES-256-GCM via `node:crypto`
+- Encryption key derived via PBKDF2 from `os.hostname()` + `os.userInfo().username` with a static salt stored in the app
+- Key cached in memory at runtime (derived once on startup)
+- Credential encryption must be implemented before Headfirst credentials flow is enabled
+- OAuth error messages in callback HTML are HTML-escaped to prevent reflected XSS
 - No credentials ever returned in API responses (current behavior preserved)
 - CSRF protection on OAuth callbacks (existing state token approach)
 - All platform API calls made server-side, never from the browser
@@ -339,5 +361,24 @@ The transition from JSON to SQLite should be seamless:
 
 ### Removed Files
 - `src/data/store.ts` — Replaced by SQLite stores (after migration verified)
+- `src/agents/event-creator.ts` — Replaced by PublishService
 - `data/events.json` — Replaced by SQLite
 - `data/services.json` — Replaced by SQLite
+
+## 12. Implementation Order
+
+Dependencies flow top-down — each step requires the one above it:
+
+1. **Database layer** — `better-sqlite3`, schema, `database.ts`, encryption util, SQLite stores, JSON migration
+2. **Platform client interface** — `PlatformClient` interface, `PublishService`, updated types
+3. **Platform clients** — Meetup GraphQL, Eventbrite REST, Headfirst web scraping (can be parallel)
+4. **Auth enhancements** — Token refresh, post-connect setup, Headfirst credentials flow
+5. **Sync engine** — Pull/push logic, sync log, dashboard summary endpoint
+6. **Backend routes** — New and modified API endpoints
+7. **Frontend** — Dashboard, enhanced event detail, enhanced services page, sync log
+8. **Testing** — Unit tests for clients (mocked HTTP), integration tests for routes
+9. **Cleanup** — Remove JSON stores, old EventCreator agent
+
+## 13. Timezone Handling
+
+All datetimes stored as ISO 8601 with timezone offset. The business operates in Bristol, UK — default timezone is `Europe/London` (handles GMT/BST automatically). Platform APIs receive UTC-converted times where required (Eventbrite) or timezone-aware strings (Meetup).
