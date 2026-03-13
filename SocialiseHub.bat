@@ -37,6 +37,20 @@ if not exist "dist-electron" (
   echo.
 )
 
+:: Rebuild native modules for Electron if needed
+:: Check forge-meta for correct ABI version (143 = Electron 40.x)
+set "REBUILD_NEEDED=0"
+if not exist "node_modules\better-sqlite3\build\Release\.forge-meta" set "REBUILD_NEEDED=1"
+if "%REBUILD_NEEDED%"=="0" (
+  findstr /C:"143" "node_modules\better-sqlite3\build\Release\.forge-meta" >nul 2>&1
+  if errorlevel 1 set "REBUILD_NEEDED=1"
+)
+if "%REBUILD_NEEDED%"=="1" (
+  echo  Rebuilding native modules for Electron...
+  call npx @electron/rebuild -f -w better-sqlite3
+  echo.
+)
+
 echo  Launching SocialiseHub desktop app...
 echo  (Close the window to stop)
 echo.
