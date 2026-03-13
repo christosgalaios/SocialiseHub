@@ -210,13 +210,35 @@ export function EventDetailPage() {
   const handleApplyOptimization = () => {
     if (!optimizeResponse) return;
     try {
-      // Extract JSON from the response (may be wrapped in markdown code fences)
-      const jsonMatch = optimizeResponse.match(/```json\s*([\s\S]*?)```/) || optimizeResponse.match(/\{[\s\S]*"title"[\s\S]*\}/);
-      if (!jsonMatch) {
+      // Try fenced code block first (most reliable)
+      const fencedMatch = optimizeResponse.match(/```json\s*([\s\S]*?)```/);
+      let jsonStr: string | null = null;
+
+      if (fencedMatch) {
+        jsonStr = fencedMatch[1];
+      } else {
+        // Fallback: find first { that contains "title" and match to its closing }
+        // Use a balanced brace counter instead of greedy regex
+        const startIdx = optimizeResponse.indexOf('{');
+        if (startIdx !== -1) {
+          let depth = 0;
+          for (let i = startIdx; i < optimizeResponse.length; i++) {
+            if (optimizeResponse[i] === '{') depth++;
+            else if (optimizeResponse[i] === '}') depth--;
+            if (depth === 0) {
+              const candidate = optimizeResponse.slice(startIdx, i + 1);
+              if (candidate.includes('"title"')) jsonStr = candidate;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!jsonStr) {
         setError('Could not find JSON in Claude response — apply changes manually');
         return;
       }
-      const json = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+      const json = JSON.parse(jsonStr);
       if (json.title) setTitle(json.title);
       if (json.description) setDescription(json.description);
       setShowOptimizeModal(false);

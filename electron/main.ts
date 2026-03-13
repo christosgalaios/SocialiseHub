@@ -550,6 +550,8 @@ function setupIpcHandlers(config: AppConfig): void {
   });
 
   // ── Execute JavaScript in the Claude panel ──
+  // SECURITY: This runs arbitrary JS in the Claude panel context (claude.ai session).
+  // Only called from the preload bridge — never pass user-controlled strings as code.
 
   ipcMain.handle('execute-in-claude-panel', async (_event, code: string) => {
     if (!claudeView) return { error: 'Claude panel not available' };
@@ -601,6 +603,7 @@ function setupIpcHandlers(config: AppConfig): void {
       }
 
       // Step 2: Type the prompt into the editor
+      // Selectors verified against claude.ai as of 2026-03-13
       const escapedPrompt = JSON.stringify(prompt);
       await wc.executeJavaScript(`
         (() => {
@@ -609,24 +612,26 @@ function setupIpcHandlers(config: AppConfig): void {
             || document.querySelector('textarea');
           if (!editor) return false;
 
-          // Clear existing content
           if (editor.tagName === 'TEXTAREA') {
             editor.value = ${escapedPrompt};
             editor.dispatchEvent(new Event('input', { bubbles: true }));
           } else {
-            // ContentEditable / ProseMirror
+            // ContentEditable / ProseMirror — use execCommand to keep editor
+            // state in sync. Direct innerHTML mutation leaves ProseMirror's
+            // internal doc model out of sync, causing the send button to see
+            // an empty editor even though text is visible.
             editor.focus();
-            editor.innerHTML = '<p>' + ${escapedPrompt}.replace(/\\n/g, '</p><p>') + '</p>';
-            editor.dispatchEvent(new Event('input', { bubbles: true }));
+            document.execCommand('selectAll', false, null);
+            document.execCommand('insertText', false, ${escapedPrompt});
           }
           return true;
         })()
       `);
 
       // Step 3: Click the send button
+      // Claude.ai selectors verified 2026-03-13 — may need updating when UI changes
       await wc.executeJavaScript(`
         (() => {
-          // Claude.ai send button — try multiple selectors
           const btn = document.querySelector('button[aria-label="Send message"]')
             || document.querySelector('button[aria-label="Send Message"]')
             || document.querySelector('button[data-testid="send-button"]')
