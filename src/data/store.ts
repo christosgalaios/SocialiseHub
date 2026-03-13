@@ -12,7 +12,7 @@ import type {
 
 /** Fields the public API is allowed to update via PUT. */
 const UPDATABLE_FIELDS = new Set([
-  'title', 'description', 'date', 'time',
+  'title', 'description', 'start_time', 'end_time', 'duration_minutes',
   'venue', 'price', 'capacity', 'imageUrl',
 ]);
 
@@ -60,8 +60,9 @@ export class EventStore {
       id: randomUUID(),
       title: input.title,
       description: input.description,
-      date: input.date,
-      time: input.time,
+      start_time: input.start_time,
+      end_time: input.end_time,
+      duration_minutes: input.duration_minutes ?? 120,
       venue: input.venue,
       price: input.price,
       capacity: input.capacity,

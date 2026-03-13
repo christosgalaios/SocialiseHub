@@ -74,8 +74,8 @@ export function createGeneratorRouter(
         title,
         description: category ? `[${category}] ${description}` : description,
         venue: venue ?? '',
-        date: date ?? new Date().toISOString().split('T')[0],
-        time: '19:00',
+        start_time: date ? `${date}T19:00:00+00:00` : new Date().toISOString(),
+        duration_minutes: 120,
         price: 0,
         capacity: 50,
       });
@@ -117,7 +117,7 @@ function composeClaudePrompt(
   const pastSummary = pastEvents.length > 0
     ? pastEvents
         .slice(-10)
-        .map((e) => `  - "${e.title}" | ${e.date} | ${e.venue} | ${e.status}`)
+        .map((e) => `  - "${e.title}" | ${e.start_time} | ${e.venue} | ${e.status}`)
         .join('\n')
     : '  (No past events yet — this is a new company)';
 

@@ -20,8 +20,9 @@ export interface SocialiseEvent {
   id: string;
   title: string;
   description: string;
-  date: string;
-  time: string;
+  start_time: string;
+  end_time?: string;
+  duration_minutes: number;
   venue: string;
   price: number;
   capacity: number;
@@ -108,4 +109,67 @@ export interface ApiResponse<T> {
 
 export interface ApiErrorResponse {
   error: string;
+}
+
+// ── Platform Events (from sync) ────────────────────────
+
+export interface PlatformEvent {
+  id: string;
+  eventId?: string;
+  platform: PlatformName;
+  externalId: string;
+  externalUrl?: string;
+  title: string;
+  date?: string;
+  venue?: string;
+  status: 'active' | 'cancelled' | 'past';
+  rawData?: string;
+  syncedAt: string;
+  publishedAt?: string;
+}
+
+export interface PlatformPublishResult {
+  platform: PlatformName;
+  success: boolean;
+  externalId?: string;
+  externalUrl?: string;
+  error?: string;
+}
+
+// ── Sync Log ───────────────────────────────────────────
+
+export type SyncAction = 'pull' | 'push' | 'publish' | 'update';
+
+export interface SyncLogEntry {
+  id: number;
+  platform: PlatformName;
+  action: SyncAction;
+  eventId?: string;
+  externalId?: string;
+  status: 'success' | 'error';
+  message?: string;
+  createdAt: string;
+}
+
+// ── Dashboard ──────────────────────────────────────────
+
+export interface DashboardSummary {
+  totalEvents: number;
+  eventsThisWeek: number;
+  eventsThisMonth: number;
+  byPlatform: Record<PlatformName, number>;
+}
+
+// ── Unified Event (for dashboard display) ──────────────
+
+export interface UnifiedEvent {
+  id: string;
+  title: string;
+  date: string;
+  venue?: string;
+  status: string;
+  platforms: PlatformName[];
+  source: 'internal' | 'external';
+  internalEventId?: string;
+  externalUrl?: string;
 }
