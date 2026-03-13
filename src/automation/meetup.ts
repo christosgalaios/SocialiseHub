@@ -13,6 +13,7 @@ const PUBLISH_SELECTORS = {
   dateInput: '[data-testid="event-date-input"], input[type="date"], input[name="date"]',
   timeInput: '[data-testid="event-time-input"], input[type="time"], input[name="time"]',
   publishButton: '[data-testid="publish-button"], button[type="submit"]:last-of-type',
+  draftButton: 'button[data-testid="save-draft-button"], button:has(> span:contains("Draft")), button[aria-label*="draft"], button[aria-label*="Draft"]',
 };
 
 export function meetupConnectSteps(): AutomationStep[] {
@@ -44,10 +45,32 @@ export function meetupConnectSteps(): AutomationStep[] {
   ];
 }
 
-export function meetupPublishSteps(event: SocialiseEvent, groupUrlname: string): AutomationStep[] {
+export function meetupPublishSteps(event: SocialiseEvent, groupUrlname: string, draft = false): AutomationStep[] {
   const startDate = new Date(event.start_time);
   const dateStr = startDate.toISOString().split('T')[0];
   const timeStr = startDate.toTimeString().slice(0, 5);
+
+  // The final submit step: either click Publish or save as Draft
+  const submitStep: AutomationStep = draft
+    ? {
+        action: 'evaluate',
+        script: `(() => {
+          // Meetup's draft button varies — try multiple strategies
+          const buttons = Array.from(document.querySelectorAll('button'));
+          const draftBtn = buttons.find(b => /draft/i.test(b.textContent ?? '') || /save.*draft/i.test(b.textContent ?? ''));
+          if (draftBtn) { draftBtn.click(); return 'clicked-draft'; }
+          // Fallback: look for a dropdown/menu that reveals draft option
+          const moreBtn = buttons.find(b => /more|options|chevron/i.test(b.getAttribute('aria-label') ?? ''));
+          if (moreBtn) { moreBtn.click(); return 'opened-menu'; }
+          return 'draft-button-not-found';
+        })()`,
+        description: 'Saving as draft...',
+      }
+    : {
+        action: 'click',
+        selector: PUBLISH_SELECTORS.publishButton,
+        description: 'Publishing event...',
+      };
 
   return [
     {
@@ -92,11 +115,7 @@ export function meetupPublishSteps(event: SocialiseEvent, groupUrlname: string):
       value: timeStr,
       description: `Setting time: ${timeStr}`,
     },
-    {
-      action: 'click',
-      selector: PUBLISH_SELECTORS.publishButton,
-      description: 'Publishing event...',
-    },
+    submitStep,
     {
       action: 'waitForNavigation',
       timeout: 15_000,
@@ -110,6 +129,7 @@ export function meetupPublishSteps(event: SocialiseEvent, groupUrlname: string):
         return JSON.stringify({
           externalId: match ? match[1] : null,
           externalUrl: url,
+          draft: ${draft},
         });
       })()`,
       description: 'Extracting event ID...',

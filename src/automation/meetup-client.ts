@@ -6,7 +6,7 @@ export class MeetupAutomationClient implements PlatformClient {
   readonly platform = 'meetup' as const;
   private groupUrlname: string;
 
-  constructor(groupUrlname: string) {
+  constructor(groupUrlname = '') {
     this.groupUrlname = groupUrlname;
   }
 

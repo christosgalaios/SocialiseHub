@@ -8,6 +8,9 @@ import { SqliteServiceStore } from './data/sqlite-service-store.js';
 import { PlatformEventStore } from './data/platform-event-store.js';
 import { SyncLogStore } from './data/sync-log-store.js';
 import { PublishService } from './tools/publish-service.js';
+import { MeetupAutomationClient } from './automation/meetup-client.js';
+import { EventbriteAutomationClient } from './automation/eventbrite-client.js';
+import { HeadfirstAutomationClient } from './automation/headfirst-client.js';
 import { createEventsRouter } from './routes/events.js';
 import { createServicesRouter } from './routes/services.js';
 import { createSyncRouter } from './routes/sync.js';
@@ -29,8 +32,11 @@ export function createApp(deps?: AppDeps): express.Express {
   const platformEventStore = new PlatformEventStore(db);
   const syncLogStore = new SyncLogStore(db);
 
-  // PublishService initialized with empty clients — real clients come in Tasks 12-14
-  const publishService = new PublishService({});
+  const publishService = new PublishService({
+    meetup: new MeetupAutomationClient(),
+    eventbrite: new EventbriteAutomationClient(),
+    headfirst: new HeadfirstAutomationClient(),
+  });
 
   const app = express();
 

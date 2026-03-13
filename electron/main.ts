@@ -561,7 +561,7 @@ function setupIpcHandlers(config: AppConfig): void {
       const dispatch: Record<string, Record<string, StepFn | undefined>> = {
         meetup: {
           connect: () => meetupConnectSteps(),
-          publish: () => meetupPublishSteps(request.data, request.data?.groupUrlname ?? ''),
+          publish: () => meetupPublishSteps(request.data, request.data?.groupUrlname ?? '', request.data?.draft === true),
           scrape: () => meetupScrapeSteps(request.data?.groupUrlname ?? ''),
         },
         eventbrite: {
@@ -640,7 +640,7 @@ app.whenReady().then(async () => {
             const dispatch: Record<string, Record<string, StepFn | undefined>> = {
               meetup: {
                 connect: () => meetupConnectSteps(),
-                publish: () => meetupPublishSteps(request.data, request.data?.groupUrlname ?? ''),
+                publish: () => meetupPublishSteps(request.data, request.data?.groupUrlname ?? '', request.data?.draft === true),
                 scrape: () => meetupScrapeSteps(request.data?.groupUrlname ?? ''),
               },
               eventbrite: {
