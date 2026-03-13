@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^5.0.6",
     "@types/node": "^20.11.0",
     "@types/react": "^19.2.14",
@@ -60,6 +61,7 @@
     "vitest": "^3.0.0"
   },
   "dependencies": {
+    "better-sqlite3": "^12.6.2",
     "express": "^5.2.1",
     "node-pty": "^1.1.0"
   }
