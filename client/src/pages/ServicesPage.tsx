@@ -8,7 +8,8 @@ import {
   startOAuth,
   watchOAuthStatus,
 } from '../api/events';
-import { PLATFORM_COLORS, PLATFORM_ICONS, PLATFORM_FIELDS } from '../lib/platforms';
+import { PLATFORM_COLORS, PLATFORM_ICONS } from '../lib/platforms';
+import { CredentialsForm } from '../components/CredentialsForm';
 
 // Electron API (available when running inside Electron)
 declare global {
@@ -16,6 +17,10 @@ declare global {
     electronAPI?: {
       isElectron: boolean;
       openExternal: (url: string) => Promise<void>;
+      copyToClipboard: (text: string) => Promise<void>;
+      toggleClaudePanel: () => Promise<boolean>;
+      focusClaudePanel: () => Promise<void>;
+      isClaudePanelOpen: () => Promise<boolean>;
     };
   }
 }
@@ -80,11 +85,12 @@ export function ServicesPage() {
   };
 
   // ── Credential form flow (Headfirst only) ──────────────
-  const handleCredentialConnect = async (platform: PlatformName) => {
+  const handleCredentialConnect = async (platform: PlatformName, credentials?: Record<string, string>) => {
     setConnecting(platform);
     setError(null);
     try {
-      const updated = await connectService(platform, formValues);
+      const creds = credentials ?? formValues;
+      const updated = await connectService(platform, creds);
       setServices((prev) =>
         prev.map((s) => (s.platform === platform ? updated : s)),
       );
@@ -125,7 +131,6 @@ export function ServicesPage() {
       <div style={styles.grid}>
         {services.map((svc) => {
           const authType = PLATFORM_AUTH_TYPES[svc.platform];
-          const fields = PLATFORM_FIELDS[svc.platform];
           const color = PLATFORM_COLORS[svc.platform] ?? '#E2725B';
           const icon = PLATFORM_ICONS[svc.platform] ?? '?';
           const isFormOpen = showForm === svc.platform;
@@ -181,26 +186,14 @@ export function ServicesPage() {
               )}
 
               {/* Credential form (Headfirst only) */}
-              {isFormOpen && fields && authType === 'credentials' && (
-                <div style={styles.formSection}>
-                  {fields.map((f) => (
-                    <label key={f.key} style={styles.field}>
-                      <span style={styles.fieldLabel}>{f.label}</span>
-                      <input
-                        type={f.type ?? 'text'}
-                        style={styles.input}
-                        value={formValues[f.key] ?? ''}
-                        onChange={(e) =>
-                          setFormValues((prev) => ({
-                            ...prev,
-                            [f.key]: e.target.value,
-                          }))
-                        }
-                        placeholder={f.label}
-                      />
-                    </label>
-                  ))}
-                </div>
+              {isFormOpen && authType === 'credentials' && (
+                <CredentialsForm
+                  loading={connecting === svc.platform}
+                  error={error ?? undefined}
+                  onSubmit={(email, password) => {
+                    handleCredentialConnect(svc.platform, { email, password });
+                  }}
+                />
               )}
 
               <div style={styles.cardActions}>
@@ -222,26 +215,15 @@ export function ServicesPage() {
                       : `Login with ${svc.label}`}
                   </button>
                 ) : isFormOpen ? (
-                  <>
-                    <button
-                      style={styles.connectBtn}
-                      disabled={connecting === svc.platform}
-                      onClick={() => handleCredentialConnect(svc.platform)}
-                    >
-                      {connecting === svc.platform
-                        ? 'Connecting...'
-                        : 'Save Connection'}
-                    </button>
-                    <button
-                      style={styles.cancelBtn}
-                      onClick={() => {
-                        setShowForm(null);
-                        setFormValues({});
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </>
+                  <button
+                    style={styles.cancelBtn}
+                    onClick={() => {
+                      setShowForm(null);
+                      setFormValues({});
+                    }}
+                  >
+                    Cancel
+                  </button>
                 ) : (
                   <button
                     style={styles.connectBtn}

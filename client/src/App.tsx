@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
+import { DashboardPage } from './pages/DashboardPage';
 import { EventsPage } from './pages/EventsPage';
 import { EventDetailPage } from './pages/EventDetailPage';
 import { ServicesPage } from './pages/ServicesPage';
 import { EventGeneratorPage } from './pages/EventGeneratorPage';
 import { AppTesterPage } from './pages/AppTesterPage';
+import { SyncLogPage } from './pages/SyncLogPage';
 import { TerminalPanel } from './components/TerminalPanel';
 
 // Typed Electron API exposed via preload
@@ -23,10 +25,11 @@ const electronAPI = (window as unknown as { electronAPI?: ElectronAPI }).electro
 const isElectron = !!electronAPI?.isElectron;
 
 const navItems = [
-  { to: '/', label: 'Events', icon: '📅' },
-  { to: '/generator', label: 'Event Generator', icon: '💡' },
+  { to: '/', label: 'Dashboard', icon: '📊' },
+  { to: '/events', label: 'Events', icon: '📅' },
+  { to: '/generator', label: 'Generator', icon: '💡' },
   { to: '/services', label: 'Services', icon: '🔗' },
-  { to: '/tester', label: 'App Tester', icon: '🧪' },
+  { to: '/sync-log', label: 'Sync Log', icon: '📋' },
 ];
 
 const SIDEBAR_EXPANDED = 240;
@@ -184,11 +187,13 @@ export function App() {
         <div style={styles.contentColumn}>
           <main style={styles.main}>
             <Routes>
-              <Route path="/" element={<EventsPage />} />
+              <Route path="/" element={<DashboardPage />} />
+              <Route path="/events" element={<EventsPage />} />
               <Route path="/events/new" element={<EventDetailPage />} />
               <Route path="/events/:id" element={<EventDetailPage />} />
               <Route path="/generator" element={<EventGeneratorPage />} />
               <Route path="/services" element={<ServicesPage />} />
+              <Route path="/sync-log" element={<SyncLogPage />} />
               <Route path="/tester" element={<AppTesterPage />} />
             </Routes>
           </main>

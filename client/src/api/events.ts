@@ -6,6 +6,8 @@ import type {
   PlatformName,
   ServiceConnection,
   ScrapedEvent,
+  DashboardSummary,
+  SyncLogEntry,
 } from '@shared/types';
 
 const BASE = '/api';
@@ -160,9 +162,44 @@ export async function saveIdeaAsDraft(idea: {
     title: idea.title,
     description: idea.description,
     venue: idea.venue ?? '',
-    date: idea.date ?? new Date().toISOString().split('T')[0],
-    time: '19:00',
+    start_time: idea.date ? `${idea.date}T19:00:00+01:00` : new Date().toISOString(),
+    duration_minutes: 120,
     price: 0,
     capacity: 50,
+  });
+}
+
+// ── Dashboard ──────────────────────────────────────────
+
+export async function getDashboardSummary(): Promise<DashboardSummary> {
+  const res = await fetch(`${BASE}/sync/dashboard/summary`);
+  const body = await json<{ data: DashboardSummary }>(res);
+  return body.data;
+}
+
+// ── Sync ───────────────────────────────────────────────
+
+export async function syncPull(): Promise<{ pulled: number }> {
+  const res = await fetch(`${BASE}/sync/pull`, { method: 'POST' });
+  const body = await json<{ data: { pulled: number } }>(res);
+  return body.data;
+}
+
+export async function getSyncLog(limit = 50): Promise<SyncLogEntry[]> {
+  const res = await fetch(`${BASE}/sync/log?limit=${limit}`);
+  const body = await json<{ data: SyncLogEntry[] }>(res);
+  return body.data;
+}
+
+// ── Service Setup ──────────────────────────────────────
+
+export async function setupService(
+  platform: PlatformName,
+  config: Record<string, unknown>,
+): Promise<void> {
+  await fetch(`${BASE}/services/${platform}/setup`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(config),
   });
 }

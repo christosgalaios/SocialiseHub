@@ -7,6 +7,17 @@ const PLATFORMS: { name: PlatformName; label: string }[] = [
   { name: 'headfirst', label: 'Headfirst Bristol' },
 ];
 
+function toDatetimeLocal(isoStr?: string): string {
+  if (!isoStr) return '';
+  try {
+    const d = new Date(isoStr);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch {
+    return isoStr;
+  }
+}
+
 interface EventFormProps {
   initial?: Partial<CreateEventInput>;
   onSubmit: (values: CreateEventInput) => void;
@@ -22,8 +33,9 @@ export function EventForm({
 }: EventFormProps) {
   const [title, setTitle] = useState(initial.title ?? '');
   const [description, setDescription] = useState(initial.description ?? '');
-  const [date, setDate] = useState(initial.date ?? '');
-  const [time, setTime] = useState(initial.time ?? '');
+  const [startTime, setStartTime] = useState(toDatetimeLocal(initial.start_time));
+  const [endTime, setEndTime] = useState(toDatetimeLocal(initial.end_time));
+  const [durationMinutes, setDurationMinutes] = useState(initial.duration_minutes ?? 120);
   const [venue, setVenue] = useState(initial.venue ?? '');
   const [price, setPrice] = useState(initial.price ?? 0);
   const [capacity, setCapacity] = useState(initial.capacity ?? 50);
@@ -38,7 +50,17 @@ export function EventForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit({ title, description, date, time, venue, price, capacity, platforms });
+    onSubmit({
+      title,
+      description,
+      start_time: startTime ? new Date(startTime).toISOString() : new Date().toISOString(),
+      end_time: endTime ? new Date(endTime).toISOString() : undefined,
+      duration_minutes: durationMinutes,
+      venue,
+      price,
+      capacity,
+      platforms,
+    });
   };
 
   return (
@@ -67,23 +89,34 @@ export function EventForm({
         </label>
 
         <label style={styles.field}>
-          <span style={styles.label}>Date</span>
+          <span style={styles.label}>Start Time</span>
           <input
             style={styles.input}
-            type="date"
-            value={date}
-            onChange={(e) => setDate(e.target.value)}
+            type="datetime-local"
+            value={startTime}
+            onChange={(e) => setStartTime(e.target.value)}
             required
           />
         </label>
 
         <label style={styles.field}>
-          <span style={styles.label}>Time</span>
+          <span style={styles.label}>End Time (optional)</span>
           <input
             style={styles.input}
-            type="time"
-            value={time}
-            onChange={(e) => setTime(e.target.value)}
+            type="datetime-local"
+            value={endTime}
+            onChange={(e) => setEndTime(e.target.value)}
+          />
+        </label>
+
+        <label style={styles.field}>
+          <span style={styles.label}>Duration (minutes)</span>
+          <input
+            style={styles.input}
+            type="number"
+            min="1"
+            value={durationMinutes}
+            onChange={(e) => setDurationMinutes(Number(e.target.value))}
             required
           />
         </label>

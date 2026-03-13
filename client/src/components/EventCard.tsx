@@ -25,7 +25,15 @@ export function EventCard({
       </div>
 
       <div style={styles.meta}>
-        <span>{event.date} at {event.time}</span>
+        <span>
+          {new Date(event.start_time).toLocaleDateString('en-GB', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
+        </span>
         <span style={styles.dot} />
         <span>{event.venue}</span>
       </div>
