@@ -211,6 +211,8 @@ let claudeView: WebContentsView | null = null;
 let claudePanelOpen = true;
 let claudeViewAttached = false;
 let ptyProcess: ReturnType<typeof pty.spawn> | null = null;
+let automationView: WebContentsView | null = null;
+let automationViewAttached = false;
 
 // ── Layout management ───────────────────────────────────
 
@@ -242,6 +244,14 @@ function layoutViews(win: BaseWindow, panelWidth: number): void {
       claudeViewAttached = false;
     }
   }
+
+  // If automation view is showing, re-layout it too
+  if (automationViewAttached && automationView) {
+    const appWidth = Math.max(400, width - panelWidth);
+    const actualPanelWidth = width - appWidth;
+    appView?.setBounds({ x: 0, y: 0, width: appWidth, height });
+    automationView.setBounds({ x: appWidth, y: 0, width: actualPanelWidth, height });
+  }
 }
 
 function togglePanel(config: AppConfig): boolean {
@@ -266,6 +276,31 @@ function focusPanel(config: AppConfig): void {
   }
 
   claudeView.webContents.focus();
+}
+
+function showAutomationView(win: BaseWindow, panelWidth: number): void {
+  if (!automationView || automationViewAttached) return;
+  // Hide Claude panel if open
+  if (claudePanelOpen && claudeView && claudeViewAttached) {
+    win.contentView.removeChildView(claudeView);
+    claudeViewAttached = false;
+  }
+  win.contentView.addChildView(automationView);
+  automationViewAttached = true;
+  const { width, height } = win.getContentBounds();
+  const appWidth = Math.max(400, width - panelWidth);
+  const actualPanelWidth = width - appWidth;
+  appView?.setBounds({ x: 0, y: 0, width: appWidth, height });
+  automationView.setBounds({ x: appWidth, y: 0, width: actualPanelWidth, height });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used in Task 14
+function hideAutomationView(win: BaseWindow, config: AppConfig): void {
+  if (!automationView || !automationViewAttached) return;
+  win.contentView.removeChildView(automationView);
+  automationViewAttached = false;
+  // Restore layout (brings Claude panel back if it was open)
+  layoutViews(win, config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH);
 }
 
 // ── Window creation ─────────────────────────────────────
@@ -301,6 +336,20 @@ function createMainWindow(port: number, config: AppConfig, hasExtension: boolean
       nodeIntegration: false,
     },
   });
+
+  // ── Automation View (right panel — platform websites during automation) ──
+  const automationSession = session.fromPartition('persist:automation');
+  automationView = new WebContentsView({
+    webPreferences: {
+      session: automationSession,
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  // Set a standard Chrome user-agent to avoid bot detection
+  automationView.webContents.setUserAgent(
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36'
+  );
 
   // Add app view (always visible)
   win.contentView.addChildView(appView);
@@ -382,8 +431,10 @@ function createMainWindow(port: number, config: AppConfig, hasExtension: boolean
   win.on('closed', () => {
     appView = null;
     claudeView = null;
+    automationView = null;
     mainWindow = null;
     claudeViewAttached = false;
+    automationViewAttached = false;
   });
 
   return win;
@@ -486,6 +537,24 @@ function setupIpcHandlers(config: AppConfig): void {
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) };
     }
+  });
+
+  // ── Browser Automation handlers ──
+
+  ipcMain.handle('automation:start', async (_event, _request) => {
+    if (!mainWindow) return;
+    const panelWidth = config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
+    showAutomationView(mainWindow, panelWidth);
+    // Actual automation execution is handled by the HTTP bridge (Task 4)
+    // This IPC handler just shows the view — the bridge server runs the scripts
+  });
+
+  ipcMain.handle('automation:cancel', () => {
+    // Will be wired to AutomationEngine.cancel() in Task 14
+  });
+
+  ipcMain.handle('automation:resume', () => {
+    // Will be wired to resume logic in Task 14
   });
 }
 

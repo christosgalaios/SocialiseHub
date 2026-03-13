@@ -69,4 +69,30 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   /** Execute JavaScript in the app view context (for controlling the app) */
   executeInApp: (code: string) => ipcRenderer.invoke('execute-in-app', code),
+
+  // ── Browser Automation ──
+
+  /** Start a browser automation task (connect, publish, scrape) */
+  startAutomation: (request: { platform: string; action: string; data?: unknown; externalId?: string }) =>
+    ipcRenderer.invoke('automation:start', request),
+
+  /** Cancel the currently running automation task */
+  cancelAutomation: () => ipcRenderer.invoke('automation:cancel'),
+
+  /** Resume automation after user intervention (login, CAPTCHA) */
+  resumeAutomation: () => ipcRenderer.invoke('automation:resume'),
+
+  /** Subscribe to automation status updates. Returns cleanup function. */
+  onAutomationStatus: (callback: (status: { step: number; totalSteps: number; description: string; state: string }) => void) => {
+    const handler = (_event: unknown, status: { step: number; totalSteps: number; description: string; state: string }) => callback(status);
+    ipcRenderer.on('automation:status', handler);
+    return () => { ipcRenderer.removeListener('automation:status', handler); };
+  },
+
+  /** Subscribe to automation result events. Returns cleanup function. */
+  onAutomationResult: (callback: (result: { success: boolean; error?: string; data?: unknown }) => void) => {
+    const handler = (_event: unknown, result: { success: boolean; error?: string; data?: unknown }) => callback(result);
+    ipcRenderer.on('automation:result', handler);
+    return () => { ipcRenderer.removeListener('automation:result', handler); };
+  },
 });
