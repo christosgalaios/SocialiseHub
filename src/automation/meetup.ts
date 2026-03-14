@@ -313,10 +313,20 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
               variables: vars,
             }),
           });
-          if (!resp.ok) return { edges: [], hasNext: false, cursor: null };
+          if (!resp.ok) {
+            console.error('[meetup-scrape] GraphQL HTTP error:', resp.status, resp.statusText);
+            return { edges: [], hasNext: false, cursor: null, error: 'HTTP ' + resp.status };
+          }
           const json = await resp.json();
-          if (json.errors) return { edges: [], hasNext: false, cursor: null };
-          const data = json?.data?.groupByUrlname?.events ?? {};
+          if (json.errors) {
+            console.error('[meetup-scrape] GraphQL errors:', JSON.stringify(json.errors));
+            return { edges: [], hasNext: false, cursor: null, error: json.errors[0]?.message };
+          }
+          if (!json?.data?.groupByUrlname) {
+            console.error('[meetup-scrape] groupByUrlname is null — auth may have expired');
+            return { edges: [], hasNext: false, cursor: null, error: 'groupByUrlname null' };
+          }
+          const data = json.data.groupByUrlname.events ?? {};
           return {
             edges: data.edges ?? [],
             hasNext: data.pageInfo?.hasNextPage ?? false,
@@ -348,15 +358,57 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
           }
         }
 
-        // Fetch upcoming events (ACTIVE + DRAFT)
-        await fetchAllWithStatus('ACTIVE', 'active');
-        await fetchAllWithStatus('DRAFT', 'draft');
+        // Try a single test query first to check auth
+        const testResult = await fetchPage('ACTIVE', null);
+        if (testResult.error) {
+          return JSON.stringify({ error: 'Meetup API error: ' + testResult.error + ' — try reconnecting Meetup from Services page' });
+        }
 
-        // Fetch past events (PAST + CANCELLED + CANCELLED_PERM)
+        // Process test result events
+        for (const e of testResult.edges) {
+          if (seen.has(e.node.id)) continue;
+          seen.add(e.node.id);
+          allEvents.push({
+            externalId: e.node.id, title: e.node.title,
+            date: e.node.dateTime, venue: e.node.venue?.name ?? '',
+            url: e.node.eventUrl, status: 'active',
+            going: e.node.going ?? null,
+            maxTickets: e.node.maxTickets ?? null,
+            fee: e.node.feeSettings?.amount ?? null,
+            description: e.node.description ?? null,
+            imageUrl: e.node.imageUrl ?? null,
+          });
+        }
+
+        // Continue fetching remaining ACTIVE pages
+        if (testResult.hasNext && testResult.cursor) {
+          let cursor = testResult.cursor;
+          for (let page = 1; page < 10; page++) {
+            const result = await fetchPage('ACTIVE', cursor);
+            for (const e of result.edges) {
+              if (seen.has(e.node.id)) continue;
+              seen.add(e.node.id);
+              allEvents.push({
+                externalId: e.node.id, title: e.node.title,
+                date: e.node.dateTime, venue: e.node.venue?.name ?? '',
+                url: e.node.eventUrl, status: 'active',
+                going: e.node.going ?? null, maxTickets: e.node.maxTickets ?? null,
+                fee: e.node.feeSettings?.amount ?? null,
+                description: e.node.description ?? null, imageUrl: e.node.imageUrl ?? null,
+              });
+            }
+            if (!result.hasNext || !result.cursor) break;
+            cursor = result.cursor;
+          }
+        }
+
+        // Fetch other statuses
+        await fetchAllWithStatus('DRAFT', 'draft');
         await fetchAllWithStatus('PAST', 'past');
         await fetchAllWithStatus('CANCELLED', 'cancelled');
         await fetchAllWithStatus('CANCELLED_PERM', 'cancelled');
 
+        console.log('[meetup-scrape] Total events scraped:', allEvents.length);
         return JSON.stringify(allEvents);
       })()`,
       description: 'Fetching upcoming and past events via API...',
