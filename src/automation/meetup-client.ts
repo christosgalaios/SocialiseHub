@@ -62,13 +62,24 @@ export class MeetupAutomationClient implements PlatformClient {
     if (!result.success) {
       throw new Error(`Meetup scrape failed: ${result.error ?? 'Bridge not available — is the Electron app running?'}`);
     }
-    const parsed = typeof result.data?.lastEvalResult === 'string'
-      ? JSON.parse(result.data.lastEvalResult) : result.data?.lastEvalResult;
-    if (!Array.isArray(parsed)) {
-      if (parsed?.error) throw new Error(parsed.error);
-      return [];
+    const rawEval = result.data?.lastEvalResult;
+    console.log('[meetup-client] rawEval type:', typeof rawEval, 'preview:', String(rawEval).slice(0, 200));
+    const parsed = typeof rawEval === 'string' ? JSON.parse(rawEval) : rawEval;
+    // Handle both raw array and wrapped { success, events } response shapes
+    let events: Array<Record<string, unknown>>;
+    if (Array.isArray(parsed)) {
+      events = parsed;
+    } else if (parsed && typeof parsed === 'object') {
+      if (parsed.error) throw new Error(`Meetup scrape error: ${parsed.error}`);
+      if (Array.isArray(parsed.events)) {
+        events = parsed.events;
+      } else {
+        throw new Error(`Meetup scrape returned unexpected data: ${JSON.stringify(parsed).slice(0, 200)}`);
+      }
+    } else {
+      throw new Error(`Meetup scrape returned null/undefined result`);
     }
-    const events = parsed;
+    console.log('[meetup-client] parsed', events.length, 'events');
     return events.map((e: Record<string, unknown>) => {
       // Normalize date to ISO without timezone offset (SQLite strftime compatibility)
       let dateStr = String(e.date ?? '');
