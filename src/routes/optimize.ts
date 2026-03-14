@@ -60,6 +60,23 @@ export function createOptimizeRouter(db: Database, eventStore: SqliteEventStore)
   });
 
   /**
+   * POST /api/events/:id/magic-fill
+   * Composes a deep optimisation prompt asking Claude to return all key event fields.
+   * Returns { prompt, eventId } — the client sends the prompt to Claude and applies the response.
+   */
+  router.post('/:id/magic-fill', async (req, res, next) => {
+    try {
+      const event = eventStore.getById(req.params.id);
+      if (!event) return res.status(404).json({ error: 'Event not found' });
+
+      const prompt = composeMagicFillPrompt(event);
+      res.json({ prompt, eventId: req.params.id });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
    * POST /api/events/:id/optimize/photos/search
    * Searches Unsplash for photos related to the event.
    */
@@ -193,6 +210,46 @@ Analyse this event and provide an optimised version. Return ONLY a JSON block, t
   "rationale": "Brief explanation of key changes"
 }
 \`\`\``;
+}
+
+function composeMagicFillPrompt(event: SocialiseEvent): string {
+  const today = new Date().toISOString().split('T')[0];
+  return `You are an expert event copywriter and strategist for **Socialise**, a social events company in Bristol, UK. Your goal is to make this event sell out.
+
+## Today's Date
+${today}
+
+## Current Event Details
+- **Title:** ${event.title || '(not set)'}
+- **Description:** ${event.description || '(empty)'}
+- **Date/Time:** ${event.start_time}
+- **Duration:** ${event.duration_minutes ?? 120} minutes
+- **Venue:** ${event.venue || '(not set)'}
+- **Price:** £${event.price ?? 0}
+- **Capacity:** ${event.capacity ?? 50}
+
+## Your Task
+
+Return ONLY a JSON object with the following fields. No markdown, no explanation outside the JSON:
+
+\`\`\`json
+{
+  "title": "SEO-optimised title (≤80 chars, punchy, location-aware, audience-targeted)",
+  "description": "Compelling 150-300 word description: open with a hook, bullet-point value propositions, end with a clear call-to-action. Write for someone scrolling Meetup or Eventbrite.",
+  "venue": "Specific Bristol venue suggestion (name + area, e.g. 'The Watershed, Harbourside') or leave current if it fits",
+  "price": 12,
+  "capacity": 50,
+  "duration_minutes": 120
+}
+\`\`\`
+
+Guidelines:
+- Title: include the activity type and a benefit or audience hook (e.g. "Bristol Board Game Night — Make New Friends Every Week")
+- Description: lead with what attendees will experience, not logistics; use 3-5 bullet points; close with urgency or scarcity
+- Venue: suggest a real Bristol venue that fits the event vibe; keep it if already good
+- Price: set competitively for Bristol (social events: £5-15; specialist/workshop: £15-35)
+- Capacity: realistic for the venue type suggested
+- duration_minutes: appropriate for the event type`;
 }
 
 function composeImageGenPrompt(event: SocialiseEvent): string {
