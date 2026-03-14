@@ -53,7 +53,15 @@ export async function linkPlatformEventToEvent(
     eventStore.updateStatus(pe.eventId, mapPlatformStatus(pe.status));
     eventStore.updateSyncStatus(pe.eventId, 'synced');
   } else {
-    // New platform event — create a matching event row
+    // New platform event — check if a matching event already exists (cross-platform dedup)
+    const match = eventStore.findMatch(pe.title, pe.date ?? undefined);
+    if (match) {
+      // Link to existing event instead of creating a duplicate
+      platformEventStore.linkToEvent(pe.id, match.id);
+      return;
+    }
+
+    // No match — create a new event row
     const newEvent = eventStore.create({
       title: pe.title || 'Untitled',
       description: '',

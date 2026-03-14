@@ -89,6 +89,42 @@ export class SqliteEventStore {
     return this.rowToEvent(row);
   }
 
+  /**
+   * Find an existing event that matches by normalized title + same date.
+   * Used for cross-platform deduplication during sync.
+   */
+  findMatch(title: string, date?: string): SocialiseEvent | undefined {
+    if (!title) return undefined;
+    // Normalize: lowercase, strip emojis/special chars, collapse whitespace
+    const normalize = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+    const normalizedTitle = normalize(title);
+    if (!normalizedTitle) return undefined;
+
+    // Search by date first (narrows candidates), then fuzzy match title
+    let candidates: EventRow[];
+    if (date) {
+      // Match events on the same day
+      const datePrefix = date.slice(0, 10); // YYYY-MM-DD
+      candidates = this.db
+        .prepare<[string], EventRow>(`SELECT * FROM events WHERE start_time LIKE ? || '%'`)
+        .all(datePrefix);
+    } else {
+      // No date — search all (expensive, but rare)
+      candidates = this.db.prepare<[], EventRow>('SELECT * FROM events').all();
+    }
+
+    for (const row of candidates) {
+      const candidateTitle = normalize(row.title);
+      // Exact match after normalization
+      if (candidateTitle === normalizedTitle) return this.rowToEvent(row);
+      // One title contains the other (handles slight differences like "Bristol" suffix)
+      if (candidateTitle.includes(normalizedTitle) || normalizedTitle.includes(candidateTitle)) {
+        return this.rowToEvent(row);
+      }
+    }
+    return undefined;
+  }
+
   create(input: CreateEventInput): SocialiseEvent {
     const id = randomUUID();
     const now = new Date().toISOString();
