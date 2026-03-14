@@ -225,6 +225,39 @@ export async function createEventFromTemplate(templateId: string): Promise<Socia
   return body.data;
 }
 
+// ── Analytics ──────────────────────────────────────────
+
+export async function getAnalyticsSummary(): Promise<{
+  total_events: number;
+  total_attendees: number;
+  total_revenue: number;
+  avg_fill_rate: number;
+}> {
+  const res = await fetch(`${BASE}/analytics/summary`);
+  const body = await json<{ data: { total_events: number; total_attendees: number; total_revenue: number; avg_fill_rate: number } }>(res);
+  return body.data;
+}
+
+export async function getAnalyticsTrends(params?: { startDate?: string; endDate?: string }): Promise<{
+  attendanceByMonth: { month: string; attendees: number; events_with_data: number }[];
+  revenueByMonth: { month: string; revenue: number }[];
+  fillByType: { platform: string; avg_fill: number; event_count: number }[];
+  timingData: { day_of_week: number; hour: number; event_count: number; avg_attendance: number }[];
+}> {
+  const qs = new URLSearchParams();
+  if (params?.startDate) qs.set('startDate', params.startDate);
+  if (params?.endDate) qs.set('endDate', params.endDate);
+  const res = await fetch(`${BASE}/analytics/trends${qs.toString() ? '?' + qs.toString() : ''}`);
+  const body = await json<{ data: { attendanceByMonth: { month: string; attendees: number; events_with_data: number }[]; revenueByMonth: { month: string; revenue: number }[]; fillByType: { platform: string; avg_fill: number; event_count: number }[]; timingData: { day_of_week: number; hour: number; event_count: number; avg_attendance: number }[] } }>(res);
+  return body.data;
+}
+
+export async function getAnalyticsInsights(): Promise<{ prompt: string }> {
+  const res = await fetch(`${BASE}/analytics/insights`, { method: 'POST' });
+  const body = await json<{ data: { prompt: string } }>(res);
+  return body.data;
+}
+
 // ── Service Setup ──────────────────────────────────────
 
 export async function setupService(
