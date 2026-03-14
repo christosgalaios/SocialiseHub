@@ -65,7 +65,7 @@ export function meetupConnectSteps(): AutomationStep[] {
                   });
                 }
 
-                const orgGroup = result.groups.find(g => g.isOrganizer);
+                const orgGroup = result.groups.find(g => g.isOrganizer) ?? result.groups[0];
                 result.groupUrlname = orgGroup?.urlname ?? null;
                 return JSON.stringify(result);
               }
