@@ -12,6 +12,12 @@ import { VALID_PLATFORMS } from '../shared/types.js';
  * Skips update if the event has local edits (sync_status === 'modified').
  * Links the platform_event to the event row after creation.
  */
+function mapPlatformStatus(platformStatus: string): 'draft' | 'published' | 'cancelled' {
+  if (platformStatus === 'active' || platformStatus === 'past') return 'published';
+  if (platformStatus === 'cancelled') return 'cancelled';
+  return 'draft';
+}
+
 export async function linkPlatformEventToEvent(
   pe: PlatformEvent,
   eventStore: SqliteEventStore,
@@ -31,6 +37,7 @@ export async function linkPlatformEventToEvent(
         price: 0,
         capacity: pe.capacity ?? 0,
       });
+      eventStore.updateStatus(newEvent.id, mapPlatformStatus(pe.status));
       eventStore.updateSyncStatus(newEvent.id, 'synced');
       platformEventStore.linkToEvent(pe.id, newEvent.id);
       return;
@@ -43,6 +50,7 @@ export async function linkPlatformEventToEvent(
       start_time: pe.date ?? existing.start_time,
       venue: pe.venue ?? existing.venue,
     });
+    eventStore.updateStatus(pe.eventId, mapPlatformStatus(pe.status));
     eventStore.updateSyncStatus(pe.eventId, 'synced');
   } else {
     // New platform event — create a matching event row
@@ -54,8 +62,8 @@ export async function linkPlatformEventToEvent(
       venue: pe.venue ?? '',
       price: 0,
       capacity: 0,
-      sync_status: 'synced',
     });
+    eventStore.updateStatus(newEvent.id, mapPlatformStatus(pe.status));
     eventStore.updateSyncStatus(newEvent.id, 'synced');
     platformEventStore.linkToEvent(pe.id, newEvent.id);
   }
