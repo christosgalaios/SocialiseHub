@@ -132,12 +132,11 @@ export function createSyncRouter(
         if (!client) continue;
 
         try {
-          // Clear cached data for this platform — pull fresh
-          // NOTE: snapshots are intentionally NOT cleared here — they track last known state
-          platformEventStore.clearPlatform(svc.platform, eventStore);
-
           const events = await client.fetchEvents();
+          // Track which external IDs we pulled for stale cleanup after
+          const pulledExternalIds = new Set<string>();
           for (const pe of events) {
+            pulledExternalIds.add(pe.externalId);
             const upserted = platformEventStore.upsert({
               platform: pe.platform,
               externalId: pe.externalId,
@@ -251,12 +250,14 @@ export function createSyncRouter(
               // If incoming hash matches snapshot — platform unchanged, no action needed
             }
           }
+          // Clean up platform_events that weren't in this pull (deleted on platform)
+          const staleRemoved = platformEventStore.cleanStale(svc.platform, pulledExternalIds);
           totalPulled += events.length;
           syncLogStore.log({
             platform: svc.platform,
             action: 'pull',
             status: 'success',
-            message: `Pulled ${events.length} events`,
+            message: `Pulled ${events.length} events` + (staleRemoved > 0 ? `, removed ${staleRemoved} stale` : ''),
           });
         } catch (err) {
           syncLogStore.log({

@@ -162,31 +162,22 @@ export class PlatformEventStore {
   }
 
   /**
-   * Clear all platform_events for a platform and delete orphaned synced events.
-   * Preserves events shared with other platforms and locally modified events.
+   * After a successful pull, remove platform_events that weren't in the fresh pull.
+   * Called with the set of external_ids that were just pulled.
+   * Does NOT delete events — just unlinks stale platform_events.
    */
-  clearPlatform(platform: PlatformName, eventStore?: { delete(id: string): void; getById(id: string): { sync_status?: string } | undefined }): void {
-    // Find events ONLY linked to this platform (not shared with others)
-    const onlyThisPlatform = this.db.prepare(`
-      SELECT pe.event_id FROM platform_events pe
-      WHERE pe.platform = ? AND pe.event_id IS NOT NULL
-        AND pe.event_id NOT IN (
-          SELECT event_id FROM platform_events
-          WHERE platform != ? AND event_id IS NOT NULL
-        )
-    `).all(platform, platform) as Array<{ event_id: string }>;
+  cleanStale(platform: PlatformName, freshExternalIds: Set<string>): number {
+    const existing = this.db.prepare(
+      'SELECT id, external_id FROM platform_events WHERE platform = ?'
+    ).all(platform) as Array<{ id: string; external_id: string }>;
 
-    // Delete platform_events for this platform
-    this.db.prepare('DELETE FROM platform_events WHERE platform = ?').run(platform);
-
-    // Delete orphaned events that were only on this platform and are synced
-    if (eventStore) {
-      for (const { event_id } of onlyThisPlatform) {
-        const ev = eventStore.getById(event_id);
-        if (ev && ev.sync_status === 'synced') {
-          eventStore.delete(event_id);
-        }
+    let removed = 0;
+    for (const row of existing) {
+      if (!freshExternalIds.has(row.external_id)) {
+        this.db.prepare('DELETE FROM platform_events WHERE id = ?').run(row.id);
+        removed++;
       }
     }
+    return removed;
   }
 }

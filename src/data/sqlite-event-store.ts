@@ -213,8 +213,14 @@ export class SqliteEventStore {
   }
 
   delete(id: string): boolean {
+    // Clean up FK references before deleting
+    this.db.prepare('DELETE FROM event_sync_snapshots WHERE event_id = ?').run(id);
+    this.db.prepare('DELETE FROM event_photos WHERE event_id = ?').run(id);
+    this.db.prepare('DELETE FROM event_scores WHERE event_id = ?').run(id);
+    this.db.prepare('DELETE FROM event_snapshots WHERE event_id = ?').run(id);
+    this.db.prepare('UPDATE platform_events SET event_id = NULL WHERE event_id = ?').run(id);
     const result = this.db
-      .prepare(`DELETE FROM events WHERE id = ?`)
+      .prepare('DELETE FROM events WHERE id = ?')
       .run(id);
     return result.changes > 0;
   }
