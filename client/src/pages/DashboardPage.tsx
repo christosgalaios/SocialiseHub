@@ -1,35 +1,58 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { SocialiseEvent, DashboardSummary } from '@shared/types';
-import { getEvents, getDashboardSummary, syncPull } from '../api/events';
-import { DashboardSummaryCards } from '../components/DashboardSummary';
-import { EventTimeline } from '../components/EventTimeline';
+import { syncPull } from '../api/events';
+import { getAttentionItems, getUpcomingEvents, getPerformance } from '../api/dashboard';
+import type { AttentionItem, UpcomingEvent, PerformanceStats } from '../api/dashboard';
+import { AttentionSection } from '../components/dashboard/AttentionSection';
+import { UpcomingSection } from '../components/dashboard/UpcomingSection';
+import { PerformanceSection } from '../components/dashboard/PerformanceSection';
+import { SuggestionsSection } from '../components/dashboard/SuggestionsSection';
 import { useToast } from '../context/ToastContext';
 import { ListSkeleton } from '../components/Skeleton';
 
 const SYNC_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
+interface DashboardData {
+  attentionItems: AttentionItem[];
+  upcomingEvents: UpcomingEvent[];
+  performance: PerformanceStats;
+}
+
 export function DashboardPage() {
-  const [events, setEvents] = useState<SocialiseEvent[]>([]);
-  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
   const { showToast } = useToast();
 
   const load = useCallback(async () => {
     try {
       setLoading(true);
-      const [evts, summ] = await Promise.all([
-        getEvents(),
-        getDashboardSummary().catch(() => null),
+      setError(null);
+      const [attentionRes, upcomingRes, perfRes] = await Promise.all([
+        getAttentionItems().catch(() => ({ items: [], count: 0 })),
+        getUpcomingEvents().catch(() => ({ events: [] })),
+        getPerformance().catch(() => ({
+          data: {
+            upcomingCount: 0,
+            attendeesLast30: 0,
+            attendeesTrend: 'flat' as const,
+            revenueLast30: 0,
+            revenueTrend: 'flat' as const,
+            avgFillRate: null,
+          },
+        })),
       ]);
-      setEvents(evts);
-      setSummary(summ);
+      setData({
+        attentionItems: attentionRes.items,
+        upcomingEvents: upcomingRes.events,
+        performance: perfRes.data,
+      });
     } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to load dashboard', 'error');
+      setError(err instanceof Error ? err.message : 'Failed to load dashboard');
     } finally {
       setLoading(false);
     }
-  }, [showToast]);
+  }, []);
 
   const handleSync = useCallback(async () => {
     setSyncing(true);
@@ -58,6 +81,7 @@ export function DashboardPage() {
 
   return (
     <div>
+      {/* Header */}
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>Dashboard</h1>
@@ -75,43 +99,22 @@ export function DashboardPage() {
         </div>
       </div>
 
-      {loading ? (
-        <ListSkeleton rows={6} />
-      ) : (
-        <>
-          {summary ? (
-            <DashboardSummaryCards summary={summary} />
-          ) : (
-            <div style={styles.fallbackSummary}>
-              <DashboardSummaryCards
-                summary={{
-                  totalEvents: events.length,
-                  eventsThisWeek: 0,
-                  eventsThisMonth: 0,
-                  byPlatform: { meetup: 0, eventbrite: 0, headfirst: 0 },
-                  upcomingEvents: 0,
-                  pastEvents: 0,
-                  draftEvents: 0,
-                  monthlyTrend: [],
-                }}
-              />
-            </div>
-          )}
+      {/* Loading */}
+      {loading && <ListSkeleton rows={8} />}
 
-          {events.length === 0 ? (
-            <div style={styles.empty}>
-              <p style={styles.emptyTitle}>No events yet</p>
-              <p style={styles.emptyDesc}>
-                Connect your platforms in Services to get started.
-              </p>
-            </div>
-          ) : (
-            <div>
-              <h2 style={styles.sectionTitle}>All Events</h2>
-              <EventTimeline events={events} />
-            </div>
-          )}
-        </>
+      {/* Error */}
+      {!loading && error && (
+        <div style={styles.errorBanner}>{error}</div>
+      )}
+
+      {/* Content */}
+      {!loading && !error && data && (
+        <div style={styles.sections}>
+          <AttentionSection items={data.attentionItems} />
+          <UpcomingSection events={data.upcomingEvents} />
+          <PerformanceSection stats={data.performance} />
+          <SuggestionsSection />
+        </div>
       )}
     </div>
   );
@@ -159,32 +162,17 @@ const styles: Record<string, React.CSSProperties> = {
     fontFamily: "'Outfit', sans-serif",
     transition: 'opacity 0.2s',
   },
-  loading: {
-    color: '#7a7a7a',
+  errorBanner: {
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
+    borderRadius: 12,
+    padding: '14px 20px',
+    color: '#dc2626',
     fontSize: 14,
-    padding: '40px 0',
   },
-  fallbackSummary: {},
-  sectionTitle: {
-    fontFamily: "'Outfit', sans-serif",
-    fontSize: 18,
-    fontWeight: 600,
-    color: '#080810',
-    marginBottom: 16,
-  },
-  empty: {
-    textAlign: 'center' as const,
-    padding: '80px 0',
-  },
-  emptyTitle: {
-    fontFamily: "'Outfit', sans-serif",
-    fontSize: 20,
-    fontWeight: 600,
-    color: '#080810',
-    marginBottom: 8,
-  },
-  emptyDesc: {
-    fontSize: 14,
-    color: '#7a7a7a',
+  sections: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 32,
   },
 };
