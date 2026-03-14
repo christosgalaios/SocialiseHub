@@ -83,6 +83,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // ── Browser Automation ──
 
+  /** Open a URL in the automation sidebar panel */
+  openInAutomationPanel: (url: string) => ipcRenderer.invoke('automation:open-url', url),
+
   /** Start a browser automation task (connect, publish, scrape) */
   startAutomation: (request: { platform: string; action: string; data?: unknown; externalId?: string }) =>
     ipcRenderer.invoke('automation:start', request),

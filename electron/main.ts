@@ -708,6 +708,13 @@ function setupIpcHandlers(config: AppConfig): void {
 
   let currentEngine: InstanceType<typeof import('../dist/automation/engine.js').AutomationEngine> | null = null;
 
+  ipcMain.handle('automation:open-url', (_event, url: string) => {
+    if (!mainWindow || !automationView) return;
+    const panelWidth = config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
+    showAutomationView(mainWindow, panelWidth);
+    automationView.webContents.loadURL(url);
+  });
+
   ipcMain.handle('automation:start', async (_event, request) => {
     if (!mainWindow || !automationView) return;
 

@@ -817,6 +817,23 @@ export function EventDetailPage() {
                 {ps.error && (
                   <span style={styles.errorBadge}>{ps.error}</span>
                 )}
+                {ps.externalUrl && (
+                  <button
+                    style={styles.viewPlatformBtn}
+                    onClick={() => {
+                      const w = window as any;
+                      if (w.electronAPI?.openInAutomationPanel) {
+                        // Open in Electron's sidebar browser
+                        w.electronAPI.openInAutomationPanel(ps.externalUrl);
+                      } else {
+                        // Web fallback — open in new tab
+                        window.open(ps.externalUrl, '_blank');
+                      }
+                    }}
+                  >
+                    View on {ps.platform.charAt(0).toUpperCase() + ps.platform.slice(1)} →
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -1122,6 +1139,19 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 600,
     background: '#fce8e6',
     color: '#c0392b',
+  },
+  viewPlatformBtn: {
+    padding: '4px 12px',
+    fontSize: 12,
+    fontWeight: 600,
+    background: '#2D5F5D',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 6,
+    cursor: 'pointer',
+    marginLeft: 'auto',
+    fontFamily: "'Outfit', sans-serif",
+    whiteSpace: 'nowrap',
   },
   externalId: {
     fontSize: 12,

@@ -34,6 +34,7 @@ interface EventRow {
 interface PlatformEventRow {
   platform: string;
   external_id: string;
+  external_url: string | null;
   published_at: string | null;
 }
 
@@ -43,7 +44,7 @@ export class SqliteEventStore {
   private rowToEvent(row: EventRow): SocialiseEvent {
     const platformRows = this.db
       .prepare<[string], PlatformEventRow>(
-        `SELECT platform, external_id, published_at
+        `SELECT platform, external_id, external_url, published_at
          FROM platform_events
          WHERE event_id = ?`,
       )
@@ -53,6 +54,7 @@ export class SqliteEventStore {
       platform: pr.platform as PlatformName,
       published: pr.published_at != null,
       externalId: pr.external_id,
+      externalUrl: pr.external_url ?? undefined,
       publishedAt: pr.published_at ?? undefined,
     }));
 

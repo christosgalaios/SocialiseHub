@@ -12,6 +12,7 @@ export interface PlatformPublishStatus {
   platform: PlatformName;
   published: boolean;
   externalId?: string;
+  externalUrl?: string;
   publishedAt?: string;
   error?: string;
 }
