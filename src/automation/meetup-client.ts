@@ -59,7 +59,9 @@ export class MeetupAutomationClient implements PlatformClient {
     const groupUrlname = this.getGroupUrlname();
     if (!groupUrlname) throw new Error('Meetup groupUrlname not configured — reconnect the Meetup service from the Services page');
     const result = await requestAutomation({ platform: 'meetup', action: 'scrape', data: { groupUrlname } });
-    if (!result.success) return [];
+    if (!result.success) {
+      throw new Error(`Meetup scrape failed: ${result.error ?? 'Bridge not available — is the Electron app running?'}`);
+    }
     const parsed = typeof result.data?.lastEvalResult === 'string'
       ? JSON.parse(result.data.lastEvalResult) : result.data?.lastEvalResult;
     if (!Array.isArray(parsed)) {

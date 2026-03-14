@@ -44,7 +44,9 @@ export class EventbriteAutomationClient implements PlatformClient {
 
   async fetchEvents(): Promise<PlatformEvent[]> {
     const result = await requestAutomation({ platform: 'eventbrite', action: 'scrape' });
-    if (!result.success) return [];
+    if (!result.success) {
+      throw new Error(`Eventbrite scrape failed: ${result.error ?? 'Bridge not available'}`);
+    }
     const parsed = typeof result.data?.lastEvalResult === 'string'
       ? JSON.parse(result.data.lastEvalResult) : result.data?.lastEvalResult;
     if (!Array.isArray(parsed)) {
