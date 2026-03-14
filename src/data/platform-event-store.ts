@@ -127,4 +127,10 @@ export class PlatformEventStore {
       .all(eventId);
     return rows.map(rowToEvent);
   }
+
+  linkToEvent(platformEventId: string, eventId: string): void {
+    this.db
+      .prepare('UPDATE platform_events SET event_id = ? WHERE id = ?')
+      .run(eventId, platformEventId);
+  }
 }
