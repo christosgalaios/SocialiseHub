@@ -340,17 +340,17 @@ export async function getAnalyticsInsights(): Promise<{ prompt: string }> {
 // ── Magic / Idea Queue ─────────────────────────────────
 
 export async function getNextIdea(): Promise<{ idea: QueuedIdea | null; remaining: number }> {
-  const res = await fetch(`${BASE}/ideas/next`);
+  const res = await fetch(`${BASE}/generator/ideas`);
   return json<{ idea: QueuedIdea | null; remaining: number }>(res);
 }
 
 export async function generateIdeasPrompt(): Promise<{ prompt: string }> {
-  const res = await fetch(`${BASE}/ideas/generate-prompt`, { method: 'POST' });
+  const res = await fetch(`${BASE}/generator/ideas/generate`, { method: 'POST' });
   return json<{ prompt: string }>(res);
 }
 
 export async function storeIdeas(ideas: any[]): Promise<{ stored: number }> {
-  const res = await fetch(`${BASE}/ideas`, {
+  const res = await fetch(`${BASE}/generator/ideas/store`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ ideas }),
@@ -359,7 +359,7 @@ export async function storeIdeas(ideas: any[]): Promise<{ stored: number }> {
 }
 
 export async function acceptIdea(ideaId: number): Promise<{ eventId: string }> {
-  const res = await fetch(`${BASE}/ideas/${ideaId}/accept`, { method: 'POST' });
+  const res = await fetch(`${BASE}/generator/ideas/${ideaId}/accept`, { method: 'POST' });
   return json<{ eventId: string }>(res);
 }
 
@@ -369,7 +369,7 @@ export async function magicFill(eventId: string): Promise<{ prompt: string; even
 }
 
 export async function autoFillPhotos(eventId: string): Promise<{ photos: any[] }> {
-  const res = await fetch(`${BASE}/events/${eventId}/auto-photos`, { method: 'POST' });
+  const res = await fetch(`${BASE}/events/${eventId}/photos/auto`, { method: 'POST' });
   return json<{ photos: any[] }>(res);
 }
 

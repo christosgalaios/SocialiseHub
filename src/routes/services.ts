@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import type { SqliteServiceStore } from '../data/sqlite-service-store.js';
+import type { Database } from '../data/database.js';
 import { VALID_PLATFORMS } from '../shared/types.js';
 import type { PlatformName } from '../shared/types.js';
 
@@ -7,7 +8,7 @@ function isValidPlatform(value: string): value is PlatformName {
   return VALID_PLATFORMS.includes(value as PlatformName);
 }
 
-export function createServicesRouter(serviceStore: SqliteServiceStore): Router {
+export function createServicesRouter(serviceStore: SqliteServiceStore, db?: Database): Router {
   const router = Router();
 
   router.get('/', (_req, res, next) => {
@@ -40,10 +41,29 @@ export function createServicesRouter(serviceStore: SqliteServiceStore): Router {
       if (!isValidPlatform(req.params.platform)) {
         return res.status(400).json({ error: 'Invalid platform' });
       }
-      const service = serviceStore.disconnect(req.params.platform);
+      const platform = req.params.platform;
+      const service = serviceStore.disconnect(platform);
       if (!service) {
         return res.status(404).json({ error: 'Platform not found' });
       }
+
+      // Clean up platform events and linked events for this platform
+      if (db) {
+        // Get event IDs linked to this platform's events before deleting
+        const linkedEvents = db.prepare(
+          'SELECT event_id FROM platform_events WHERE platform = ? AND event_id IS NOT NULL'
+        ).all(platform) as Array<{ event_id: string }>;
+
+        // Delete platform events
+        db.prepare('DELETE FROM platform_events WHERE platform = ?').run(platform);
+
+        // Delete linked events (only those created by sync, not manually created ones)
+        for (const { event_id } of linkedEvents) {
+          // Only delete if event has sync_status 'synced' (not locally modified)
+          db.prepare("DELETE FROM events WHERE id = ? AND sync_status = 'synced'").run(event_id);
+        }
+      }
+
       res.json({ data: service });
     } catch (err) {
       next(err);

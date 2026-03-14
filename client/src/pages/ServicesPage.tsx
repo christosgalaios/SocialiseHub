@@ -90,7 +90,10 @@ export function ServicesPage() {
           } else if (data && platform === 'headfirst' && data.organizationId) {
             await setupService(platform, { organizationId: data.organizationId, organizationName: data.organizationName });
           }
-        } catch { /* ignore */ }
+        } catch (err) {
+          console.error('Failed to store platform setup data:', err);
+          setError(`Connected but failed to save config: ${err instanceof Error ? err.message : 'unknown error'}`);
+        }
 
         load();
       } else {
