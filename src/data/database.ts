@@ -123,6 +123,14 @@ function runMigrations(db: Database): void {
 
     db.pragma('user_version = 6');
   }
+  if (currentVersion < 7) {
+    db.exec(`CREATE TABLE IF NOT EXISTS dashboard_suggestions (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      suggestions_json TEXT NOT NULL,
+      generated_at TEXT NOT NULL
+    )`);
+    db.pragma('user_version = 7');
+  }
 }
 
 function createSchema(db: Database): void {
