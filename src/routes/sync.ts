@@ -62,9 +62,17 @@ export async function linkPlatformEventToEvent(
     // New platform event — check if a matching event already exists (cross-platform dedup)
     const match = eventStore.findMatch(pe.title, pe.date ?? undefined);
     if (match) {
-      // Link to existing event instead of creating a duplicate
-      platformEventStore.linkToEvent(pe.id, match.id);
-      return;
+      // Only link if this platform doesn't already have a link to this event
+      // (prevents two Eventbrite events with same name both linking to one event)
+      const existingLinks = platformEventStore.getByEventId(match.id);
+      const alreadyLinkedOnSamePlatform = existingLinks.some(
+        (link) => link.platform === pe.platform
+      );
+      if (!alreadyLinkedOnSamePlatform) {
+        platformEventStore.linkToEvent(pe.id, match.id);
+        return;
+      }
+      // Same platform already has a link — fall through to create a new event
     }
 
     // No match — create a new event row
