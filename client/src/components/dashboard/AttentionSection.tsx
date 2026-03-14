@@ -40,7 +40,7 @@ export function AttentionSection({ items }: { items: AttentionItem[] }) {
       <div style={styles.list}>
         {items.map((item) => (
           <div
-            key={`${item.eventId}-${item.problem}`}
+            key={item.eventId}
             style={styles.card}
             onClick={() => navigate(`/events/${item.eventId}`)}
           >
@@ -59,7 +59,11 @@ export function AttentionSection({ items }: { items: AttentionItem[] }) {
               >
                 {item.urgency}
               </span>
-              <span style={styles.problemLabel}>{item.problemLabel}</span>
+              <span style={styles.problemLabel}>
+                {(item as any).problems
+                  ? (item as any).problems.map((p: any) => p.label).join(' · ')
+                  : item.problemLabel}
+              </span>
               <div style={styles.platforms}>
                 {item.platforms.map((p) => (
                   <span

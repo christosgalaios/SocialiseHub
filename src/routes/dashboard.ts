@@ -151,7 +151,35 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
         }
       }
 
-      res.json({ items, count: items.length });
+      // Group problems per event — show one card per event with all its problems
+      const grouped: Record<string, typeof items[0] & { problems: Array<{ problem: string; label: string; urgency: string }> }> = {};
+      for (const item of items) {
+        if (!grouped[item.eventId]) {
+          grouped[item.eventId] = {
+            ...item,
+            problems: [],
+          };
+        }
+        grouped[item.eventId].problems.push({
+          problem: item.problem,
+          label: item.problemLabel,
+          urgency: item.urgency,
+        });
+        // Upgrade urgency to highest
+        if (item.urgency === 'high') grouped[item.eventId].urgency = 'high';
+        else if (item.urgency === 'medium' && grouped[item.eventId].urgency !== 'high') {
+          grouped[item.eventId].urgency = 'medium';
+        }
+      }
+
+      const groupedItems = Object.values(grouped)
+        .sort((a, b) => {
+          const urgencyOrder = { high: 0, medium: 1, low: 2 };
+          return (urgencyOrder[a.urgency] ?? 2) - (urgencyOrder[b.urgency] ?? 2);
+        })
+        .slice(0, 10); // Max 10 events on dashboard
+
+      res.json({ items: groupedItems, count: Object.keys(grouped).length });
     } catch (err) {
       next(err);
     }
@@ -207,17 +235,18 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
       const now = new Date();
 
       const result = events.map((ev) => {
-        // 7 readiness checks
-        const checks = {
-          hasTitle: Boolean(ev.title && ev.title.trim().length > 0),
-          hasDescription: Boolean(ev.description && ev.description.trim().length >= 100),
-          hasStartDate: Boolean(ev.start_time),
-          hasVenue: Boolean(ev.venue && ev.venue.trim().length > 0),
-          hasPriceSet: (ev.price ?? 0) > 0,
-          hasPhoto: ev.photo_count > 0,
-          hasCapacity: (ev.capacity ?? 0) > 0,
-        };
-        const passedChecks = Object.values(checks).filter(Boolean).length;
+        // 7 readiness checks with human-readable labels
+        const checks: Array<{ label: string; passed: boolean }> = [
+          { label: 'Title', passed: Boolean(ev.title && ev.title.trim().length > 0) },
+          { label: 'Description', passed: Boolean(ev.description && ev.description.trim().length >= 100) },
+          { label: 'Date', passed: Boolean(ev.start_time) },
+          { label: 'Venue', passed: Boolean(ev.venue && ev.venue.trim().length > 0) },
+          { label: 'Price', passed: (ev.price ?? 0) > 0 },
+          { label: 'Photos', passed: ev.photo_count > 0 },
+          { label: 'Capacity', passed: (ev.capacity ?? 0) > 0 },
+        ];
+        const passedChecks = checks.filter(c => c.passed).length;
+        const missingLabels = checks.filter(c => !c.passed).map(c => c.label);
         const readiness = Math.round((passedChecks / 7) * 100);
 
         // Human-readable time until
@@ -237,7 +266,9 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
           startTime: ev.start_time,
           venue: ev.venue,
           readiness,
-          readinessChecks: checks,
+          passed: passedChecks,
+          total: 7,
+          missing: missingLabels,
           platforms: platformsByEvent[ev.id] ?? [],
           photoCount: ev.photo_count,
           timeUntil,

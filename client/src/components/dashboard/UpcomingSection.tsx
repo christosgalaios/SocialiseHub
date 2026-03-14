@@ -12,11 +12,7 @@ function formatDate(iso: string): string {
   });
 }
 
-function getMissingItems(checks: Record<string, boolean>): string[] {
-  return Object.entries(checks)
-    .filter(([, ok]) => !ok)
-    .map(([key]) => key.replace(/_/g, ' '));
-}
+// No longer needed — API returns missing labels directly
 
 export function UpcomingSection({ events }: { events: UpcomingEvent[] }) {
   const navigate = useNavigate();
@@ -40,8 +36,10 @@ export function UpcomingSection({ events }: { events: UpcomingEvent[] }) {
       <h2 style={styles.sectionTitle}>Upcoming Events</h2>
       <div style={styles.list}>
         {events.map((ev) => {
-          const missing = getMissingItems(ev.readinessChecks);
-          const readinessPct = Math.round((ev.readiness / 7) * 100);
+          const missing = (ev as any).missing ?? [];
+          const passed = (ev as any).passed ?? 0;
+          const total = (ev as any).total ?? 7;
+          const readinessPct = Math.round((passed / total) * 100);
           return (
             <div
               key={ev.eventId}
@@ -61,7 +59,7 @@ export function UpcomingSection({ events }: { events: UpcomingEvent[] }) {
 
               <div style={styles.readinessRow}>
                 <span style={styles.readinessLabel}>
-                  Readiness {ev.readiness}/7
+                  Readiness {passed}/{total}
                 </span>
                 <div style={styles.progressTrack}>
                   <div
