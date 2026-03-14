@@ -22,6 +22,7 @@ import { createPhotosRouter } from './routes/photos.js';
 import { TemplateStore } from './data/template-store.js';
 import { MarketAnalyzer } from './agents/market-analyzer.js';
 import { MarketEventStore } from './data/market-event-store.js';
+import { IdeaStore } from './data/idea-store.js';
 
 export const VERSION = '0.1.0';
 
@@ -77,6 +78,7 @@ export function createApp(deps?: AppDeps): express.Express {
   const templateStore = new TemplateStore(db);
   const marketEventStore = new MarketEventStore(db);
   const marketAnalyzer = new MarketAnalyzer(marketEventStore);
+  const ideaStore = new IdeaStore(db);
 
   app.use(
     '/api/events',
@@ -84,7 +86,7 @@ export function createApp(deps?: AppDeps): express.Express {
   );
   app.use('/api/services', createServicesRouter(serviceStore));
   app.use('/api/sync', createSyncRouter(syncLogStore, platformEventStore, publishService, eventStore, serviceStore));
-  app.use('/api/generator', createGeneratorRouter(eventStore as never, marketAnalyzer, platformEventStore));
+  app.use('/api/generator', createGeneratorRouter(eventStore as never, marketAnalyzer, platformEventStore, ideaStore));
   app.use('/api/templates', createTemplatesRouter(templateStore, eventStore));
   app.use('/api/analytics', createAnalyticsRouter(db));
   app.use('/api/events', createOptimizeRouter(db, eventStore));
