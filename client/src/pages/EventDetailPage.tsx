@@ -20,8 +20,12 @@ import {
   getEventScore,
   scoreEvent,
   saveEventScore,
+  pushEvent,
+  pushAllEvents,
+  pullEvent,
 } from '../api/events';
 import { PlatformSelector } from '../components/PlatformSelector';
+import { PlatformSyncRow } from '../components/PlatformSyncRow';
 import { StatusBadge } from '../components/StatusBadge';
 import { ReadinessChecklist } from '../components/ReadinessChecklist';
 import { OptimizePanel } from '../components/OptimizePanel';
@@ -98,6 +102,8 @@ export function EventDetailPage() {
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const { showToast } = useToast();
+  const [pushingPlatform, setPushingPlatform] = useState<string | null>(null);
+  const [pullingPlatform, setPullingPlatform] = useState<string | null>(null);
 
   useEffect(() => {
     // Always load services for platform selector
@@ -448,6 +454,61 @@ export function EventDetailPage() {
     }
   };
 
+  /** Reload event data and update all form state from fetched event */
+  const reloadEvent = async () => {
+    if (!id) return;
+    const ev = await getEvent(id);
+    setEvent(ev);
+    setTitle(ev.title);
+    setDescription(ev.description);
+    setStartTime(toDatetimeLocal(ev.start_time));
+    setEndTime(toDatetimeLocal(ev.end_time));
+    setDurationMinutes(ev.duration_minutes);
+    setVenue(ev.venue);
+    setPrice(ev.price);
+    setCapacity(ev.capacity);
+    setSelectedPlatforms(ev.platforms.map((p) => p.platform));
+  };
+
+  const handlePushPlatform = async (platform: string) => {
+    if (!id) return;
+    setPushingPlatform(platform);
+    try {
+      await pushEvent(id, platform);
+      showToast(`Pushed to ${platform}`, 'success');
+      await reloadEvent();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setPushingPlatform(null);
+    }
+  };
+
+  const handlePullPlatform = async (platform: string) => {
+    if (!id) return;
+    setPullingPlatform(platform);
+    try {
+      await pullEvent(id, platform);
+      showToast(`Reverted to ${platform} version`, 'success');
+      await reloadEvent();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    } finally {
+      setPullingPlatform(null);
+    }
+  };
+
+  const handlePushAll = async () => {
+    if (!id) return;
+    try {
+      await pushAllEvents(id);
+      showToast('Pushed to all platforms', 'success');
+      await reloadEvent();
+    } catch (err: any) {
+      showToast(err.message, 'error');
+    }
+  };
+
   // Build a SocialiseEvent-like object from current form state for readiness checking
   const currentFormEvent = {
     id: id ?? '',
@@ -629,6 +690,15 @@ export function EventDetailPage() {
               >
                 {scoring ? 'Scoring...' : '📊 Score'}
               </button>
+              {event?.sync_status === 'modified' && (
+                <button
+                  type="button"
+                  style={styles.pushAllBtn}
+                  onClick={handlePushAll}
+                >
+                  Push All →
+                </button>
+              )}
               <div style={{ position: 'relative', display: 'inline-block' }} title={!canPublish ? 'Complete all required fields before publishing' : ''}>
                 <button
                   type="button"
@@ -790,51 +860,28 @@ export function EventDetailPage() {
       {event && event.platforms.length > 0 && (
         <div style={styles.publishSection}>
           <h2 style={styles.sectionTitle}>Platform Status</h2>
-          <div style={styles.resultsList}>
+          <div>
             {event.platforms.map((ps) => (
-              <div key={ps.platform} style={styles.resultRow}>
-                <span
-                  style={{
-                    ...styles.platformDot,
-                    background: PLATFORM_COLORS[ps.platform] ?? '#888',
-                  }}
-                />
-                <span style={styles.platformLabel}>
-                  {ps.platform.charAt(0).toUpperCase() + ps.platform.slice(1)}
-                </span>
-                {ps.published ? (
-                  <span style={styles.successBadge}>Published</span>
-                ) : (
-                  <span style={{ ...styles.errorBadge, background: '#f0f0f0', color: '#666' }}>
-                    Unpublished
-                  </span>
-                )}
-                {ps.publishedAt && (
-                  <span style={styles.externalId}>
-                    {new Date(ps.publishedAt).toLocaleDateString()}
-                  </span>
-                )}
-                {ps.error && (
-                  <span style={styles.errorBadge}>{ps.error}</span>
-                )}
-                {ps.externalUrl && (
-                  <button
-                    style={styles.viewPlatformBtn}
-                    onClick={() => {
-                      const w = window as any;
-                      if (w.electronAPI?.openInAutomationPanel) {
-                        // Open in Electron's sidebar browser
-                        w.electronAPI.openInAutomationPanel(ps.externalUrl);
-                      } else {
-                        // Web fallback — open in new tab
-                        window.open(ps.externalUrl, '_blank');
-                      }
-                    }}
-                  >
-                    View on {ps.platform.charAt(0).toUpperCase() + ps.platform.slice(1)} →
-                  </button>
-                )}
-              </div>
+              <PlatformSyncRow
+                key={ps.platform}
+                platform={ps.platform}
+                published={ps.published}
+                externalUrl={ps.externalUrl}
+                syncStatus={ps.syncStatus}
+                publishedAt={ps.publishedAt}
+                onPush={() => handlePushPlatform(ps.platform)}
+                onPull={() => handlePullPlatform(ps.platform)}
+                onView={() => {
+                  const w = window as any;
+                  if (w.electronAPI?.openInAutomationPanel && ps.externalUrl) {
+                    w.electronAPI.openInAutomationPanel(ps.externalUrl);
+                  } else if (ps.externalUrl) {
+                    window.open(ps.externalUrl, '_blank');
+                  }
+                }}
+                pushing={pushingPlatform === ps.platform}
+                pulling={pullingPlatform === ps.platform}
+              />
             ))}
           </div>
         </div>
@@ -976,6 +1023,18 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     border: 'none',
     background: '#2D5F5D',
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
+    transition: 'opacity 0.2s',
+  },
+  pushAllBtn: {
+    padding: '12px 20px',
+    borderRadius: 12,
+    border: 'none',
+    background: '#E2725B',
     color: '#fff',
     fontSize: 14,
     fontWeight: 700,

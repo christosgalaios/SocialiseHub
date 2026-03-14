@@ -188,6 +188,24 @@ export async function pushEvent(eventId: string, platform: string): Promise<void
   }
 }
 
+export async function pushAllEvents(eventId: string): Promise<{ results: Array<{ platform: string; success: boolean; error?: string }> }> {
+  const res = await fetch(`${BASE}/sync/push-all`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ eventId }),
+  });
+  return json(res);
+}
+
+export async function pullEvent(eventId: string, platform: string): Promise<any> {
+  const res = await fetch(`${BASE}/sync/pull-event`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ eventId, platform }),
+  });
+  return json(res);
+}
+
 export async function getSyncLog(limit = 50): Promise<SyncLogEntry[]> {
   const res = await fetch(`${BASE}/sync/log?limit=${limit}`);
   const body = await json<{ data: SyncLogEntry[] }>(res);
