@@ -175,6 +175,18 @@ export async function syncPull(): Promise<{ pulled: number }> {
   return body.data;
 }
 
+export async function pushEvent(eventId: string, platform: string): Promise<void> {
+  const res = await fetch(`${BASE}/sync/push`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ eventId, platform }),
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error || 'Push failed');
+  }
+}
+
 export async function getSyncLog(limit = 50): Promise<SyncLogEntry[]> {
   const res = await fetch(`${BASE}/sync/log?limit=${limit}`);
   const body = await json<{ data: SyncLogEntry[] }>(res);

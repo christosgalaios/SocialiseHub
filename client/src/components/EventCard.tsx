@@ -7,10 +7,12 @@ export function EventCard({
   event,
   onDelete,
   onDuplicate,
+  onPush,
 }: {
   event: SocialiseEvent;
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
+  onPush?: (id: string, platform: string) => void;
 }) {
   const nav = useNavigate();
 
@@ -32,7 +34,15 @@ export function EventCard({
       <div style={{ ...styles.cardBody, paddingTop: event.imageUrl ? 12 : 22 }}>
         <div style={styles.header}>
           <h3 style={styles.title}>{event.title}</h3>
-          <StatusBadge status={event.status} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            {event.sync_status === 'synced' && (
+              <span style={styles.syncDotGreen} title="In sync" />
+            )}
+            {event.sync_status === 'modified' && (
+              <span style={styles.syncDotOrange} title="Needs push" />
+            )}
+            <StatusBadge status={event.status} />
+          </div>
         </div>
 
         <div style={styles.meta}>
@@ -65,6 +75,17 @@ export function EventCard({
             <span style={styles.price}>
               {event.price === 0 ? 'Free' : `£${event.price}`}
             </span>
+            {event.sync_status === 'modified' && event.platforms?.length > 0 && (
+              <button
+                style={styles.pushBtn}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onPush?.(event.id, event.platforms[0].platform);
+                }}
+              >
+                Push ↑
+              </button>
+            )}
             <button
               style={styles.dupBtn}
               onClick={(e) => {
@@ -166,6 +187,32 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: 700,
     fontFamily: "'Outfit', sans-serif",
     color: '#2D5F5D',
+  },
+  syncDotGreen: {
+    display: 'inline-block',
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    background: '#22c55e',
+    flexShrink: 0,
+  },
+  syncDotOrange: {
+    display: 'inline-block',
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    background: '#f97316',
+    flexShrink: 0,
+  },
+  pushBtn: {
+    fontSize: 12,
+    color: '#fff',
+    background: '#f97316',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '4px 10px',
+    borderRadius: 6,
+    fontWeight: 700,
   },
   dupBtn: {
     fontSize: 12,

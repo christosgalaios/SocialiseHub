@@ -201,6 +201,89 @@ export function eventbritePublishSteps(event: SocialiseEvent): AutomationStep[] 
 }
 
 /**
+ * Steps to scrape public Bristol events from Eventbrite's search API.
+ * Does NOT require authentication — uses public search endpoint.
+ * Returns: { success: true, events: [...] }
+ */
+export function eventbritePublicScrapeSteps(): AutomationStep[] {
+  return [
+    {
+      action: 'navigate',
+      url: 'https://www.eventbrite.co.uk/d/united-kingdom--bristol/events/',
+      description: 'Opening Eventbrite Bristol events listing...',
+    },
+    {
+      action: 'waitForSelector',
+      selector: 'body',
+      timeout: 10_000,
+      description: 'Waiting for page to load...',
+    },
+    {
+      action: 'evaluate',
+      script: `(async () => {
+        try {
+          // Use Eventbrite's public search API — no auth required for public listings
+          const params = new URLSearchParams({
+            q: '',
+            location: 'Bristol, UK',
+            within: '25mi',
+            expand: 'venue,ticket_classes,category',
+            page_size: '50',
+            sort_by: 'date',
+          });
+
+          const resp = await fetch('https://www.eventbrite.co.uk/api/v3/destination/events/?' + params.toString(), {
+            headers: {
+              'Accept': 'application/json',
+            },
+          });
+
+          if (!resp.ok) {
+            // Fallback: try the public search endpoint used by the listing page
+            const searchResp = await fetch(
+              'https://www.eventbrite.co.uk/api/v3/destination/search/?q=&place_id=ChIJYdizgVuFcUgRB58lAUbqLTQ&online_events_only=false&page_size=50&expand=venue,ticket_classes',
+              { headers: { 'Accept': 'application/json' } }
+            );
+            if (!searchResp.ok) {
+              return JSON.stringify({ success: false, error: 'Search API failed: HTTP ' + searchResp.status });
+            }
+            const searchJson = await searchResp.json();
+            const rawEvents = searchJson?.events?.results ?? searchJson?.results ?? [];
+            const events = rawEvents.map(e => ({
+              id: e.id,
+              title: e.name?.text ?? e.name ?? '',
+              date: e.start?.utc ?? e.start_date ?? '',
+              venue: e.venue ? (e.venue.name + (e.venue.address?.city ? ', ' + e.venue.address.city : '')) : (e.is_online_event ? 'Online' : ''),
+              url: e.url ?? '',
+              category: e.category?.name ?? '',
+              price: e.ticket_classes?.[0]?.cost?.display ?? (e.is_free ? 'Free' : ''),
+            }));
+            return JSON.stringify({ success: true, events });
+          }
+
+          const json = await resp.json();
+          const rawEvents = json?.events?.results ?? json?.results ?? [];
+          const events = rawEvents.map(e => ({
+            id: e.id,
+            title: e.name?.text ?? e.name ?? '',
+            date: e.start?.utc ?? e.start_date ?? '',
+            venue: e.venue ? (e.venue.name + (e.venue.address?.city ? ', ' + e.venue.address.city : '')) : (e.is_online_event ? 'Online' : ''),
+            url: e.url ?? '',
+            category: e.category?.name ?? '',
+            price: e.ticket_classes?.[0]?.cost?.display ?? (e.is_free ? 'Free' : ''),
+          }));
+
+          return JSON.stringify({ success: true, events });
+        } catch (err) {
+          return JSON.stringify({ success: false, error: String(err) });
+        }
+      })()`,
+      description: 'Fetching public Bristol events via Eventbrite search API...',
+    },
+  ];
+}
+
+/**
  * Steps to scrape events from Eventbrite using the REST API.
  */
 export function eventbriteScrapeSteps(): AutomationStep[] {

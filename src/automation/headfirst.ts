@@ -170,6 +170,113 @@ export function headfirstPublishSteps(event: SocialiseEvent): AutomationStep[] {
 }
 
 /**
+ * Steps to scrape public Bristol events from the Headfirst Bristol what's-on listing.
+ * Does NOT require authentication — DOM-scrapes the public listing page.
+ * Returns: { success: true, events: [...] }
+ */
+export function headfirstPublicScrapeSteps(): AutomationStep[] {
+  return [
+    {
+      action: 'navigate',
+      url: 'https://www.headfirstbristol.co.uk/whats-on',
+      description: 'Opening Headfirst Bristol what\'s on listing...',
+    },
+    {
+      action: 'waitForSelector',
+      selector: 'body',
+      timeout: 15_000,
+      description: 'Waiting for page to load (Headfirst is slower)...',
+    },
+    {
+      action: 'evaluate',
+      script: `(async () => {
+        // Extra wait for Headfirst's JS-rendered content
+        await new Promise(r => setTimeout(r, 5000));
+
+        try {
+          const events = [];
+
+          // Headfirst uses event card elements — try multiple common selectors
+          // The listing page typically has article or div cards with event info
+          const cards = document.querySelectorAll(
+            'article.event, .event-card, .event-listing, [class*="EventCard"], [class*="event-item"], ' +
+            '.listing-item, .whats-on-item, article[data-event-id], .event'
+          );
+
+          if (cards.length > 0) {
+            for (const card of cards) {
+              // Title — try various heading/link selectors
+              const titleEl = card.querySelector('h1, h2, h3, h4, .event-title, [class*="title"], a[href*="/event"]');
+              const title = titleEl?.textContent?.trim() ?? '';
+              if (!title) continue;
+
+              // URL — find an anchor pointing to an event page
+              const linkEl = card.querySelector('a[href*="/event"], a[href*="/e/"]') ?? titleEl?.closest('a') ?? card.querySelector('a');
+              let url = linkEl?.getAttribute('href') ?? '';
+              if (url && !url.startsWith('http')) {
+                url = 'https://www.headfirstbristol.co.uk' + url;
+              }
+
+              // Date — look for time element or date-like text
+              const timeEl = card.querySelector('time, [class*="date"], [class*="Date"]');
+              const date = timeEl?.getAttribute('datetime') ?? timeEl?.textContent?.trim() ?? '';
+
+              // Venue
+              const venueEl = card.querySelector('[class*="venue"], [class*="Venue"], [class*="location"]');
+              const venue = venueEl?.textContent?.trim() ?? '';
+
+              // Price
+              const priceEl = card.querySelector('[class*="price"], [class*="Price"], [class*="cost"], [class*="ticket"]');
+              const price = priceEl?.textContent?.trim() ?? '';
+
+              // Extract ID from URL
+              const idMatch = url.match(/\\/event(?:s)?\\/(\\d+|[a-z0-9-]+)/i);
+              const id = idMatch ? idMatch[1] : url.split('/').filter(Boolean).pop() ?? '';
+
+              events.push({ id, title, date, venue, url, price });
+            }
+          } else {
+            // Fallback: scrape all event links from the page
+            const links = document.querySelectorAll('a[href*="/event"]');
+            const seen = new Set();
+
+            for (const link of links) {
+              const href = link.getAttribute('href') ?? '';
+              if (seen.has(href) || !href) continue;
+              seen.add(href);
+
+              const title = link.textContent?.trim() ?? '';
+              if (!title || title.length < 3) continue;
+
+              let url = href;
+              if (!url.startsWith('http')) {
+                url = 'https://www.headfirstbristol.co.uk' + url;
+              }
+
+              const idMatch = url.match(/\\/event(?:s)?\\/(\\d+|[a-z0-9-]+)/i);
+              const id = idMatch ? idMatch[1] : url.split('/').filter(Boolean).pop() ?? '';
+
+              // Look for date/venue in adjacent text
+              const parent = link.parentElement;
+              const parentText = parent?.textContent?.trim() ?? '';
+              const dateMatch = parentText.match(/(\\d{1,2}(?:st|nd|rd|th)?\\s+\\w+\\s+\\d{4}|\\w+\\s+\\d{1,2}(?:st|nd|rd|th)?\\s+\\d{4})/i);
+              const date = dateMatch ? dateMatch[1] : '';
+
+              events.push({ id, title, date, venue: '', url, price: '' });
+            }
+          }
+
+          return JSON.stringify({ success: true, events });
+        } catch (err) {
+          return JSON.stringify({ success: false, error: String(err) });
+        }
+      })()`,
+      description: 'Scraping public events from Headfirst Bristol listing...',
+    },
+  ];
+}
+
+/**
  * Steps to scrape events from the Headfirst Bristol event manager.
  */
 export function headfirstScrapeSteps(): AutomationStep[] {

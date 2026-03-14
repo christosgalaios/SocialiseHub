@@ -174,6 +174,111 @@ export function meetupPublishSteps(event: SocialiseEvent, groupUrlname: string, 
   ];
 }
 
+/**
+ * Steps to scrape public Bristol events from Meetup via the gql2 GraphQL endpoint.
+ * Does NOT require authentication — uses public rankedEvents query.
+ * Returns: { success: true, events: [...] }
+ */
+export function meetupPublicScrapeSteps(): AutomationStep[] {
+  return [
+    {
+      action: 'navigate',
+      url: 'https://www.meetup.com/find/?location=gb--bristol&source=EVENTS',
+      description: 'Opening Meetup Bristol events listing...',
+    },
+    {
+      action: 'waitForSelector',
+      selector: 'body',
+      timeout: 10_000,
+      description: 'Waiting for page to load...',
+    },
+    {
+      action: 'evaluate',
+      script: `(async () => {
+        // Bristol lat/lon, 25 mile radius, next 90 days, first 50 results
+        const now = new Date();
+        const end = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
+        const startDateRange = now.toISOString();
+        const endDateRange = end.toISOString();
+
+        const query = \`
+          query($lat: Float!, $lon: Float!, $radius: Float!, $startDateRange: DateTime, $endDateRange: DateTime) {
+            rankedEvents(
+              filter: {
+                lat: $lat
+                lon: $lon
+                radius: $radius
+                startDateRange: $startDateRange
+                endDateRange: $endDateRange
+              }
+              first: 50
+            ) {
+              edges {
+                node {
+                  id
+                  title
+                  dateTime
+                  eventUrl
+                  eventType
+                  going
+                  maxTickets
+                  venue {
+                    name
+                    city
+                  }
+                }
+              }
+            }
+          }
+        \`;
+
+        try {
+          const resp = await fetch('https://www.meetup.com/gql2', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query,
+              variables: {
+                lat: 51.4545,
+                lon: -2.5879,
+                radius: 25,
+                startDateRange,
+                endDateRange,
+              },
+            }),
+          });
+
+          if (!resp.ok) {
+            return JSON.stringify({ success: false, error: 'GraphQL request failed: HTTP ' + resp.status });
+          }
+
+          const json = await resp.json();
+          if (json.errors) {
+            return JSON.stringify({ success: false, error: JSON.stringify(json.errors) });
+          }
+
+          const edges = json?.data?.rankedEvents?.edges ?? [];
+          const events = edges.map(e => ({
+            id: e.node.id,
+            title: e.node.title,
+            date: e.node.dateTime,
+            venue: e.node.venue ? (e.node.venue.name + (e.node.venue.city ? ', ' + e.node.venue.city : '')) : '',
+            url: e.node.eventUrl,
+            category: e.node.eventType ?? '',
+            going: e.node.going ?? 0,
+            maxTickets: e.node.maxTickets ?? null,
+          }));
+
+          return JSON.stringify({ success: true, events });
+        } catch (err) {
+          return JSON.stringify({ success: false, error: String(err) });
+        }
+      })()`,
+      description: 'Fetching public Bristol events via Meetup GraphQL...',
+    },
+  ];
+}
+
 export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
   return [
     {

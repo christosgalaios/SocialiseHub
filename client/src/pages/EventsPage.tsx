@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SocialiseEvent, Template } from '@shared/types';
-import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate } from '../api/events';
+import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushEvent } from '../api/events';
 import { EventCard } from '../components/EventCard';
 import { GridSkeleton } from '../components/Skeleton';
 import { useToast } from '../context/ToastContext';
@@ -59,6 +59,17 @@ export function EventsPage() {
       nav(`/events/${event.id}`);
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to create from template', 'error');
+    }
+  };
+
+  const handlePush = async (id: string, platform: string) => {
+    try {
+      await pushEvent(id, platform);
+      const data = await getEvents();
+      setEvents(data);
+      showToast('Event pushed successfully', 'success');
+    } catch (err: any) {
+      setError(err.message);
     }
   };
 
@@ -175,6 +186,7 @@ export function EventsPage() {
               event={event}
               onDelete={handleDelete}
               onDuplicate={handleDuplicate}
+              onPush={handlePush}
             />
           ))}
         </div>
