@@ -326,7 +326,7 @@ export function eventbriteScrapeSteps(): AutomationStep[] {
         let hasMore = true;
         while (hasMore && page <= 20) {
           const eventsResp = await fetch(
-            '/api/v3/organizations/' + orgId + '/events/?status=draft,live,started,ended,completed&order_by=start_desc&page_size=50&page=' + page,
+            '/api/v3/organizations/' + orgId + '/events/?status=draft,live,started,ended,completed&order_by=start_desc&page_size=50&page=' + page + '&expand=ticket_classes',
             { credentials: 'include', headers }
           );
           if (!eventsResp.ok) {
@@ -337,6 +337,20 @@ export function eventbriteScrapeSteps(): AutomationStep[] {
           const events = eventsJson?.events ?? [];
           for (const e of events) {
             const isPast = e.status === 'ended' || e.status === 'completed';
+            // Derive attendance, capacity, ticket price from ticket_classes
+            let attendance = null;
+            let capacity = null;
+            let revenue = null;
+            let ticketPrice = null;
+            const ticketClasses = e.ticket_classes ?? [];
+            if (ticketClasses.length > 0) {
+              const tc = ticketClasses[0];
+              ticketPrice = tc.cost?.major_value ? parseFloat(tc.cost.major_value) : null;
+              capacity = ticketClasses.reduce((sum, t) => sum + (t.quantity_total ?? 0), 0) || null;
+              const sold = ticketClasses.reduce((sum, t) => sum + (t.quantity_sold ?? 0), 0);
+              attendance = sold || null;
+              revenue = (ticketPrice && attendance) ? ticketPrice * attendance : null;
+            }
             allEvents.push({
               externalId: e.id,
               title: e.name?.text ?? '',
@@ -344,6 +358,10 @@ export function eventbriteScrapeSteps(): AutomationStep[] {
               venue: '',
               url: e.url ?? '',
               status: isPast ? 'past' : 'active',
+              attendance,
+              capacity,
+              revenue,
+              ticketPrice,
             });
           }
           hasMore = eventsJson?.pagination?.has_more_items === true;

@@ -96,6 +96,10 @@ export function createSyncRouter(
               venue: pe.venue,
               status: pe.status,
               rawData: pe.rawData,
+              attendance: pe.attendance,
+              capacity: pe.capacity,
+              revenue: pe.revenue,
+              ticketPrice: pe.ticketPrice,
             });
             await linkPlatformEventToEvent(upserted, eventStore, platformEventStore);
           }
