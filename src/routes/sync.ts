@@ -115,6 +115,9 @@ export function createSyncRouter(
         if (!client) continue;
 
         try {
+          // Clear cached data for this platform — pull fresh
+          platformEventStore.clearPlatform(svc.platform, eventStore);
+
           const events = await client.fetchEvents();
           for (const pe of events) {
             const upserted = platformEventStore.upsert({

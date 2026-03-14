@@ -150,4 +150,33 @@ export class PlatformEventStore {
       .prepare('UPDATE platform_events SET event_id = ? WHERE id = ?')
       .run(eventId, platformEventId);
   }
+
+  /**
+   * Clear all platform_events for a platform and delete orphaned synced events.
+   * Preserves events shared with other platforms and locally modified events.
+   */
+  clearPlatform(platform: PlatformName, eventStore?: { delete(id: string): void; getById(id: string): { sync_status?: string } | undefined }): void {
+    // Find events ONLY linked to this platform (not shared with others)
+    const onlyThisPlatform = this.db.prepare(`
+      SELECT pe.event_id FROM platform_events pe
+      WHERE pe.platform = ? AND pe.event_id IS NOT NULL
+        AND pe.event_id NOT IN (
+          SELECT event_id FROM platform_events
+          WHERE platform != ? AND event_id IS NOT NULL
+        )
+    `).all(platform, platform) as Array<{ event_id: string }>;
+
+    // Delete platform_events for this platform
+    this.db.prepare('DELETE FROM platform_events WHERE platform = ?').run(platform);
+
+    // Delete orphaned events that were only on this platform and are synced
+    if (eventStore) {
+      for (const { event_id } of onlyThisPlatform) {
+        const ev = eventStore.getById(event_id);
+        if (ev && ev.sync_status === 'synced') {
+          eventStore.delete(event_id);
+        }
+      }
+    }
+  }
 }
