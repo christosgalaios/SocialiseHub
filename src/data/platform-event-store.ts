@@ -19,6 +19,8 @@ interface PlatformEventRow {
   capacity: number | null;
   revenue: number | null;
   ticket_price: number | null;
+  description: string | null;
+  image_urls: string | null;
 }
 
 function rowToEvent(row: PlatformEventRow): PlatformEvent {
@@ -39,6 +41,8 @@ function rowToEvent(row: PlatformEventRow): PlatformEvent {
     capacity: row.capacity ?? undefined,
     revenue: row.revenue ?? undefined,
     ticketPrice: row.ticket_price ?? undefined,
+    description: row.description ?? undefined,
+    imageUrls: row.image_urls ? (JSON.parse(row.image_urls) as string[]) : undefined,
   };
 }
 
@@ -59,7 +63,8 @@ export class PlatformEventStore {
           `UPDATE platform_events
            SET event_id = ?, external_url = ?, title = ?, date = ?, venue = ?,
                status = ?, raw_data = ?, synced_at = ?, published_at = ?,
-               attendance = ?, capacity = ?, revenue = ?, ticket_price = ?
+               attendance = ?, capacity = ?, revenue = ?, ticket_price = ?,
+               description = ?, image_urls = ?
            WHERE platform = ? AND external_id = ?`,
         )
         .run(
@@ -76,6 +81,8 @@ export class PlatformEventStore {
           input.capacity ?? null,
           input.revenue ?? null,
           input.ticketPrice ?? null,
+          input.description ?? null,
+          input.imageUrls ? JSON.stringify(input.imageUrls) : null,
           input.platform,
           input.externalId,
         );
@@ -92,8 +99,9 @@ export class PlatformEventStore {
       .prepare(
         `INSERT INTO platform_events
            (id, event_id, platform, external_id, external_url, title, date, venue,
-            status, raw_data, synced_at, published_at, attendance, capacity, revenue, ticket_price)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            status, raw_data, synced_at, published_at, attendance, capacity, revenue, ticket_price,
+            description, image_urls)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -112,6 +120,8 @@ export class PlatformEventStore {
         input.capacity ?? null,
         input.revenue ?? null,
         input.ticketPrice ?? null,
+        input.description ?? null,
+        input.imageUrls ? JSON.stringify(input.imageUrls) : null,
       );
 
     const inserted = this.db

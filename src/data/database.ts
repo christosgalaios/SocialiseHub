@@ -131,6 +131,27 @@ function runMigrations(db: Database): void {
     )`);
     db.pragma('user_version = 7');
   }
+  if (currentVersion < 8) {
+    try { db.exec('ALTER TABLE platform_events ADD COLUMN description TEXT'); } catch { /* exists */ }
+    try { db.exec('ALTER TABLE platform_events ADD COLUMN image_urls TEXT'); } catch { /* exists */ }
+    db.exec(`CREATE TABLE IF NOT EXISTS event_sync_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      title TEXT,
+      description TEXT,
+      start_time TEXT,
+      venue TEXT,
+      price REAL,
+      capacity INTEGER,
+      photos_json TEXT,
+      snapshot_hash TEXT NOT NULL,
+      synced_at TEXT NOT NULL,
+      UNIQUE(event_id, platform),
+      FOREIGN KEY (event_id) REFERENCES events(id)
+    )`);
+    db.pragma('user_version = 8');
+  }
 }
 
 function createSchema(db: Database): void {

@@ -15,6 +15,7 @@ export interface PlatformPublishStatus {
   externalUrl?: string;
   publishedAt?: string;
   error?: string;
+  syncStatus?: 'synced' | 'modified' | 'platform_changed';
 }
 
 export interface SocialiseEvent {
@@ -153,6 +154,8 @@ export interface PlatformEvent {
   capacity?: number;
   revenue?: number;
   ticketPrice?: number;
+  description?: string;
+  imageUrls?: string[];
 }
 
 export interface PlatformPublishResult {

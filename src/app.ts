@@ -21,6 +21,7 @@ import { createOptimizeRouter } from './routes/optimize.js';
 import { createPhotosRouter } from './routes/photos.js';
 import { createScoreRouter } from './routes/score.js';
 import { createDashboardRouter } from './routes/dashboard.js';
+import { SyncSnapshotStore } from './data/sync-snapshot-store.js';
 import { TemplateStore } from './data/template-store.js';
 import { MarketAnalyzer } from './agents/market-analyzer.js';
 import { MarketEventStore } from './data/market-event-store.js';
@@ -77,6 +78,7 @@ export function createApp(deps?: AppDeps): express.Express {
     res.json({ status: 'ok', version: VERSION });
   });
 
+  const snapshotStore = new SyncSnapshotStore(db);
   const templateStore = new TemplateStore(db);
   const marketEventStore = new MarketEventStore(db);
   const marketAnalyzer = new MarketAnalyzer(marketEventStore);
@@ -87,7 +89,7 @@ export function createApp(deps?: AppDeps): express.Express {
     createEventsRouter(eventStore, publishService, platformEventStore, syncLogStore),
   );
   app.use('/api/services', createServicesRouter(serviceStore, db));
-  app.use('/api/sync', createSyncRouter(syncLogStore, platformEventStore, publishService, eventStore, serviceStore));
+  app.use('/api/sync', createSyncRouter(syncLogStore, platformEventStore, publishService, eventStore, serviceStore, snapshotStore));
   app.use('/api/generator', createGeneratorRouter(eventStore as never, marketAnalyzer, platformEventStore, ideaStore));
   app.use('/api/templates', createTemplatesRouter(templateStore, eventStore));
   app.use('/api/analytics', createAnalyticsRouter(db));
