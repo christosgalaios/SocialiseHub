@@ -355,6 +355,10 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
           let cursor = null;
           for (let page = 0; page < 10; page++) {
             const result = await fetchPage(status, cursor);
+            if (result.error) {
+              console.error('[meetup-scrape] error fetching', status, ':', result.error);
+              break;
+            }
             for (const e of result.edges) {
               if (seen.has(e.node.id)) continue;
               seen.add(e.node.id);
