@@ -225,6 +225,84 @@ export async function createEventFromTemplate(templateId: string): Promise<Socia
   return body.data;
 }
 
+// ── Optimize ───────────────────────────────────────────
+
+export interface EventPhoto {
+  id: number;
+  eventId: string;
+  url: string;
+  source: string;
+  position: number;
+  isCover: boolean;
+}
+
+export interface UnsplashPhoto {
+  id: string;
+  url: string;
+  thumbUrl: string;
+  alt: string;
+  photographer: string;
+}
+
+export async function optimizeEvent(id: string): Promise<{ prompt: string; eventId: string }> {
+  const res = await fetch(`${BASE}/events/${id}/optimize`, { method: 'POST' });
+  return json<{ prompt: string; eventId: string }>(res);
+}
+
+export async function undoOptimize(id: string): Promise<SocialiseEvent> {
+  const res = await fetch(`${BASE}/events/${id}/optimize/undo`, { method: 'POST' });
+  const body = await json<{ data: SocialiseEvent }>(res);
+  return body.data;
+}
+
+export async function getPhotoGenPrompt(id: string): Promise<{ prompt: string }> {
+  const res = await fetch(`${BASE}/events/${id}/optimize/photos/generate-prompt`, { method: 'POST' });
+  return json<{ prompt: string }>(res);
+}
+
+export async function getEventPhotos(id: string): Promise<EventPhoto[]> {
+  const res = await fetch(`${BASE}/events/${id}/photos`);
+  const body = await json<{ data: EventPhoto[] }>(res);
+  return body.data;
+}
+
+export async function uploadEventPhoto(id: string, file: File, source: string): Promise<EventPhoto> {
+  const formData = new FormData();
+  formData.append('photo', file);
+  formData.append('source', source);
+  const res = await fetch(`${BASE}/events/${id}/photos`, { method: 'POST', body: formData });
+  const body = await json<{ data: EventPhoto }>(res);
+  return body.data;
+}
+
+export async function reorderPhotos(id: string, order: number[]): Promise<EventPhoto[]> {
+  const res = await fetch(`${BASE}/events/${id}/photos/reorder`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ order }),
+  });
+  const body = await json<{ data: EventPhoto[] }>(res);
+  return body.data;
+}
+
+export async function deletePhoto(id: string, photoId: number): Promise<void> {
+  const res = await fetch(`${BASE}/events/${id}/photos/${photoId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(body.error || res.statusText);
+  }
+}
+
+export async function searchUnsplashPhotos(id: string, query: string): Promise<UnsplashPhoto[]> {
+  const res = await fetch(`${BASE}/events/${id}/optimize/photos/search`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query }),
+  });
+  const body = await json<{ photos: UnsplashPhoto[] }>(res);
+  return body.photos;
+}
+
 // ── Analytics ──────────────────────────────────────────
 
 export async function getAnalyticsSummary(): Promise<{

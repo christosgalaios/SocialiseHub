@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import type {
   SocialiseEvent,
@@ -14,10 +14,12 @@ import {
   publishEvent,
   getServices,
   createTemplate,
+  optimizeEvent,
 } from '../api/events';
 import { PlatformSelector } from '../components/PlatformSelector';
 import { StatusBadge } from '../components/StatusBadge';
 import { ReadinessChecklist } from '../components/ReadinessChecklist';
+import { OptimizePanel } from '../components/OptimizePanel';
 import { PLATFORM_COLORS } from '../lib/platforms';
 import { useToast } from '../context/ToastContext';
 import { loadSettings } from '../lib/settings';
@@ -113,6 +115,16 @@ export function EventDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
+  // Auto-trigger optimize if ?optimize=true
+  const autoOptimizeTriggered = useRef(false);
+  useEffect(() => {
+    if (id && !loading && event && searchParams.get('optimize') === 'true' && !autoOptimizeTriggered.current) {
+      autoOptimizeTriggered.current = true;
+      handleOptimize();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, loading, event]);
+
   const buildInput = (): CreateEventInput => ({
     title,
     description,
@@ -194,13 +206,8 @@ export function EventDetailPage() {
     setError(null);
     setOptimizeResponse(null);
     try {
-      const res = await fetch(`/api/generator/optimize/${id}`, { method: 'POST' });
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(body.error || res.statusText);
-      }
-      const body = (await res.json()) as { data: { prompt: string } };
-      setOptimizePrompt(body.data.prompt);
+      const result = await optimizeEvent(id);
+      setOptimizePrompt(result.prompt);
       setShowOptimizeModal(true);
       setOptimizeCopied(false);
     } catch (err) {
@@ -503,6 +510,11 @@ export function EventDetailPage() {
         </div>
       )}
       </div>
+
+      {/* Optimize Panel — photos + AI gen prompt */}
+      {event && (
+        <OptimizePanel eventId={event.id} eventTitle={event.title} />
+      )}
 
       {/* Publish results panel */}
       {publishResults && publishResults.length > 0 && (

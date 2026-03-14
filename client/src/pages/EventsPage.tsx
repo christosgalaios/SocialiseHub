@@ -83,6 +83,10 @@ export function EventsPage() {
     }
   };
 
+  const handleOptimize = (id: string) => {
+    nav(`/events/${id}?optimize=true`);
+  };
+
   const counts = {
     all: events.length,
     draft: events.filter((e) => e.status === 'draft').length,
@@ -187,6 +191,7 @@ export function EventsPage() {
               onDelete={handleDelete}
               onDuplicate={handleDuplicate}
               onPush={handlePush}
+              onOptimize={handleOptimize}
             />
           ))}
         </div>

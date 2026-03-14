@@ -8,11 +8,13 @@ export function EventCard({
   onDelete,
   onDuplicate,
   onPush,
+  onOptimize,
 }: {
   event: SocialiseEvent;
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
   onPush?: (id: string, platform: string) => void;
+  onOptimize?: (id: string) => void;
 }) {
   const nav = useNavigate();
 
@@ -40,6 +42,18 @@ export function EventCard({
             )}
             {event.sync_status === 'modified' && (
               <span style={styles.syncDotOrange} title="Needs push" />
+            )}
+            {onOptimize && (
+              <button
+                style={styles.wandBtn}
+                title="Optimize with AI"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onOptimize(event.id);
+                }}
+              >
+                ✦
+              </button>
             )}
             <StatusBadge status={event.status} />
           </div>
@@ -233,5 +247,16 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '4px 8px',
     borderRadius: 6,
     fontWeight: 600,
+  },
+  wandBtn: {
+    fontSize: 14,
+    color: '#a855f7',
+    background: 'none',
+    border: 'none',
+    cursor: 'pointer',
+    padding: '2px 4px',
+    borderRadius: 4,
+    lineHeight: 1,
+    fontWeight: 700,
   },
 };
