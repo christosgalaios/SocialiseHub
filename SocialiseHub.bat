@@ -15,41 +15,29 @@ if not exist "node_modules" (
   echo.
 )
 
-:: Build the backend if not built yet
-if not exist "dist" (
-  echo  Building backend...
-  call npx tsc
-  echo.
-)
+:: Always rebuild to pick up source changes
+echo  Building backend...
+call npx tsc
+echo.
 
-:: Build the frontend if not built yet
-if not exist "dist-client" (
-  echo  Building frontend...
-  call npx vite build client
-  echo.
-)
+echo  Building frontend...
+call npx vite build client
+echo.
 
-:: Build the Electron main process if not built yet
-if not exist "dist-electron" (
-  echo  Building Electron...
-  call npx tsc -p electron/tsconfig.json
-  call npx tsc -p electron/tsconfig.preload.json
-  echo.
-)
+echo  Building Electron...
+call npx tsc -p electron/tsconfig.json
+call npx tsc -p electron/tsconfig.preload.json
+echo.
 
-:: Rebuild native modules for Electron if needed
-:: Check forge-meta for correct ABI version (143 = Electron 40.x)
-set "REBUILD_NEEDED=0"
-if not exist "node_modules\better-sqlite3\build\Release\.forge-meta" set "REBUILD_NEEDED=1"
-if "%REBUILD_NEEDED%"=="0" (
-  findstr /C:"143" "node_modules\better-sqlite3\build\Release\.forge-meta" >nul 2>&1
-  if errorlevel 1 set "REBUILD_NEEDED=1"
+:: Always rebuild native modules for Electron
+:: This ensures the .node binary matches Electron's ABI (not Node.js)
+:: even if switching between dev:web (Node) and desktop (Electron) modes
+echo  Rebuilding native modules for Electron...
+if exist "node_modules\better-sqlite3\build" (
+  rmdir /S /Q "node_modules\better-sqlite3\build" 2>nul
 )
-if "%REBUILD_NEEDED%"=="1" (
-  echo  Rebuilding native modules for Electron...
-  call npx @electron/rebuild -f -w better-sqlite3
-  echo.
-)
+call npx @electron/rebuild -f -w better-sqlite3
+echo.
 
 echo  Launching SocialiseHub desktop app...
 echo  (Close the window to stop)
