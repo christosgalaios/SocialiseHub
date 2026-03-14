@@ -69,6 +69,29 @@ function runMigrations(db: Database): void {
     )`);
     db.pragma('user_version = 4');
   }
+  if (currentVersion < 5) {
+    db.exec(`CREATE TABLE IF NOT EXISTS event_ideas (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      short_description TEXT,
+      category TEXT,
+      suggested_date TEXT,
+      date_reason TEXT,
+      confidence TEXT DEFAULT 'medium',
+      used INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL
+    )`);
+    db.exec(`CREATE TABLE IF NOT EXISTS event_scores (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT NOT NULL UNIQUE,
+      overall INTEGER NOT NULL,
+      breakdown_json TEXT NOT NULL,
+      suggestions_json TEXT NOT NULL,
+      scored_at TEXT NOT NULL,
+      FOREIGN KEY (event_id) REFERENCES events(id)
+    )`);
+    db.pragma('user_version = 5');
+  }
 }
 
 function createSchema(db: Database): void {

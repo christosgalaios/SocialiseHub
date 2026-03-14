@@ -26,7 +26,6 @@ export interface SocialiseEvent {
   venue: string;
   price: number;
   capacity: number;
-  imageUrl?: string;
   status: EventStatus;
   sync_status?: 'synced' | 'modified' | 'local_only';
   platforms: PlatformPublishStatus[];
@@ -91,6 +90,18 @@ export interface EventIdea {
   suggestedVenue?: string;
   estimatedAttendance?: number;
   category: string;
+}
+
+export interface QueuedIdea {
+  id: number;
+  title: string;
+  shortDescription: string;
+  category: string;
+  suggestedDate: string;
+  dateReason: string;
+  confidence: 'high' | 'medium' | 'low';
+  used: boolean;
+  createdAt: string;
 }
 
 // ── Templates ──────────────────────────────────────────

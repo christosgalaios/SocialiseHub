@@ -12,7 +12,7 @@ import type {
 /** Fields the public API is allowed to update via update(). */
 const UPDATABLE_FIELDS = new Set([
   'title', 'description', 'start_time', 'end_time', 'duration_minutes',
-  'venue', 'price', 'capacity', 'imageUrl',
+  'venue', 'price', 'capacity',
 ]);
 
 interface EventRow {
@@ -25,7 +25,6 @@ interface EventRow {
   venue: string | null;
   price: number;
   capacity: number | null;
-  image_url: string | null;
   status: string;
   sync_status: string | null;
   created_at: string;
@@ -67,7 +66,6 @@ export class SqliteEventStore {
       venue: row.venue ?? '',
       price: row.price,
       capacity: row.capacity ?? 0,
-      imageUrl: row.image_url ?? undefined,
       status: row.status as EventStatus,
       sync_status: (row.sync_status ?? 'local_only') as 'synced' | 'modified' | 'local_only',
       platforms,
@@ -99,9 +97,9 @@ export class SqliteEventStore {
       .prepare(
         `INSERT INTO events
            (id, title, description, start_time, end_time, duration_minutes,
-            venue, price, capacity, image_url, status, sync_status, created_at, updated_at)
+            venue, price, capacity, status, sync_status, created_at, updated_at)
          VALUES
-           (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'local_only', ?, ?)`,
+           (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'local_only', ?, ?)`,
       )
       .run(
         id,
@@ -113,7 +111,6 @@ export class SqliteEventStore {
         input.venue ?? null,
         input.price ?? 0,
         input.capacity ?? null,
-        input.imageUrl ?? null,
         now,
         now,
       );
@@ -132,8 +129,7 @@ export class SqliteEventStore {
 
     if (Object.keys(safe).length === 0) return existing;
 
-    // Map camelCase imageUrl to DB column image_url
-    const columnMap: Record<string, string> = { imageUrl: 'image_url' };
+    const columnMap: Record<string, string> = {};
     const now = new Date().toISOString();
 
     const setClauses = Object.keys(safe)
