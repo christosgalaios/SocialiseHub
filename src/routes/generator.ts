@@ -271,7 +271,9 @@ Respond ONLY with a JSON array. No markdown, no explanation outside the JSON:
 ]
 \`\`\`
 
-Suggest 5 events. Be specific and data-driven — reference actual gaps or hooks you identified.`;
+Suggest 5 events. Be specific and data-driven — reference actual gaps or hooks you identified.
+
+Respond with ONLY the JSON. No markdown code fences, no explanation, no preamble.`;
 }
 
 function composeIdeaGenerationPrompt(
@@ -346,6 +348,8 @@ Respond ONLY with a JSON array. No markdown, no explanation outside the JSON:
 ]
 \`\`\`
 
-Generate all 12 ideas. Be specific — reference real gaps, hooks, or cultural moments you identified.`;
+Generate all 12 ideas. Be specific — reference real gaps, hooks, or cultural moments you identified.
+
+Respond with ONLY the JSON. No markdown code fences, no explanation, no preamble.`;
 }
 

@@ -209,7 +209,9 @@ Analyse this event and provide an optimised version. Return ONLY a JSON block, t
   "optimisedScore": 8,
   "rationale": "Brief explanation of key changes"
 }
-\`\`\``;
+\`\`\`
+
+Respond with ONLY the JSON. No markdown code fences, no explanation, no preamble.`;
 }
 
 function composeMagicFillPrompt(event: SocialiseEvent): string {
@@ -249,7 +251,9 @@ Guidelines:
 - Venue: suggest a real Bristol venue that fits the event vibe; keep it if already good
 - Price: set competitively for Bristol (social events: £5-15; specialist/workshop: £15-35)
 - Capacity: realistic for the venue type suggested
-- duration_minutes: appropriate for the event type`;
+- duration_minutes: appropriate for the event type
+
+Respond with ONLY the JSON. No markdown code fences, no explanation, no preamble.`;
 }
 
 function composeImageGenPrompt(event: SocialiseEvent): string {

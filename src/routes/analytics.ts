@@ -200,7 +200,9 @@ Even without full attendance data, analyse:
 4. **Cultural alignment** — Are events tied to holidays, festivals, or seasonal moments?
 5. **Naming & branding** — Are titles SEO-friendly and compelling?
 
-Provide 3-5 specific, actionable recommendations. Be direct and practical.`;
+Provide 3-5 specific, actionable recommendations. Be direct and practical.
+
+Respond with ONLY the analysis text. No preamble, no introductory text.`;
 
       res.json({ data: { prompt } });
     } catch (err) {
