@@ -137,6 +137,10 @@ export interface PlatformEvent {
   rawData?: string;
   syncedAt: string;
   publishedAt?: string;
+  attendance?: number;
+  capacity?: number;
+  revenue?: number;
+  ticketPrice?: number;
 }
 
 export interface PlatformPublishResult {

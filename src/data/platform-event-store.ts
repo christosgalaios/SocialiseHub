@@ -15,6 +15,10 @@ interface PlatformEventRow {
   raw_data: string | null;
   synced_at: string;
   published_at: string | null;
+  attendance: number | null;
+  capacity: number | null;
+  revenue: number | null;
+  ticket_price: number | null;
 }
 
 function rowToEvent(row: PlatformEventRow): PlatformEvent {
@@ -31,6 +35,10 @@ function rowToEvent(row: PlatformEventRow): PlatformEvent {
     rawData: row.raw_data ?? undefined,
     syncedAt: row.synced_at,
     publishedAt: row.published_at ?? undefined,
+    attendance: row.attendance ?? undefined,
+    capacity: row.capacity ?? undefined,
+    revenue: row.revenue ?? undefined,
+    ticketPrice: row.ticket_price ?? undefined,
   };
 }
 
@@ -50,7 +58,8 @@ export class PlatformEventStore {
         .prepare(
           `UPDATE platform_events
            SET event_id = ?, external_url = ?, title = ?, date = ?, venue = ?,
-               status = ?, raw_data = ?, synced_at = ?, published_at = ?
+               status = ?, raw_data = ?, synced_at = ?, published_at = ?,
+               attendance = ?, capacity = ?, revenue = ?, ticket_price = ?
            WHERE platform = ? AND external_id = ?`,
         )
         .run(
@@ -63,6 +72,10 @@ export class PlatformEventStore {
           input.rawData ?? null,
           now,
           input.publishedAt ?? null,
+          input.attendance ?? null,
+          input.capacity ?? null,
+          input.revenue ?? null,
+          input.ticketPrice ?? null,
           input.platform,
           input.externalId,
         );
@@ -79,8 +92,8 @@ export class PlatformEventStore {
       .prepare(
         `INSERT INTO platform_events
            (id, event_id, platform, external_id, external_url, title, date, venue,
-            status, raw_data, synced_at, published_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            status, raw_data, synced_at, published_at, attendance, capacity, revenue, ticket_price)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -95,6 +108,10 @@ export class PlatformEventStore {
         input.rawData ?? null,
         now,
         input.publishedAt ?? null,
+        input.attendance ?? null,
+        input.capacity ?? null,
+        input.revenue ?? null,
+        input.ticketPrice ?? null,
       );
 
     const inserted = this.db

@@ -38,6 +38,18 @@ function runMigrations(db: Database): void {
     )`);
     db.pragma('user_version = 2');
   }
+  if (currentVersion < 3) {
+    const alterCols = [
+      'ALTER TABLE platform_events ADD COLUMN attendance INTEGER',
+      'ALTER TABLE platform_events ADD COLUMN capacity INTEGER',
+      'ALTER TABLE platform_events ADD COLUMN revenue REAL',
+      'ALTER TABLE platform_events ADD COLUMN ticket_price REAL',
+    ];
+    for (const sql of alterCols) {
+      try { db.exec(sql); } catch { /* column exists */ }
+    }
+    db.pragma('user_version = 3');
+  }
 }
 
 function createSchema(db: Database): void {
