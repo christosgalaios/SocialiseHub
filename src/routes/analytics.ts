@@ -155,8 +155,7 @@ export function createAnalyticsRouter(db: Database): Router {
              SUM(attendance) as total_attendees,
              SUM(revenue) as total_revenue,
              AVG(CASE WHEN capacity > 0 THEN CAST(attendance AS REAL) / CAST(capacity AS REAL) ELSE NULL END) as avg_fill
-           FROM platform_events
-           WHERE attendance IS NOT NULL`,
+           FROM platform_events`,
         )
         .get() as {
           total_events: number;
@@ -165,27 +164,43 @@ export function createAnalyticsRouter(db: Database): Router {
           avg_fill: number | null;
         };
 
-      const prompt = `You are an analytics assistant for Socialise, a Bristol-based events company. Analyse the following event performance data and provide 3-5 actionable insights to improve attendance, revenue, and event success.
+      const eventsWithData = recentEvents.filter(e => e.attendance != null).length;
+
+      const prompt = `You are an analytics assistant for Socialise, a Bristol-based events company that organises social activities for young professionals in Bristol and Cardiff.
+
+Analyse the following event data and provide 3-5 actionable insights.
 
 ## Overall Summary
-- Total events tracked: ${summaryRow.total_events}
-- Total attendees: ${summaryRow.total_attendees ?? 'N/A'}
-- Total revenue: £${summaryRow.total_revenue?.toFixed(2) ?? '0'}
-- Average fill rate: ${summaryRow.avg_fill != null ? Math.round(summaryRow.avg_fill * 100) + '%' : 'N/A'}
+- Total events: ${summaryRow.total_events}
+- Events with attendance data: ${eventsWithData} of ${recentEvents.length}
+${summaryRow.total_attendees ? `- Total attendees: ${summaryRow.total_attendees}` : '- Attendance data: not yet available (events are upcoming or data not synced)'}
+${summaryRow.total_revenue ? `- Total revenue: £${summaryRow.total_revenue.toFixed(2)}` : '- Revenue data: not yet available'}
+${summaryRow.avg_fill != null ? `- Average fill rate: ${Math.round(summaryRow.avg_fill * 100)}%` : ''}
 
-## Recent Events (last 20)
+## Event Calendar (last 20)
 ${recentEvents
   .map(
-    (e) =>
-      `- "${e.title}" (${e.platform}, ${e.date?.slice(0, 10) ?? 'unknown date'}): ` +
-      `${e.attendance ?? '?'} attendees / ${e.capacity ?? '?'} capacity` +
-      (e.revenue ? `, £${e.revenue.toFixed(2)} revenue` : '') +
-      (e.ticket_price ? `, £${e.ticket_price} ticket` : '') +
-      ` [${e.status}]`,
+    (e) => {
+      const parts = [`"${e.title}" (${e.platform}, ${e.date?.slice(0, 10) ?? 'unknown date'})`];
+      if (e.attendance != null) parts.push(`${e.attendance} attendees`);
+      if (e.capacity != null) parts.push(`capacity ${e.capacity}`);
+      if (e.revenue) parts.push(`£${e.revenue.toFixed(2)} revenue`);
+      if (e.ticket_price) parts.push(`£${e.ticket_price} ticket`);
+      parts.push(`[${e.status}]`);
+      return `- ${parts.join(' | ')}`;
+    },
   )
   .join('\n')}
 
-Provide specific, data-driven recommendations covering: optimal event timing, pricing strategy, capacity planning, and platform performance. Be concise and actionable.`;
+## What to Analyse
+Even without full attendance data, analyse:
+1. **Event mix & frequency** — Are certain event types overrepresented? What's the variety like?
+2. **Timing patterns** — Day of week, spacing between events, seasonal alignment
+3. **Geographic strategy** — Bristol vs Cardiff presence
+4. **Cultural alignment** — Are events tied to holidays, festivals, or seasonal moments?
+5. **Naming & branding** — Are titles SEO-friendly and compelling?
+
+Provide 3-5 specific, actionable recommendations. Be direct and practical.`;
 
       res.json({ data: { prompt } });
     } catch (err) {
