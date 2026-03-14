@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { DashboardSuggestion } from '../../api/dashboard';
 import { getSuggestions, generateSuggestionsPrompt, storeSuggestions } from '../../api/dashboard';
+import { AiPromptModal } from '../AiPromptModal';
 
 // Inject spin keyframes once
 if (typeof document !== 'undefined' && !document.getElementById('spin-keyframes')) {
@@ -26,7 +27,7 @@ export function SuggestionsSection() {
   const [suggestions, setSuggestions] = useState<DashboardSuggestion[] | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
-  const [copySuccess, setCopySuccess] = useState(false);
+  const [aiModal, setAiModal] = useState<{ title: string; prompt: string; responseFormat: 'json' | 'text'; onSubmit: (r: string) => void } | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -44,27 +45,22 @@ export function SuggestionsSection() {
     setLoading(true);
     try {
       const { prompt } = await generateSuggestionsPrompt();
-
-      const electronAPI = (window as unknown as { electronAPI?: { sendPromptToClaude?: (p: string) => Promise<string> } }).electronAPI;
-
-      if (electronAPI?.sendPromptToClaude) {
-        const rawResponse = await electronAPI.sendPromptToClaude(prompt);
-        // Parse JSON from Claude's response
-        const jsonMatch = rawResponse.match(/```json\n?([\s\S]*?)\n?```/) ||
-                          rawResponse.match(/(\[[\s\S]*\])/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[1]) as DashboardSuggestion[];
-          await storeSuggestions(parsed);
-          await load();
-        }
-      } else {
-        // Web fallback: copy prompt to clipboard
-        await navigator.clipboard.writeText(prompt);
-        setCopySuccess(true);
-        setTimeout(() => setCopySuccess(false), 3000);
-      }
+      setAiModal({
+        title: 'Generate AI Suggestions',
+        prompt,
+        responseFormat: 'json',
+        onSubmit: async (rawResponse: string) => {
+          const jsonMatch = rawResponse.match(/```json\n?([\s\S]*?)\n?```/) ||
+                            rawResponse.match(/(\[[\s\S]*\])/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[1]) as DashboardSuggestion[];
+            await storeSuggestions(parsed);
+            await load();
+          }
+        },
+      });
     } catch {
-      // silently ignore parse/network errors
+      // silently ignore network errors
     } finally {
       setLoading(false);
     }
@@ -86,12 +82,6 @@ export function SuggestionsSection() {
           )}
         </button>
       </div>
-
-      {copySuccess && (
-        <div style={styles.copyBanner}>
-          Prompt copied to clipboard — paste into Claude to generate suggestions
-        </div>
-      )}
 
       {loading && (
         <div style={styles.loadingRow}>
@@ -164,6 +154,16 @@ export function SuggestionsSection() {
       {generatedAt && (
         <span style={styles.timestamp}>Last updated: {timeAgo(generatedAt)}</span>
       )}
+
+      {aiModal && (
+        <AiPromptModal
+          title={aiModal.title}
+          prompt={aiModal.prompt}
+          responseFormat={aiModal.responseFormat}
+          onSubmit={(r) => { aiModal.onSubmit(r); setAiModal(null); }}
+          onClose={() => setAiModal(null)}
+        />
+      )}
     </section>
   );
 }
@@ -200,14 +200,6 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontFamily: "'Outfit', sans-serif",
     transition: 'opacity 0.2s',
-  },
-  copyBanner: {
-    background: '#eff6ff',
-    border: '1px solid #bfdbfe',
-    borderRadius: 12,
-    padding: '10px 16px',
-    fontSize: 13,
-    color: '#1d4ed8',
   },
   loadingRow: {
     display: 'flex',

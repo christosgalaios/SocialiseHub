@@ -24,6 +24,7 @@ import {
   pushAllEvents,
   pullEvent,
 } from '../api/events';
+import { AiPromptModal } from '../components/AiPromptModal';
 import { PlatformSelector } from '../components/PlatformSelector';
 import { PlatformSyncRow } from '../components/PlatformSyncRow';
 import { StatusBadge } from '../components/StatusBadge';
@@ -94,11 +95,11 @@ export function EventDetailPage() {
   } | null>(null);
   const [scoring, setScoring] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
-  const [optimizePrompt, setOptimizePrompt] = useState<string | null>(null);
-  const [optimizeResponse, setOptimizeResponse] = useState<string | null>(null);
-  const [showOptimizeModal, setShowOptimizeModal] = useState(false);
-  const [optimizeCopied, setOptimizeCopied] = useState(false);
-  const [autoSending, setAutoSending] = useState(false);
+  const [aiModal, setAiModal] = useState<{
+    title: string; prompt: string;
+    responseFormat: 'json' | 'text';
+    onSubmit: (response: string) => void;
+  } | null>(null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [templateName, setTemplateName] = useState('');
   const { showToast } = useToast();
@@ -147,12 +148,11 @@ export function EventDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, loading, event]);
 
-  /** Score — check cache first, compose prompt if miss, send to Claude, save result */
+  /** Score — check cache first, compose prompt if miss, open modal, save result on submit */
   const handleScore = async () => {
     if (!id) return;
     setScoring(true);
     setError(null);
-    const w = window as Window & { electronAPI?: { sendPromptToClaude: (p: string) => Promise<{ response?: string; error?: string }> } };
     try {
       // Check cache first
       const cached = await getEventScore(id);
@@ -166,52 +166,51 @@ export function EventDetailPage() {
       }
       // Compose prompt
       const { prompt } = await scoreEvent(id);
-      // Send to Claude
-      if (!w.electronAPI?.sendPromptToClaude) {
-        setError('Claude bridge not available — run in Electron');
-        return;
-      }
-      const result = await w.electronAPI.sendPromptToClaude(prompt);
-      if (result.error) {
-        setError(`Claude: ${result.error}`);
-        return;
-      }
-      if (!result.response) {
-        setError('No response from Claude');
-        return;
-      }
-      // Parse JSON — Claude should return raw JSON per prompt instructions
-      let jsonStr: string | null = null;
-      const fencedMatch = result.response.match(/```json\s*([\s\S]*?)```/);
-      if (fencedMatch) {
-        jsonStr = fencedMatch[1];
-      } else {
-        const startIdx = result.response.indexOf('{');
-        if (startIdx !== -1) {
-          let depth = 0;
-          for (let i = startIdx; i < result.response.length; i++) {
-            if (result.response[i] === '{') depth++;
-            else if (result.response[i] === '}') depth--;
-            if (depth === 0) { jsonStr = result.response.slice(startIdx, i + 1); break; }
+      // Open modal — onSubmit receives the pasted AI response
+      setAiModal({
+        title: 'Score Event',
+        prompt,
+        responseFormat: 'json',
+        onSubmit: async (response: string) => {
+          setAiModal(null);
+          try {
+            // Parse JSON — Claude should return raw JSON per prompt instructions
+            let jsonStr: string | null = null;
+            const fencedMatch = response.match(/```json\s*([\s\S]*?)```/);
+            if (fencedMatch) {
+              jsonStr = fencedMatch[1];
+            } else {
+              const startIdx = response.indexOf('{');
+              if (startIdx !== -1) {
+                let depth = 0;
+                for (let i = startIdx; i < response.length; i++) {
+                  if (response[i] === '{') depth++;
+                  else if (response[i] === '}') depth--;
+                  if (depth === 0) { jsonStr = response.slice(startIdx, i + 1); break; }
+                }
+              }
+            }
+            if (!jsonStr) {
+              setError('Could not parse score JSON from response');
+              return;
+            }
+            const parsed = JSON.parse(jsonStr) as {
+              overall: number;
+              breakdown: ScoreBreakdown;
+              suggestions: ScoreSuggestion[];
+            };
+            // Save to backend
+            await saveEventScore(id, {
+              overall: parsed.overall,
+              breakdown: parsed.breakdown,
+              suggestions: parsed.suggestions,
+            });
+            setScoreData(parsed);
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Scoring failed');
           }
-        }
-      }
-      if (!jsonStr) {
-        setError('Could not parse score JSON from Claude response');
-        return;
-      }
-      const parsed = JSON.parse(jsonStr) as {
-        overall: number;
-        breakdown: ScoreBreakdown;
-        suggestions: ScoreSuggestion[];
-      };
-      // Save to backend
-      await saveEventScore(id, {
-        overall: parsed.overall,
-        breakdown: parsed.breakdown,
-        suggestions: parsed.suggestions,
+        },
       });
-      setScoreData(parsed);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Scoring failed');
     } finally {
@@ -306,12 +305,17 @@ export function EventDetailPage() {
     if (!id) return;
     setOptimizing(true);
     setError(null);
-    setOptimizeResponse(null);
     try {
       const result = await optimizeEvent(id);
-      setOptimizePrompt(result.prompt);
-      setShowOptimizeModal(true);
-      setOptimizeCopied(false);
+      setAiModal({
+        title: 'SEO Optimization',
+        prompt: result.prompt,
+        responseFormat: 'json',
+        onSubmit: (response: string) => {
+          setAiModal(null);
+          handleApplyOptimization(response);
+        },
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Optimize failed');
     } finally {
@@ -319,25 +323,23 @@ export function EventDetailPage() {
     }
   };
 
-  /** Magic fill — send magic-fill prompt to Claude and apply JSON response */
+  /** Magic fill — open modal with magic-fill prompt, apply JSON response */
   const handleMagicFill = async () => {
     if (!id) return;
-    const w = window as Window & { electronAPI?: { sendPromptToClaude: (p: string) => Promise<{ response?: string; error?: string }> } };
     try {
       const { prompt } = await magicFill(id);
-      if (w.electronAPI?.sendPromptToClaude) {
-        const result = await w.electronAPI.sendPromptToClaude(prompt);
-        if (result.error) {
-          setError(`Claude: ${result.error}`);
-          return;
-        }
-        if (result.response) {
+      setAiModal({
+        title: 'Magic Fill',
+        prompt,
+        responseFormat: 'json',
+        onSubmit: async (response: string) => {
+          setAiModal(null);
           // Extract first JSON object from response
-          const startIdx = result.response.indexOf('{');
-          const endIdx = result.response.lastIndexOf('}');
+          const startIdx = response.indexOf('{');
+          const endIdx = response.lastIndexOf('}');
           if (startIdx !== -1 && endIdx !== -1) {
             try {
-              const optimized = JSON.parse(result.response.slice(startIdx, endIdx + 1));
+              const optimized = JSON.parse(response.slice(startIdx, endIdx + 1));
               if (optimized.title) setTitle(optimized.title);
               if (optimized.description) setDescription(optimized.description);
               if (optimized.venue) setVenue(optimized.venue);
@@ -358,8 +360,8 @@ export function EventDetailPage() {
               setError('Could not parse magic fill JSON');
             }
           }
-        }
-      }
+        },
+      });
       // Auto-fill photos in background
       autoFillPhotos(id).catch(() => {});
     } catch (err) {
@@ -367,55 +369,8 @@ export function EventDetailPage() {
     }
   };
 
-  /** Auto-send prompt to Claude panel and wait for response */
-  const handleAutoOptimize = async () => {
-    if (!optimizePrompt) return;
-    const w = window as Window & { electronAPI?: { sendPromptToClaude: (p: string) => Promise<{ response?: string; error?: string }> } };
-    if (!w.electronAPI?.sendPromptToClaude) {
-      // Fallback to manual copy
-      handleCopyOptimize();
-      return;
-    }
-    setAutoSending(true);
-    setError(null);
-    try {
-      const result = await w.electronAPI.sendPromptToClaude(optimizePrompt);
-      if (result.error) {
-        setError(`Claude: ${result.error}`);
-      } else if (result.response) {
-        setOptimizeResponse(result.response);
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Auto-optimize failed');
-    } finally {
-      setAutoSending(false);
-    }
-  };
-
-  /** Manual: copy prompt to clipboard and open Claude */
-  const handleCopyOptimize = async () => {
-    if (!optimizePrompt) return;
-    try {
-      const w = window as Window & { electronAPI?: { copyToClipboard: (t: string) => Promise<void>; focusClaudePanel: () => Promise<void> } };
-      if (w.electronAPI?.copyToClipboard) {
-        await w.electronAPI.copyToClipboard(optimizePrompt);
-      } else {
-        await navigator.clipboard.writeText(optimizePrompt);
-      }
-      setOptimizeCopied(true);
-      if (w.electronAPI?.focusClaudePanel) {
-        await w.electronAPI.focusClaudePanel();
-      } else {
-        window.open('https://claude.ai/new', '_blank');
-      }
-    } catch {
-      setError('Failed to copy to clipboard');
-    }
-  };
-
-  /** Apply optimized values from Claude's JSON response */
-  const handleApplyOptimization = () => {
-    if (!optimizeResponse) return;
+  /** Apply optimized values from AI JSON response */
+  const handleApplyOptimization = (optimizeResponse: string) => {
     try {
       // Try fenced code block first (most reliable)
       const fencedMatch = optimizeResponse.match(/```json\s*([\s\S]*?)```/);
@@ -442,13 +397,12 @@ export function EventDetailPage() {
       }
 
       if (!jsonStr) {
-        setError('Could not find JSON in Claude response — apply changes manually');
+        setError('Could not find JSON in response — apply changes manually');
         return;
       }
       const json = JSON.parse(jsonStr);
       if (json.title) setTitle(json.title);
       if (json.description) setDescription(json.description);
-      setShowOptimizeModal(false);
     } catch {
       setError('Could not parse optimization JSON — apply changes manually');
     }
@@ -799,63 +753,6 @@ export function EventDetailPage() {
         </div>
       )}
 
-      {/* SEO Optimize Modal */}
-      {showOptimizeModal && optimizePrompt && (
-        <div style={styles.overlay} onClick={() => setShowOptimizeModal(false)}>
-          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <h2 style={styles.modalTitle}>
-                {optimizeResponse ? 'Optimization Results' : 'SEO Optimization Prompt'}
-              </h2>
-              <button style={styles.closeBtn} onClick={() => setShowOptimizeModal(false)}>
-                ✕
-              </button>
-            </div>
-            <div style={styles.promptBox}>
-              {optimizeResponse ? (
-                <pre style={styles.promptText}>{optimizeResponse}</pre>
-              ) : (
-                <pre style={styles.promptText}>{optimizePrompt}</pre>
-              )}
-            </div>
-            <div style={styles.modalFooter}>
-              <p style={styles.modalHint}>
-                {autoSending
-                  ? 'Sending to Claude and waiting for response...'
-                  : optimizeResponse
-                    ? 'Review suggestions above, then apply to update your event'
-                    : optimizeCopied
-                      ? 'Copied! Paste into Claude and hit Enter.'
-                      : 'Send to Claude automatically or copy the prompt manually'}
-              </p>
-              <div style={styles.modalActions}>
-                <button style={styles.secondaryBtn} onClick={() => setShowOptimizeModal(false)}>
-                  Cancel
-                </button>
-                {optimizeResponse ? (
-                  <button style={styles.sendBtn} onClick={handleApplyOptimization}>
-                    Apply Changes
-                  </button>
-                ) : (
-                  <>
-                    <button
-                      style={styles.sendBtn}
-                      onClick={handleAutoOptimize}
-                      disabled={autoSending}
-                    >
-                      {autoSending ? 'Waiting for Claude...' : 'Send to Claude'}
-                    </button>
-                    <button style={styles.secondaryBtn} onClick={handleCopyOptimize}>
-                      {optimizeCopied ? 'Copied' : 'Copy Manual'}
-                    </button>
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Existing platforms status */}
       {event && event.platforms.length > 0 && (
         <div style={styles.publishSection}>
@@ -885,6 +782,16 @@ export function EventDetailPage() {
             ))}
           </div>
         </div>
+      )}
+
+      {aiModal && (
+        <AiPromptModal
+          title={aiModal.title}
+          prompt={aiModal.prompt}
+          responseFormat={aiModal.responseFormat}
+          onSubmit={aiModal.onSubmit}
+          onClose={() => setAiModal(null)}
+        />
       )}
     </div>
   );

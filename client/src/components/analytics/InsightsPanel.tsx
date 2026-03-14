@@ -1,40 +1,32 @@
 import { useState } from 'react';
 import type { CSSProperties } from 'react';
 import { getAnalyticsInsights } from '../../api/events';
-
-// Typed Electron API
-interface ElectronWithClaude {
-  sendPromptToClaude?: (prompt: string) => Promise<string>;
-}
-
-const electronAPI = (window as unknown as { electronAPI?: ElectronWithClaude }).electronAPI;
+import { AiPromptModal } from '../AiPromptModal';
 
 export function InsightsPanel() {
   const [loading, setLoading] = useState(false);
   const [insights, setInsights] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [aiModal, setAiModal] = useState<{ title: string; prompt: string; responseFormat: 'json' | 'text'; onSubmit: (r: string) => void } | null>(null);
 
   const handleAnalyze = async () => {
     setLoading(true);
     setError(null);
     setInsights(null);
-    setCopied(false);
 
     try {
       const result = await getAnalyticsInsights();
       const prompt = result.prompt;
 
-      if (electronAPI?.sendPromptToClaude) {
-        // Use the Electron Claude bridge
-        const response = await electronAPI.sendPromptToClaude(prompt);
-        setInsights(response);
-      } else {
-        // Fallback: copy to clipboard
-        await navigator.clipboard.writeText(prompt);
-        setCopied(true);
-        setInsights('Prompt copied to clipboard. Paste it into Claude to get insights.');
-      }
+      setAiModal({
+        title: 'Analyze Performance',
+        prompt,
+        responseFormat: 'text',
+        onSubmit: (response) => {
+          setAiModal(null);
+          setInsights(response);
+        },
+      });
     } catch (err) {
       setError(String(err));
     } finally {
@@ -88,11 +80,10 @@ export function InsightsPanel() {
           border: '1px solid rgba(139,92,246,0.15)',
           borderRadius: 8,
           padding: '16px',
-          color: copied ? '#888' : '#e0e0e0',
+          color: '#e0e0e0',
           fontSize: 14,
           lineHeight: 1.6,
           whiteSpace: 'pre-wrap',
-          fontStyle: copied ? 'italic' : 'normal',
         }}>
           {insights}
         </div>
@@ -102,6 +93,16 @@ export function InsightsPanel() {
         <div style={{ color: '#555', fontSize: 13, textAlign: 'center', padding: '20px 0' }}>
           Click "Analyze Performance" to generate AI-powered insights from your event data
         </div>
+      )}
+
+      {aiModal && (
+        <AiPromptModal
+          title={aiModal.title}
+          prompt={aiModal.prompt}
+          responseFormat={aiModal.responseFormat}
+          onSubmit={aiModal.onSubmit}
+          onClose={() => setAiModal(null)}
+        />
       )}
     </div>
   );

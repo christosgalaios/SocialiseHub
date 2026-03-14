@@ -1,21 +1,8 @@
 import { useState } from 'react';
 import type { ScrapedEvent } from '@shared/types';
-import { analyzeMarket } from '../api/events';
+import { analyzeMarket, storeIdeas } from '../api/events';
 import { MarketDataTable } from '../components/MarketDataTable';
-
-// Declare electronAPI if available (Electron desktop mode)
-declare global {
-  interface Window {
-    electronAPI?: {
-      isElectron: boolean;
-      openExternal: (url: string) => Promise<void>;
-      copyToClipboard: (text: string) => Promise<void>;
-      toggleClaudePanel: () => Promise<boolean>;
-      focusClaudePanel: () => Promise<void>;
-      isClaudePanelOpen: () => Promise<boolean>;
-    };
-  }
-}
+import { AiPromptModal } from '../components/AiPromptModal';
 
 const BASE = '/api';
 
@@ -24,10 +11,12 @@ export function EventGeneratorPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Claude prompt state
-  const [prompt, setPrompt] = useState<string | null>(null);
-  const [showPromptModal, setShowPromptModal] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [aiModal, setAiModal] = useState<{
+    title: string;
+    prompt: string;
+    responseFormat: 'json' | 'text';
+    onSubmit: (r: string) => void;
+  } | null>(null);
 
   const handleAnalyze = async () => {
     setAnalyzing(true);
@@ -40,6 +29,11 @@ export function EventGeneratorPage() {
     } finally {
       setAnalyzing(false);
     }
+  };
+
+  const loadIdeas = async () => {
+    // No-op placeholder — ideas are now stored via storeIdeas; the idea queue
+    // can be refreshed by navigating to the Events page or via the idea modal there.
   };
 
   const handleGeneratePrompt = async () => {
@@ -55,33 +49,30 @@ export function EventGeneratorPage() {
         throw new Error(body.error || res.statusText);
       }
       const body = (await res.json()) as { prompt: string };
-      setPrompt(body.prompt);
-      setShowPromptModal(true);
-      setCopied(false);
+
+      setAiModal({
+        title: 'Generate Event Ideas with Claude',
+        prompt: body.prompt,
+        responseFormat: 'json',
+        onSubmit: async (response: string) => {
+          setAiModal(null);
+          try {
+            // Extract JSON array from response (handles optional code fences)
+            const startIdx = response.indexOf('[');
+            const endIdx = response.lastIndexOf(']');
+            if (startIdx === -1 || endIdx === -1) {
+              throw new Error('No JSON array found in response');
+            }
+            const parsed = JSON.parse(response.slice(startIdx, endIdx + 1));
+            await storeIdeas(parsed);
+            await loadIdeas();
+          } catch (err) {
+            setError(err instanceof Error ? err.message : 'Failed to store ideas');
+          }
+        },
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to generate prompt');
-    }
-  };
-
-  const handleCopyAndSend = async () => {
-    if (!prompt) return;
-    try {
-      // Copy to clipboard — use Electron API if available, otherwise native
-      if (window.electronAPI?.copyToClipboard) {
-        await window.electronAPI.copyToClipboard(prompt);
-      } else {
-        await navigator.clipboard.writeText(prompt);
-      }
-      setCopied(true);
-
-      // Focus the in-app Claude panel if in Electron, otherwise open a new tab
-      if (window.electronAPI?.focusClaudePanel) {
-        await window.electronAPI.focusClaudePanel();
-      } else {
-        window.open('https://claude.ai/new', '_blank');
-      }
-    } catch {
-      setError('Failed to copy to clipboard');
     }
   };
 
@@ -153,55 +144,22 @@ export function EventGeneratorPage() {
           <div style={styles.infoBox}>
             <p style={styles.infoText}>
               <strong>How it works:</strong> We compose a detailed prompt with the market data
-              above and your past events. You review the prompt, then send it to Claude
-              (via your Max plan — no API costs). Claude responds with tailored event ideas
-              that you can save as drafts.
+              above and your past events. Copy the prompt into any AI chat, paste Claude's
+              JSON response back here, and the ideas will be saved to your queue automatically.
             </p>
           </div>
         </section>
       )}
 
-      {/* Prompt Review Modal */}
-      {showPromptModal && prompt && (
-        <div style={styles.overlay} onClick={() => setShowPromptModal(false)}>
-          <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div style={styles.modalHeader}>
-              <h2 style={styles.modalTitle}>Review Prompt for Claude</h2>
-              <button
-                style={styles.closeBtn}
-                onClick={() => setShowPromptModal(false)}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={styles.promptBox}>
-              <pre style={styles.promptText}>{prompt}</pre>
-            </div>
-
-            <div style={styles.modalFooter}>
-              <p style={styles.modalHint}>
-                {copied
-                  ? '✅ Copied! Paste into Claude and hit Enter.'
-                  : 'This will copy the prompt and open the Claude panel'}
-              </p>
-              <div style={styles.modalActions}>
-                <button
-                  style={styles.secondaryBtn}
-                  onClick={() => setShowPromptModal(false)}
-                >
-                  Cancel
-                </button>
-                <button
-                  style={styles.sendBtn}
-                  onClick={handleCopyAndSend}
-                >
-                  {copied ? '📋 Copied — Focus Claude' : '📋 Copy & Open Claude'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+      {/* AI Prompt Modal */}
+      {aiModal && (
+        <AiPromptModal
+          title={aiModal.title}
+          prompt={aiModal.prompt}
+          responseFormat={aiModal.responseFormat}
+          onSubmit={aiModal.onSubmit}
+          onClose={() => setAiModal(null)}
+        />
       )}
     </div>
   );
@@ -328,109 +286,5 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#555',
     lineHeight: 1.6,
     margin: 0,
-  },
-
-  // Modal overlay
-  overlay: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    background: 'rgba(0,0,0,0.5)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 1000,
-    padding: 24,
-  },
-  modal: {
-    background: '#fff',
-    borderRadius: 20,
-    width: '100%',
-    maxWidth: 720,
-    maxHeight: '85vh',
-    display: 'flex',
-    flexDirection: 'column',
-    boxShadow: '0 20px 60px rgba(0,0,0,0.2)',
-  },
-  modalHeader: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '20px 28px',
-    borderBottom: '1px solid #e8e6e1',
-  },
-  modalTitle: {
-    fontFamily: "'Outfit', sans-serif",
-    fontSize: 18,
-    fontWeight: 700,
-    color: '#080810',
-    margin: 0,
-  },
-  closeBtn: {
-    background: 'none',
-    border: 'none',
-    fontSize: 18,
-    color: '#999',
-    cursor: 'pointer',
-    padding: '4px 8px',
-    borderRadius: 8,
-  },
-  promptBox: {
-    flex: 1,
-    overflow: 'auto',
-    padding: '20px 28px',
-  },
-  promptText: {
-    fontFamily: "'Courier New', monospace",
-    fontSize: 12,
-    lineHeight: 1.7,
-    color: '#333',
-    whiteSpace: 'pre-wrap',
-    wordBreak: 'break-word',
-    margin: 0,
-  },
-  modalFooter: {
-    padding: '16px 28px',
-    borderTop: '1px solid #e8e6e1',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    gap: 16,
-  },
-  modalHint: {
-    fontSize: 12,
-    color: '#7a7a7a',
-    margin: 0,
-    flex: 1,
-  },
-  modalActions: {
-    display: 'flex',
-    gap: 10,
-    flexShrink: 0,
-  },
-  secondaryBtn: {
-    padding: '10px 18px',
-    borderRadius: 10,
-    border: '1.5px solid #ddd',
-    background: '#fff',
-    color: '#555',
-    fontSize: 13,
-    fontWeight: 600,
-    cursor: 'pointer',
-    fontFamily: "'Outfit', sans-serif",
-  },
-  sendBtn: {
-    padding: '10px 20px',
-    borderRadius: 10,
-    border: 'none',
-    background: '#2D5F5D',
-    color: '#fff',
-    fontSize: 13,
-    fontWeight: 700,
-    cursor: 'pointer',
-    fontFamily: "'Outfit', sans-serif",
-    whiteSpace: 'nowrap',
   },
 };
