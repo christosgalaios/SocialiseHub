@@ -373,6 +373,30 @@ export async function autoFillPhotos(eventId: string): Promise<{ photos: any[] }
   return json<{ photos: any[] }>(res);
 }
 
+// ── Scoring ────────────────────────────────────────────
+
+export async function getEventScore(id: string): Promise<{ score: any | null }> {
+  const res = await fetch(`${BASE}/events/${id}/score`);
+  return json<{ score: any | null }>(res);
+}
+
+export async function scoreEvent(id: string): Promise<{ prompt: string; eventId: string }> {
+  const res = await fetch(`${BASE}/events/${id}/score`, { method: 'POST' });
+  return json<{ prompt: string; eventId: string }>(res);
+}
+
+export async function saveEventScore(id: string, data: { overall: number; breakdown: Record<string, number>; suggestions: any[] }): Promise<void> {
+  const res = await fetch(`${BASE}/events/${id}/score/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(body.error || res.statusText);
+  }
+}
+
 // ── Service Setup ──────────────────────────────────────
 
 export async function setupService(

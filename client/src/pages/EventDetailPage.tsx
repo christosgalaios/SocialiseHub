@@ -17,11 +17,16 @@ import {
   optimizeEvent,
   magicFill,
   autoFillPhotos,
+  getEventScore,
+  scoreEvent,
+  saveEventScore,
 } from '../api/events';
 import { PlatformSelector } from '../components/PlatformSelector';
 import { StatusBadge } from '../components/StatusBadge';
 import { ReadinessChecklist } from '../components/ReadinessChecklist';
 import { OptimizePanel } from '../components/OptimizePanel';
+import { ScorePanel } from '../components/ScorePanel';
+import type { ScoreBreakdown, ScoreSuggestion } from '../components/ScorePanel';
 import { PLATFORM_COLORS } from '../lib/platforms';
 import { useToast } from '../context/ToastContext';
 import { loadSettings } from '../lib/settings';
@@ -78,6 +83,12 @@ export function EventDetailPage() {
       setDefaultsApplied(true);
     }
   }, [isNew, prefillDate, defaultsApplied]);
+  const [scoreData, setScoreData] = useState<{
+    overall: number;
+    breakdown: ScoreBreakdown;
+    suggestions: ScoreSuggestion[];
+  } | null>(null);
+  const [scoring, setScoring] = useState(false);
   const [optimizing, setOptimizing] = useState(false);
   const [optimizePrompt, setOptimizePrompt] = useState<string | null>(null);
   const [optimizeResponse, setOptimizeResponse] = useState<string | null>(null);
@@ -129,6 +140,88 @@ export function EventDetailPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, loading, event]);
+
+  /** Score — check cache first, compose prompt if miss, send to Claude, save result */
+  const handleScore = async () => {
+    if (!id) return;
+    setScoring(true);
+    setError(null);
+    const w = window as Window & { electronAPI?: { sendPromptToClaude: (p: string) => Promise<{ response?: string; error?: string }> } };
+    try {
+      // Check cache first
+      const cached = await getEventScore(id);
+      if (cached.score) {
+        setScoreData({
+          overall: cached.score.overall,
+          breakdown: cached.score.breakdown,
+          suggestions: cached.score.suggestions,
+        });
+        return;
+      }
+      // Compose prompt
+      const { prompt } = await scoreEvent(id);
+      // Send to Claude
+      if (!w.electronAPI?.sendPromptToClaude) {
+        setError('Claude bridge not available — run in Electron');
+        return;
+      }
+      const result = await w.electronAPI.sendPromptToClaude(prompt);
+      if (result.error) {
+        setError(`Claude: ${result.error}`);
+        return;
+      }
+      if (!result.response) {
+        setError('No response from Claude');
+        return;
+      }
+      // Parse JSON — Claude should return raw JSON per prompt instructions
+      let jsonStr: string | null = null;
+      const fencedMatch = result.response.match(/```json\s*([\s\S]*?)```/);
+      if (fencedMatch) {
+        jsonStr = fencedMatch[1];
+      } else {
+        const startIdx = result.response.indexOf('{');
+        if (startIdx !== -1) {
+          let depth = 0;
+          for (let i = startIdx; i < result.response.length; i++) {
+            if (result.response[i] === '{') depth++;
+            else if (result.response[i] === '}') depth--;
+            if (depth === 0) { jsonStr = result.response.slice(startIdx, i + 1); break; }
+          }
+        }
+      }
+      if (!jsonStr) {
+        setError('Could not parse score JSON from Claude response');
+        return;
+      }
+      const parsed = JSON.parse(jsonStr) as {
+        overall: number;
+        breakdown: ScoreBreakdown;
+        suggestions: ScoreSuggestion[];
+      };
+      // Save to backend
+      await saveEventScore(id, {
+        overall: parsed.overall,
+        breakdown: parsed.breakdown,
+        suggestions: parsed.suggestions,
+      });
+      setScoreData(parsed);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Scoring failed');
+    } finally {
+      setScoring(false);
+    }
+  };
+
+  /** Apply a score suggestion — update local form state and clear score so user re-scores */
+  const handleApplySuggestion = (field: string, value: string) => {
+    if (field === 'title') setTitle(value);
+    else if (field === 'description') setDescription(value);
+    else if (field === 'venue') setVenue(value);
+    // Clear score so user sees fresh state after change
+    setScoreData(null);
+    showToast(`Applied ${field} suggestion`, 'success');
+  };
 
   const buildInput = (): CreateEventInput => ({
     title,
@@ -525,6 +618,17 @@ export function EventDetailPage() {
               >
                 {optimizing ? 'Analyzing...' : 'SEO Optimize'}
               </button>
+              <button
+                type="button"
+                disabled={scoring}
+                style={{
+                  ...styles.scoreBtn,
+                  opacity: scoring ? 0.7 : 1,
+                }}
+                onClick={handleScore}
+              >
+                {scoring ? 'Scoring...' : '📊 Score'}
+              </button>
               <div style={{ position: 'relative', display: 'inline-block' }} title={!canPublish ? 'Complete all required fields before publishing' : ''}>
                 <button
                   type="button"
@@ -550,6 +654,18 @@ export function EventDetailPage() {
         </div>
       )}
       </div>
+
+      {/* Score panel */}
+      {scoreData && id && (
+        <ScorePanel
+          eventId={id}
+          overall={scoreData.overall}
+          breakdown={scoreData.breakdown}
+          suggestions={scoreData.suggestions}
+          onApply={handleApplySuggestion}
+          onRescore={() => setScoreData(null)}
+        />
+      )}
 
       {/* Publish results panel */}
       {publishResults && publishResults.length > 0 && (
@@ -820,6 +936,18 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1.5px solid #d4a017',
     background: '#fffbeb',
     color: '#92700c',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
+    transition: 'opacity 0.2s',
+  },
+  scoreBtn: {
+    padding: '12px 20px',
+    borderRadius: 12,
+    border: '1.5px solid #3d86c6',
+    background: '#e8f2fb',
+    color: '#1a5d9e',
     fontSize: 14,
     fontWeight: 700,
     cursor: 'pointer',
