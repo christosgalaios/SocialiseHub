@@ -1,4 +1,5 @@
 import BetterSqlite3 from 'better-sqlite3';
+import { randomUUID } from 'crypto';
 
 export type Database = BetterSqlite3.Database;
 
@@ -91,6 +92,36 @@ function runMigrations(db: Database): void {
       FOREIGN KEY (event_id) REFERENCES events(id)
     )`);
     db.pragma('user_version = 5');
+  }
+  if (currentVersion < 6) {
+    // Link all unlinked platform_events to events table
+    // This fixes events synced before linkPlatformEventToEvent was added
+    const unlinked = db.prepare(
+      'SELECT id, platform, external_id, title, date, venue FROM platform_events WHERE event_id IS NULL'
+    ).all() as Array<{ id: string; platform: string; external_id: string; title: string; date: string; venue: string }>;
+
+    const insertEvent = db.prepare(
+      `INSERT INTO events (id, title, description, start_time, end_time, duration_minutes, venue, price, capacity, status, sync_status, created_at, updated_at)
+       VALUES (?, ?, '', ?, NULL, 120, ?, 0, 0, 'draft', 'synced', ?, ?)`
+    );
+    const linkPe = db.prepare('UPDATE platform_events SET event_id = ? WHERE id = ?');
+
+    const migrate = db.transaction(() => {
+      for (const pe of unlinked) {
+        const eventId = randomUUID();
+        const now = new Date().toISOString();
+        // Use date if valid, otherwise use now
+        let startTime = now;
+        if (pe.date && pe.date.length > 0) {
+          try { startTime = new Date(pe.date).toISOString(); } catch { /* use now */ }
+        }
+        insertEvent.run(eventId, pe.title, startTime, pe.venue || '', now, now);
+        linkPe.run(eventId, pe.id);
+      }
+    });
+    migrate();
+
+    db.pragma('user_version = 6');
   }
 }
 
