@@ -2,6 +2,7 @@ import { beforeEach, afterEach, describe, it, expect } from 'vitest';
 import { createDatabase } from './database.js';
 import type { Database } from './database.js';
 import { SqliteEventStore } from './sqlite-event-store.js';
+import type { SocialiseEvent } from '../shared/types.js';
 
 const validInput = {
   title: 'Test Event',
@@ -91,5 +92,42 @@ describe.skip('SqliteEventStore', () => {
   it('returns undefined for a non-existent event', () => {
     const result = store.getById('non-existent-id');
     expect(result).toBeUndefined();
+  });
+
+  it('new events default to sync_status local_only', () => {
+    const created = store.create(validInput);
+    expect(created.sync_status).toBe('local_only');
+  });
+
+  it('updateSyncStatus changes the status', () => {
+    const created = store.create(validInput);
+    expect(created.sync_status).toBe('local_only');
+
+    const updated = store.updateSyncStatus(created.id, 'synced');
+    expect(updated?.sync_status).toBe('synced');
+
+    const again = store.updateSyncStatus(created.id, 'modified');
+    expect(again?.sync_status).toBe('modified');
+  });
+
+  it('updateSyncStatus returns undefined for non-existent event', () => {
+    const result = store.updateSyncStatus('non-existent-id', 'synced');
+    expect(result).toBeUndefined();
+  });
+
+  it('editing a synced event auto-flips sync_status to modified', () => {
+    const created = store.create(validInput);
+    store.updateSyncStatus(created.id, 'synced');
+
+    const updated = store.update(created.id, { title: 'New Title' });
+    expect(updated?.sync_status).toBe('modified');
+  });
+
+  it('editing a local_only event keeps sync_status as local_only', () => {
+    const created = store.create(validInput);
+    expect(created.sync_status).toBe('local_only');
+
+    const updated = store.update(created.id, { title: 'New Title' });
+    expect(updated?.sync_status).toBe('local_only');
   });
 });

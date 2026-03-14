@@ -7,7 +7,20 @@ export function createDatabase(path: string): Database {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   createSchema(db);
+  runMigrations(db);
   return db;
+}
+
+function runMigrations(db: Database): void {
+  const currentVersion = db.pragma('user_version', { simple: true }) as number;
+  if (currentVersion < 1) {
+    try {
+      db.exec("ALTER TABLE events ADD COLUMN sync_status TEXT DEFAULT 'local_only'");
+    } catch {
+      // Column already exists
+    }
+    db.pragma('user_version = 1');
+  }
 }
 
 function createSchema(db: Database): void {

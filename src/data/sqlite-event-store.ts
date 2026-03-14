@@ -27,6 +27,7 @@ interface EventRow {
   capacity: number | null;
   image_url: string | null;
   status: string;
+  sync_status: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -68,6 +69,7 @@ export class SqliteEventStore {
       capacity: row.capacity ?? 0,
       imageUrl: row.image_url ?? undefined,
       status: row.status as EventStatus,
+      sync_status: (row.sync_status ?? 'local_only') as 'synced' | 'modified' | 'local_only',
       platforms,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -97,9 +99,9 @@ export class SqliteEventStore {
       .prepare(
         `INSERT INTO events
            (id, title, description, start_time, end_time, duration_minutes,
-            venue, price, capacity, image_url, status, created_at, updated_at)
+            venue, price, capacity, image_url, status, sync_status, created_at, updated_at)
          VALUES
-           (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?)`,
+           (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'local_only', ?, ?)`,
       )
       .run(
         id,
@@ -138,11 +140,28 @@ export class SqliteEventStore {
       .map((k) => `${columnMap[k] ?? k} = ?`)
       .join(', ');
 
-    const values = [...Object.values(safe), now, id];
+    // Auto-flip sync_status from 'synced' to 'modified' when a synced event is edited
+    const autoFlip = existing.sync_status === 'synced';
+    const syncStatusClause = autoFlip ? ', sync_status = ?' : '';
+    const values = autoFlip
+      ? [...Object.values(safe), 'modified', now, id]
+      : [...Object.values(safe), now, id];
 
     this.db
-      .prepare(`UPDATE events SET ${setClauses}, updated_at = ? WHERE id = ?`)
+      .prepare(`UPDATE events SET ${setClauses}${syncStatusClause}, updated_at = ? WHERE id = ?`)
       .run(...values);
+
+    return this.getById(id);
+  }
+
+  updateSyncStatus(id: string, syncStatus: 'synced' | 'modified' | 'local_only'): SocialiseEvent | undefined {
+    const existing = this.getById(id);
+    if (!existing) return undefined;
+
+    const now = new Date().toISOString();
+    this.db
+      .prepare(`UPDATE events SET sync_status = ?, updated_at = ? WHERE id = ?`)
+      .run(syncStatus, now, id);
 
     return this.getById(id);
   }
