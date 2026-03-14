@@ -6,6 +6,7 @@ import { EventCard } from '../components/EventCard';
 import { GridSkeleton } from '../components/Skeleton';
 import { useToast } from '../context/ToastContext';
 import { IdeaCardModal } from '../components/IdeaCardModal';
+import { AiPromptModal } from '../components/AiPromptModal';
 
 type FilterTab = 'all' | 'draft' | 'published' | 'past';
 
@@ -23,6 +24,11 @@ export function EventsPage() {
   const [showIdeaModal, setShowIdeaModal] = useState(false);
   const [currentIdea, setCurrentIdea] = useState<QueuedIdea | null>(null);
   const [ideaLoading, setIdeaLoading] = useState(false);
+  const [aiModal, setAiModal] = useState<{
+    title: string; prompt: string;
+    responseFormat: 'json' | 'text';
+    onSubmit: (r: string) => void;
+  } | null>(null);
   const nav = useNavigate();
   const { showToast } = useToast();
 
@@ -102,33 +108,16 @@ export function EventsPage() {
         setIdeaLoading(false);
         return;
       }
-      // No queued ideas — generate via Claude
+      // No queued ideas — open AI modal to generate
       const { prompt } = await generateIdeasPrompt();
-      const w = window as Window & { electronAPI?: { sendPromptToClaude: (p: string) => Promise<{ response?: string; error?: string }> } };
-      if (w.electronAPI?.sendPromptToClaude) {
-        const result = await w.electronAPI.sendPromptToClaude(prompt);
-        if (result.response) {
-          try {
-            // Extract JSON array from response
-            const startIdx = result.response.indexOf('[');
-            const endIdx = result.response.lastIndexOf(']');
-            if (startIdx !== -1 && endIdx !== -1) {
-              const ideas = JSON.parse(result.response.slice(startIdx, endIdx + 1));
-              await storeIdeas(ideas);
-            }
-          } catch {
-            // parse failed — silently continue
-          }
-          const { idea: nextIdea } = await getNextIdea();
-          setCurrentIdea(nextIdea);
-        }
-      } else {
-        // Fallback: copy prompt to clipboard and show paste-response UI
-        await navigator.clipboard.writeText(prompt).catch(() => {});
-        showToast('Prompt copied to clipboard — paste into Claude, copy the JSON response, then paste it back here', 'success');
-        // Show a prompt asking user to paste Claude's response
-        const response = window.prompt('Paste Claude\'s JSON response here (the array of event ideas):');
-        if (response) {
+      setIdeaLoading(false);
+      setShowIdeaModal(false);
+      setAiModal({
+        title: 'Generate Event Ideas',
+        prompt,
+        responseFormat: 'json',
+        onSubmit: async (response) => {
+          setAiModal(null);
           try {
             const startIdx = response.indexOf('[');
             const endIdx = response.lastIndexOf(']');
@@ -137,14 +126,13 @@ export function EventsPage() {
               await storeIdeas(ideas);
               const { idea: nextIdea } = await getNextIdea();
               setCurrentIdea(nextIdea);
-              return; // keep modal open with the idea
+              setShowIdeaModal(true);
             }
           } catch {
             showToast('Failed to parse response — try again', 'error');
           }
-        }
-        setShowIdeaModal(false);
-      }
+        },
+      });
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Failed to load ideas', 'error');
       setShowIdeaModal(false);
@@ -303,6 +291,15 @@ export function EventsPage() {
           onAccept={handleAcceptIdea}
           onNext={handleNextIdea}
           onClose={() => { setShowIdeaModal(false); setCurrentIdea(null); }}
+        />
+      )}
+      {aiModal && (
+        <AiPromptModal
+          title={aiModal.title}
+          prompt={aiModal.prompt}
+          responseFormat={aiModal.responseFormat}
+          onSubmit={aiModal.onSubmit}
+          onClose={() => setAiModal(null)}
         />
       )}
     </div>

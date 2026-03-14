@@ -549,158 +549,16 @@ function setupIpcHandlers(config: AppConfig): void {
     }
   });
 
-  // ── Execute JavaScript in the Claude panel ──
-  // SECURITY: This runs arbitrary JS in the Claude panel context (claude.ai session).
-  // Only called from the preload bridge — never pass user-controlled strings as code.
+  // ── Panel Tab Switching ──
+  // Switch the right panel between Claude chat and automation browser
 
-  ipcMain.handle('execute-in-claude-panel', async (_event, code: string) => {
-    if (!claudeView) return { error: 'Claude panel not available' };
-    try {
-      const result = await claudeView.webContents.executeJavaScript(code);
-      return { result: result !== undefined ? String(result) : 'undefined' };
-    } catch (err) {
-      return { error: err instanceof Error ? err.message : String(err) };
-    }
-  });
-
-  // ── Send prompt to Claude and wait for response ──
-
-  ipcMain.handle('claude-send-prompt', async (_event, prompt: string) => {
-    if (!claudeView) return { error: 'Claude panel not available' };
-    if (!mainWindow) return { error: 'Main window not available' };
-
-    const wc = claudeView.webContents;
-
-    // Ensure panel is open
-    if (!claudePanelOpen) {
-      claudePanelOpen = true;
-      const panelWidth = config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
-      mainWindow.contentView.addChildView(claudeView);
-      layoutViews(mainWindow, panelWidth);
-    }
-
-    try {
-      // Claude.ai DOM structure (verified 2026-03-13):
-      // - Editor: div.tiptap.ProseMirror[contenteditable] (Tiptap/ProseMirror)
-      //   There's also a hidden textarea underneath — must target .tiptap specifically
-      // - Send button: button[aria-label="Send message"] (appears after text entered)
-      // - Stop button: button[aria-label="Stop Response"] (during generation)
-
-      // Step 1: Wait for the Tiptap editor to be ready
-      const inputResult = await wc.executeJavaScript(`
-        (async () => {
-          const maxWait = 15000;
-          const start = Date.now();
-          while (Date.now() - start < maxWait) {
-            const editor = document.querySelector('.tiptap.ProseMirror');
-            if (editor) return 'ready';
-            await new Promise(r => setTimeout(r, 500));
-          }
-          return 'not-found';
-        })()
-      `);
-
-      if (inputResult !== 'ready') {
-        return { error: 'Could not find Claude input field — is claude.ai loaded?' };
-      }
-
-      // Step 2: Insert prompt text via execCommand('insertText')
-      // This is the most reliable method for Tiptap — it goes through the editor's
-      // own input handling and keeps ProseMirror state in sync.
-      // webContents.paste() can target the wrong element (hidden textarea).
-      // sendInputEvent requires window focus and has Windows issues.
-      const escapedPrompt = JSON.stringify(prompt);
-      const insertResult = await wc.executeJavaScript(`
-        (() => {
-          const editor = document.querySelector('.tiptap.ProseMirror');
-          if (!editor) return 'no-editor';
-          editor.focus();
-          document.execCommand('selectAll', false, null);
-          document.execCommand('insertText', false, ${escapedPrompt});
-          return editor.textContent ? 'inserted' : 'empty';
-        })()
-      `);
-
-      if (insertResult !== 'inserted') {
-        return { error: 'Failed to insert prompt into editor: ' + insertResult };
-      }
-
-      // Brief pause for Tiptap to process input and enable the send button
-      await new Promise(r => setTimeout(r, 500));
-
-      // Step 3: Click the send button
-      const sendResult = await wc.executeJavaScript(`
-        (() => {
-          const btn = document.querySelector('button[aria-label="Send message"]')
-            || document.querySelector('button[aria-label="Send Message"]');
-          if (btn && !btn.disabled) {
-            btn.click();
-            return 'clicked';
-          }
-          return 'no-button';
-        })()
-      `);
-
-      if (sendResult === 'no-button') {
-        return { error: 'Send button not found — prompt was inserted but could not be sent' };
-      }
-
-      // Step 4: Poll for the response to complete
-      // We wait for Claude to finish generating (streaming indicator disappears)
-      const pollResult = await wc.executeJavaScript(`
-        (async () => {
-          const maxWait = 300000; // 5 min max
-          const pollInterval = 2000;
-          const start = Date.now();
-
-          // Wait a bit for response to start
-          await new Promise(r => setTimeout(r, 3000));
-
-          while (Date.now() - start < maxWait) {
-            // Check if Claude is still generating
-            const stopBtn = document.querySelector('button[aria-label="Stop generating"]')
-              || document.querySelector('button[aria-label="Stop Response"]')
-              || document.querySelector('[data-testid="stop-button"]');
-
-            if (!stopBtn) {
-              // Not generating — check if there's a response
-              await new Promise(r => setTimeout(r, 1000));
-
-              // Get the last assistant message
-              const messages = document.querySelectorAll('[data-message-author-role="assistant"], .font-claude-message, [class*="agent-turn"]');
-              if (messages.length > 0) {
-                const last = messages[messages.length - 1];
-                const text = last.innerText || last.textContent || '';
-                if (text.trim().length > 0) {
-                  return JSON.stringify({ done: true, response: text.trim() });
-                }
-              }
-
-              // Alternative: look for markdown content blocks
-              const codeBlocks = document.querySelectorAll('[class*="message"] [class*="markdown"], [class*="response"]');
-              if (codeBlocks.length > 0) {
-                const last = codeBlocks[codeBlocks.length - 1];
-                const text = last.innerText || last.textContent || '';
-                if (text.trim().length > 0) {
-                  return JSON.stringify({ done: true, response: text.trim() });
-                }
-              }
-            }
-
-            await new Promise(r => setTimeout(r, pollInterval));
-          }
-
-          return JSON.stringify({ done: false, error: 'Timed out waiting for Claude response' });
-        })()
-      `);
-
-      const parsed = JSON.parse(pollResult);
-      if (parsed.done) {
-        return { response: parsed.response };
-      }
-      return { error: parsed.error || 'Unknown error waiting for response' };
-    } catch (err) {
-      return { error: err instanceof Error ? err.message : String(err) };
+  ipcMain.handle('panel:switch-tab', (_event, tab: 'automation' | 'claude') => {
+    if (!mainWindow) return;
+    const panelWidth = config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
+    if (tab === 'automation') {
+      showAutomationView(mainWindow, panelWidth);
+    } else {
+      hideAutomationView(mainWindow, config);
     }
   });
 

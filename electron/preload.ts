@@ -70,16 +70,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   /** Execute JavaScript in the app view context (for controlling the app) */
   executeInApp: (code: string) => ipcRenderer.invoke('execute-in-app', code),
 
-  /** Execute JavaScript in the Claude panel (for DOM interaction) */
-  executeInClaudePanel: (code: string) => ipcRenderer.invoke('execute-in-claude-panel', code),
+  // ── Panel Tab Switching ──
 
-  /**
-   * Send a prompt to Claude and wait for the response.
-   * Opens the Claude panel if needed, types the prompt, clicks send,
-   * and polls until Claude finishes generating.
-   * Returns { response: string } on success or { error: string } on failure.
-   */
-  sendPromptToClaude: (prompt: string) => ipcRenderer.invoke('claude-send-prompt', prompt),
+  /** Switch the right panel between automation browser and Claude chat */
+  switchPanelTab: (tab: 'automation' | 'claude') => ipcRenderer.invoke('panel:switch-tab', tab),
 
   // ── Browser Automation ──
 
