@@ -29,15 +29,29 @@ call npx tsc -p electron/tsconfig.json
 call npx tsc -p electron/tsconfig.preload.json
 echo.
 
-:: Always rebuild native modules for Electron
-:: This ensures the .node binary matches Electron's ABI (not Node.js)
-:: even if switching between dev:web (Node) and desktop (Electron) modes
-echo  Rebuilding native modules for Electron...
-if exist "node_modules\better-sqlite3\build" (
-  rmdir /S /Q "node_modules\better-sqlite3\build" 2>nul
+:: Rebuild native modules for Electron only if ABI mismatch detected
+:: ABI 143 = Electron 40.x. If the .forge-meta has the right ABI, skip rebuild.
+set "REBUILD_NEEDED=0"
+if not exist "node_modules\better-sqlite3\build\Release\better_sqlite3.node" set "REBUILD_NEEDED=1"
+if "%REBUILD_NEEDED%"=="0" (
+  if exist "node_modules\better-sqlite3\build\Release\.forge-meta" (
+    findstr /C:"143" "node_modules\better-sqlite3\build\Release\.forge-meta" >nul 2>&1
+    if errorlevel 1 set "REBUILD_NEEDED=1"
+  ) else (
+    set "REBUILD_NEEDED=1"
+  )
 )
-call npx @electron/rebuild -f -w better-sqlite3
-echo.
+if "%REBUILD_NEEDED%"=="1" (
+  echo  Rebuilding native modules for Electron...
+  if exist "node_modules\better-sqlite3\build" (
+    rmdir /S /Q "node_modules\better-sqlite3\build" 2>nul
+  )
+  call npx @electron/rebuild -f -w better-sqlite3
+  echo.
+) else (
+  echo  Native modules OK (ABI 143^)
+  echo.
+)
 
 echo  Launching SocialiseHub desktop app...
 echo  (Close the window to stop)
