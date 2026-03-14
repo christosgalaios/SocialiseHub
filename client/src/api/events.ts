@@ -138,8 +138,8 @@ export async function cancelAutomation(): Promise<void> {
 
 export async function analyzeMarket(): Promise<ScrapedEvent[]> {
   const res = await fetch(`${BASE}/generator/analyze`, { method: 'POST' });
-  const body = await json<{ data: ScrapedEvent[] }>(res);
-  return body.data;
+  const body = await json<{ events: ScrapedEvent[] }>(res);
+  return body.events;
 }
 
 export async function saveIdeaAsDraft(idea: {

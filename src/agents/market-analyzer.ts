@@ -1,52 +1,45 @@
-import type { PlatformEventStore } from '../data/platform-event-store.js';
-import type { ScrapedEvent, PlatformName } from '../shared/types.js';
+import type { MarketEventStore } from '../data/market-event-store.js';
+import type { ScrapedEvent } from '../shared/types.js';
 
 /**
- * MarketAnalyzer — provides market data from synced platform events.
+ * MarketAnalyzer — stores and retrieves market event data from market_events table.
  *
- * Uses real data from the platform_events table (populated by sync/pull).
- * Falls back to demo data only when no events have been synced yet.
+ * Scrapers write to this store via storeResults().
+ * Generator reads from it via getMarketData().
  */
 export class MarketAnalyzer {
-  constructor(private readonly platformEventStore: PlatformEventStore) {}
+  constructor(private readonly marketEventStore: MarketEventStore) {}
 
   /**
-   * Get market data from all synced platform events.
-   * Returns real events if available, demo data otherwise.
+   * Store scrape results for a platform — clears existing data first, then upserts.
    */
-  async analyze(): Promise<ScrapedEvent[]> {
-    const allEvents = this.platformEventStore.getAll();
-
-    if (allEvents.length === 0) {
-      console.log('[MarketAnalyzer] No synced events — returning demo data');
-      return this.getDemoEvents();
+  storeResults(platform: string, events: ScrapedEvent[]): void {
+    this.marketEventStore.clearPlatform(platform);
+    for (const event of events) {
+      this.marketEventStore.upsert({
+        platform: event.platform,
+        external_id: event.url || `${platform}-${event.title}-${event.date}`,
+        title: event.title,
+        start_time: event.date,
+        venue: event.venue,
+        category: event.category ?? this.inferCategory(event.title),
+        price: event.price,
+        url: event.url,
+      });
     }
+  }
 
-    console.log(`[MarketAnalyzer] Using ${allEvents.length} real synced events`);
-
-    // Convert PlatformEvent[] to ScrapedEvent[]
-    const results: ScrapedEvent[] = allEvents.map((pe) => ({
-      title: pe.title,
-      date: pe.date ?? '',
-      venue: pe.venue ?? '',
-      category: this.inferCategory(pe.title),
-      price: undefined,
-      attendees: undefined,
-      platform: pe.platform,
-      url: pe.externalUrl ?? '',
-      status: pe.status,
-    }));
-
-    // Sort by date ascending
-    results.sort((a, b) => a.date.localeCompare(b.date));
-    return results;
+  /**
+   * Return all cached market events from the database.
+   */
+  getMarketData(): ScrapedEvent[] {
+    return this.marketEventStore.getAll();
   }
 
   /**
    * Simple category inference from event title keywords.
-   * Used to enrich synced events that don't have categories.
    */
-  private inferCategory(title: string): string {
+  inferCategory(title: string): string {
     const t = title.toLowerCase();
     if (/tech|code|hack|dev|ai|data|software|web/.test(t)) return 'Technology';
     if (/music|dj|jazz|band|gig|concert|live/.test(t)) return 'Music';
@@ -59,50 +52,5 @@ export class MarketAnalyzer {
     if (/film|movie|cinema|screen/.test(t)) return 'Film';
     if (/book|read|literature|poetry|writing/.test(t)) return 'Literature';
     return 'Other';
-  }
-
-  /**
-   * Demo events — only used when no real data has been synced.
-   */
-  private getDemoEvents(): ScrapedEvent[] {
-    const now = new Date();
-    const upcoming = (daysOut: number) => {
-      const d = new Date(now);
-      d.setDate(d.getDate() + daysOut);
-      return d.toISOString().split('T')[0];
-    };
-
-    return [
-      {
-        title: 'Bristol Tech Talks — AI & Machine Learning',
-        date: upcoming(5),
-        venue: 'Engine Shed, Bristol',
-        category: 'Technology',
-        price: 'Free',
-        attendees: 85,
-        platform: 'meetup',
-        url: 'https://meetup.com/bristol-tech-talks/events/example1',
-      },
-      {
-        title: 'Bristol Entrepreneurs Networking Evening',
-        date: upcoming(8),
-        venue: 'The Watershed, Bristol',
-        category: 'Business',
-        price: '£5',
-        attendees: 120,
-        platform: 'meetup',
-        url: 'https://meetup.com/bristol-entrepreneurs/events/example2',
-      },
-      {
-        title: 'Live Jazz Night at The Lanes',
-        date: upcoming(2),
-        venue: 'The Lanes, Bristol',
-        category: 'Music',
-        price: '£8',
-        attendees: 80,
-        platform: 'headfirst',
-        url: 'https://headfirstbristol.co.uk/whats-on/example8',
-      },
-    ];
   }
 }

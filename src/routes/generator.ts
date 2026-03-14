@@ -21,12 +21,12 @@ export function createGeneratorRouter(
 
   /**
    * POST /api/generator/analyze
-   * Scrapes public events from all connected platforms.
+   * Returns cached market events from market_events table.
    */
   router.post('/analyze', async (_req, res, next) => {
     try {
-      const events = await analyzer.analyze();
-      res.json({ data: events, total: events.length });
+      const marketData = analyzer.getMarketData();
+      res.json({ events: marketData });
     } catch (err) {
       next(err);
     }
@@ -34,21 +34,15 @@ export function createGeneratorRouter(
 
   /**
    * POST /api/generator/prompt
-   * Composes a rich prompt for Claude based on market data + past events.
+   * Composes a rich prompt for Claude based on cached market data + past events.
    * Returns { prompt: string } for the frontend to show in a review modal.
    */
-  router.post('/prompt', async (req, res, next) => {
+  router.post('/prompt', async (_req, res, next) => {
     try {
-      const { marketData } = req.body as { marketData?: ScrapedEvent[] };
-      if (!marketData?.length) {
-        return res.status(400).json({ error: 'No market data provided' });
-      }
-
-      // Fetch company's own past events for context
+      const marketData = analyzer.getMarketData();
       const pastEvents = eventStore.getAll();
-
       const prompt = composeClaudePrompt(marketData, pastEvents);
-      res.json({ data: { prompt } });
+      res.json({ prompt });
     } catch (err) {
       next(err);
     }
@@ -126,61 +120,81 @@ function composeClaudePrompt(
 ): string {
   const today = new Date().toISOString().split('T')[0];
 
-  // Summarise market data by category
-  const categories = new Map<string, number>();
-  for (const e of marketData) {
-    const cat = e.category ?? 'Other';
-    categories.set(cat, (categories.get(cat) ?? 0) + 1);
-  }
-  const categoryBreakdown = [...categories.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([cat, count]) => `  - ${cat}: ${count} events`)
-    .join('\n');
+  // Section 1: External Bristol landscape (scraped market data)
+  const marketList = marketData.length > 0
+    ? marketData
+        .map((e) => `  - "${e.title}" | ${e.date || 'TBD'} | ${e.venue || 'TBD'} | ${e.category ?? 'N/A'} | ${e.price ?? 'free'} | ${e.platform}`)
+        .join('\n')
+    : '  (No market data scraped yet — use your knowledge of Bristol events)';
 
-  // Format market events as a compact list
-  const marketList = marketData
-    .map((e) => `  - "${e.title}" | ${e.date} | ${e.venue} | ${e.category ?? 'N/A'} | ${e.price ?? 'N/A'} | ${e.attendees ?? '?'} attendees`)
-    .join('\n');
-
-  // Summarise past events
+  // Section 3: Socialise past events (style reference only)
   const pastSummary = pastEvents.length > 0
     ? pastEvents
         .slice(-10)
-        .map((e) => `  - "${e.title}" | ${e.start_time} | ${e.venue} | ${e.status}`)
+        .map((e) => `  - "${e.title}" | ${e.start_time.split('T')[0]} | ${e.venue || 'TBD'} | £${e.price} | cap ${e.capacity}`)
         .join('\n')
     : '  (No past events yet — this is a new company)';
 
-  return `You are an event planning strategist for **Socialise**, a social events company based in Bristol, UK. Your goal is to analyse the current local market and suggest creative, viable event ideas that would fill a gap or outperform competitors.
+  return `You are an event planning strategist for **Socialise**, a social events company based in Bristol, UK.
 
-## Today's Date
-${today}
+Today's date: ${today}
 
-## Market Analysis — Upcoming Events in Bristol
+---
+
+## Section 1: External Bristol Landscape (Scraped Market Data)
+
+These are real upcoming events in Bristol scraped from Meetup, Eventbrite, and Headfirst Bristol:
+
 ${marketList}
 
-## Category Breakdown
-${categoryBreakdown}
+---
 
-## Socialise's Past Events
+## Section 2: Calendar & Cultural Context (Your AI Knowledge)
+
+Use your knowledge to fill in:
+- UK bank holidays in the next 60 days
+- Major Bristol events, festivals, or cultural moments coming up
+- Seasonal considerations (weather, university term times, tourist season)
+- Days of week that work best for Bristol social events
+
+---
+
+## Section 3: Socialise Past Events (Style Reference Only)
+
+These are Socialise's own past events — use them to understand the company's style, pricing, and capacity. Do NOT treat these as competition.
+
 ${pastSummary}
 
+---
+
 ## Your Task
-Based on the market data above, please:
 
-1. **Identify 3-5 market gaps or opportunities** — categories, time slots, venues, or audience segments that are underserved.
+Analyse the Bristol market landscape above and identify the best upcoming date windows where Socialise could run a successful event (gaps in the market, low competition periods, cultural moments to leverage).
 
-2. **Generate 5 creative event ideas** for Socialise. For each idea, provide:
-   - **Title**: A catchy, marketable event name
-   - **Category**: e.g., Social, Tech, Food & Drink, Arts, Wellness, etc.
-   - **Description**: 2-3 sentences explaining the event concept
-   - **Rationale**: Why this event would succeed (based on the market data)
-   - **Suggested Date**: A specific date (within the next 30 days)
-   - **Suggested Venue**: A Bristol venue that fits the concept
-   - **Estimated Attendance**: Realistic number based on similar events
+For each suggested event, provide:
+- The optimal date and why it was chosen
+- A creative, marketable event concept that fits that window
+- Realistic capacity and pricing based on Socialise's past events
 
-3. **Rank the ideas** from most promising to least, with a brief explanation of your ranking.
+Respond ONLY with a JSON array. No markdown, no explanation outside the JSON:
 
-Please be specific, creative, and data-driven. Avoid generic suggestions — reference actual market gaps you identified.`;
+\`\`\`json
+[
+  {
+    "date": "YYYY-MM-DD",
+    "dateReason": "Why this date is optimal (gap in market, cultural hook, etc.)",
+    "title": "Catchy event title",
+    "description": "2-3 sentence event description for attendees",
+    "category": "e.g. Social | Tech | Food & Drink | Arts | Wellness | Comedy | Business",
+    "venue_type": "e.g. pub | bar | gallery | outdoor | co-working space | theatre",
+    "estimated_capacity": 50,
+    "suggested_price": "£8",
+    "confidence": "high | medium | low"
+  }
+]
+\`\`\`
+
+Suggest 5 events. Be specific and data-driven — reference actual gaps or hooks you identified.`;
 }
 
 // ── SEO Optimization Prompt ─────────────────────────────

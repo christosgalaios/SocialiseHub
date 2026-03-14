@@ -18,6 +18,7 @@ import { createGeneratorRouter } from './routes/generator.js';
 import { createTemplatesRouter } from './routes/templates.js';
 import { TemplateStore } from './data/template-store.js';
 import { MarketAnalyzer } from './agents/market-analyzer.js';
+import { MarketEventStore } from './data/market-event-store.js';
 
 export const VERSION = '0.1.0';
 
@@ -71,7 +72,8 @@ export function createApp(deps?: AppDeps): express.Express {
   });
 
   const templateStore = new TemplateStore(db);
-  const marketAnalyzer = new MarketAnalyzer(platformEventStore);
+  const marketEventStore = new MarketEventStore(db);
+  const marketAnalyzer = new MarketAnalyzer(marketEventStore);
 
   app.use(
     '/api/events',

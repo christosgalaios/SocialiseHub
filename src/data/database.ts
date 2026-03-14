@@ -21,6 +21,23 @@ function runMigrations(db: Database): void {
     }
     db.pragma('user_version = 1');
   }
+  if (currentVersion < 2) {
+    db.exec(`CREATE TABLE IF NOT EXISTS market_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      platform TEXT NOT NULL,
+      external_id TEXT NOT NULL,
+      title TEXT NOT NULL,
+      description TEXT,
+      start_time TEXT,
+      venue TEXT,
+      category TEXT,
+      price TEXT,
+      url TEXT,
+      scraped_at TEXT NOT NULL,
+      UNIQUE(platform, external_id)
+    )`);
+    db.pragma('user_version = 2');
+  }
 }
 
 function createSchema(db: Database): void {

@@ -48,14 +48,14 @@ export function EventGeneratorPage() {
       const res = await fetch(`${BASE}/generator/prompt`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ marketData }),
+        body: JSON.stringify({}),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({ error: res.statusText }));
         throw new Error(body.error || res.statusText);
       }
-      const body = (await res.json()) as { data: { prompt: string } };
-      setPrompt(body.data.prompt);
+      const body = (await res.json()) as { prompt: string };
+      setPrompt(body.prompt);
       setShowPromptModal(true);
       setCopied(false);
     } catch (err) {
