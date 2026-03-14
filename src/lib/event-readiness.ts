@@ -15,7 +15,6 @@ export function checkEventReadiness(event: SocialiseEvent): ReadinessCheck[] {
     { field: 'venue', label: 'Venue', passed: !!event.venue, severity: 'required' },
     { field: 'price', label: 'Price set', passed: event.price !== undefined && event.price !== null, severity: 'recommended' },
     { field: 'capacity', label: 'Capacity set', passed: !!event.capacity && event.capacity > 0, severity: 'recommended' },
-    { field: 'imageUrl', label: 'Event image', passed: !!event.imageUrl, severity: 'recommended' },
     { field: 'description_length', label: 'Description 100+ chars', passed: !!event.description && event.description.length >= 100, severity: 'recommended' },
   ];
 }

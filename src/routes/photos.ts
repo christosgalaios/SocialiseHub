@@ -1,8 +1,11 @@
 import { Router } from 'express';
-import { mkdirSync, unlinkSync, existsSync } from 'node:fs';
+import { mkdirSync, unlinkSync, existsSync, createWriteStream } from 'node:fs';
 import { join } from 'node:path';
+import { pipeline } from 'node:stream/promises';
 import multer from 'multer';
 import type { Database } from '../data/database.js';
+
+const DATA_DIR = join(process.cwd(), 'data');
 
 interface PhotoRow {
   id: number;
@@ -104,6 +107,107 @@ export function createPhotosRouter(db: Database): Router {
       ).all(req.params.id);
 
       res.json({ data: photos.map(photoToDto) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * POST /api/events/:id/photos/auto
+   * Auto-fetches 4 landscape photos from Unsplash based on event title/description keywords,
+   * downloads them to data/photos/{eventId}/, and creates event_photos rows.
+   * Returns { photos: [...] }.
+   */
+  router.post('/:id/photos/auto', async (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+
+      // Load event title + description from DB
+      const eventRow = db.prepare<[string], { title: string; description: string | null }>(
+        'SELECT title, description FROM events WHERE id = ?'
+      ).get(eventId);
+      if (!eventRow) return res.status(404).json({ error: 'Event not found' });
+
+      const accessKey = process.env.UNSPLASH_ACCESS_KEY;
+      if (!accessKey) return res.status(503).json({ error: 'UNSPLASH_ACCESS_KEY not configured' });
+
+      // Build search query from event title (first 5 words) for best relevance
+      const keywords = eventRow.title.split(/\s+/).slice(0, 5).join(' ');
+      const searchUrl = `https://api.unsplash.com/search/photos?query=${encodeURIComponent(keywords)}&per_page=4&orientation=landscape`;
+
+      const searchResp = await fetch(searchUrl, {
+        headers: { Authorization: `Client-ID ${accessKey}` },
+      });
+      if (!searchResp.ok) {
+        const text = await searchResp.text();
+        return res.status(searchResp.status).json({ error: `Unsplash error: ${text}` });
+      }
+
+      const searchData = await searchResp.json() as {
+        results: Array<{
+          id: string;
+          urls: { regular: string };
+          alt_description: string | null;
+          user: { name: string };
+        }>;
+      };
+
+      if (searchData.results.length === 0) {
+        return res.status(404).json({ error: 'No photos found for this event' });
+      }
+
+      // Ensure output directory exists
+      const photoDir = join(DATA_DIR, 'photos', eventId);
+      mkdirSync(photoDir, { recursive: true });
+
+      // Determine starting position
+      const maxRow = db.prepare<[string], { max_pos: number | null }>(
+        'SELECT MAX(position) as max_pos FROM event_photos WHERE event_id = ?'
+      ).get(eventId);
+      let nextPos = (maxRow?.max_pos ?? -1) + 1;
+
+      const insertStmt = db.prepare(
+        `INSERT INTO event_photos (event_id, photo_path, source, position, is_cover)
+         VALUES (?, ?, ?, ?, ?)`
+      );
+
+      const createdPhotos: ReturnType<typeof photoToDto>[] = [];
+
+      for (const result of searchData.results) {
+        const filename = `${Date.now()}_unsplash_${result.id}.jpg`;
+        const filePath = join(photoDir, filename);
+        const relativePath = `/data/photos/${eventId}/${filename}`;
+
+        // Download photo to disk
+        const dlResp = await fetch(result.urls.regular);
+        if (!dlResp.ok || !dlResp.body) continue;
+
+        await pipeline(
+          // Node 18+ supports ReadableStream → Readable conversion via stream.Readable.fromWeb
+          // but we use the simpler approach: collect body as buffer
+          (async function* () {
+            const reader = dlResp.body!.getReader();
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              yield Buffer.from(value);
+            }
+          })(),
+          createWriteStream(filePath),
+        );
+
+        const isCover = nextPos === 0 ? 1 : 0;
+        const dbResult = insertStmt.run(eventId, relativePath, 'unsplash', nextPos, isCover);
+
+        const photoRow = db.prepare<[number], PhotoRow>(
+          'SELECT * FROM event_photos WHERE id = ?'
+        ).get(dbResult.lastInsertRowid as number);
+
+        if (photoRow) createdPhotos.push(photoToDto(photoRow));
+        nextPos++;
+      }
+
+      res.status(201).json({ photos: createdPhotos });
     } catch (err) {
       next(err);
     }

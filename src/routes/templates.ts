@@ -72,7 +72,6 @@ export function createTemplatesRouter(
         venue: template.venue,
         price: template.price,
         capacity: template.capacity,
-        imageUrl: template.imageUrl,
       });
 
       res.status(201).json({ data: event });

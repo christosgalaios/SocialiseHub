@@ -27,7 +27,6 @@ export function migrateJsonToSqlite(dataDir: string): { events: number; services
         venue: e.venue ?? '',
         price: e.price ?? 0,
         capacity: e.capacity ?? 50,
-        imageUrl: e.imageUrl ?? e.image_url,
       });
       eventCount++;
     }

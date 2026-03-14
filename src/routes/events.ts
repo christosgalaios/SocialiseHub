@@ -79,7 +79,6 @@ export function createEventsRouter(
         venue: original.venue,
         price: original.price,
         capacity: original.capacity,
-        imageUrl: original.imageUrl,
       });
 
       res.status(201).json({ data: copy });
