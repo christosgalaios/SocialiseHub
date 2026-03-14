@@ -17,6 +17,8 @@ import { createSyncRouter } from './routes/sync.js';
 import { createGeneratorRouter } from './routes/generator.js';
 import { createTemplatesRouter } from './routes/templates.js';
 import { createAnalyticsRouter } from './routes/analytics.js';
+import { createOptimizeRouter } from './routes/optimize.js';
+import { createPhotosRouter } from './routes/photos.js';
 import { TemplateStore } from './data/template-store.js';
 import { MarketAnalyzer } from './agents/market-analyzer.js';
 import { MarketEventStore } from './data/market-event-store.js';
@@ -85,6 +87,9 @@ export function createApp(deps?: AppDeps): express.Express {
   app.use('/api/generator', createGeneratorRouter(eventStore as never, marketAnalyzer, platformEventStore));
   app.use('/api/templates', createTemplatesRouter(templateStore, eventStore));
   app.use('/api/analytics', createAnalyticsRouter(db));
+  app.use('/api/events', createOptimizeRouter(db, eventStore));
+  app.use('/api/events', createPhotosRouter(db));
+  app.use('/data', express.static(join(process.cwd(), 'data')));
   // 404 for unknown API routes (before SPA fallback)
   app.all('/api/{*path}', (_req: Request, res: Response) => {
     res.status(404).json({ error: 'Not found' });

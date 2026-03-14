@@ -2,7 +2,7 @@ import { Router } from 'express';
 import type { SqliteEventStore } from '../data/sqlite-event-store.js';
 import type { MarketAnalyzer } from '../agents/market-analyzer.js';
 import type { PlatformEventStore } from '../data/platform-event-store.js';
-import type { ScrapedEvent, SocialiseEvent } from '../shared/types.js';
+import type { ScrapedEvent, SocialiseEvent } from '../shared/types.js'; // SocialiseEvent used by pastEvents array typing
 
 /**
  * Generator router — endpoints for market analysis and event idea generation.
@@ -77,33 +77,6 @@ export function createGeneratorRouter(
       });
 
       res.status(201).json({ data: event });
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  /**
-   * POST /api/generator/optimize/:id
-   * Composes an SEO optimization prompt for an existing event.
-   * Analyzes current event details and suggests improved title, description, tags.
-   */
-  router.post('/optimize/:id', async (req, res, next) => {
-    try {
-      const event = eventStore.getById(req.params.id);
-      if (!event) {
-        return res.status(404).json({ error: 'Event not found' });
-      }
-
-      // Gather context: similar events from synced data
-      const allSynced = platformEventStore?.getAll() ?? [];
-      const similarEvents = allSynced
-        .filter((pe) => pe.title && pe.title !== event.title)
-        .slice(0, 20);
-
-      const pastEvents = eventStore.getAll();
-
-      const prompt = composeOptimizePrompt(event, similarEvents, pastEvents);
-      res.json({ data: { prompt } });
     } catch (err) {
       next(err);
     }
@@ -197,120 +170,3 @@ Respond ONLY with a JSON array. No markdown, no explanation outside the JSON:
 Suggest 5 events. Be specific and data-driven — reference actual gaps or hooks you identified.`;
 }
 
-// ── SEO Optimization Prompt ─────────────────────────────
-
-interface SimilarEvent {
-  title: string;
-  date?: string;
-  venue?: string;
-  status: string;
-}
-
-function composeOptimizePrompt(
-  event: SocialiseEvent,
-  similarEvents: SimilarEvent[],
-  pastEvents: SocialiseEvent[],
-): string {
-  const today = new Date().toISOString().split('T')[0];
-
-  const similarList = similarEvents.length > 0
-    ? similarEvents
-        .map((e) => `  - "${e.title}" | ${e.date ?? 'No date'} | ${e.venue ?? 'No venue'} | ${e.status}`)
-        .join('\n')
-    : '  (No similar events available)';
-
-  const pastSummary = pastEvents
-    .filter((e) => e.id !== event.id)
-    .slice(-10)
-    .map((e) => `  - "${e.title}" | ${e.venue} | ${e.status}`)
-    .join('\n') || '  (No other events)';
-
-  return `You are an SEO and event marketing specialist for **Socialise**, a social events company in Bristol, UK. Your job is to optimise an existing event listing to maximise discoverability, click-through rate, and attendance.
-
-## Today's Date
-${today}
-
-## Current Event Details
-- **Title:** ${event.title}
-- **Description:** ${event.description || '(empty)'}
-- **Date:** ${event.start_time}
-- **Venue:** ${event.venue || '(not set)'}
-- **Price:** £${event.price}
-- **Capacity:** ${event.capacity}
-- **Image URL:** ${event.imageUrl || '(none)'}
-- **Status:** ${event.status}
-
-## Similar Events on the Platform
-${similarList}
-
-## Socialise's Other Events
-${pastSummary}
-
-## Your Task
-Analyse this event and provide an optimised version. For each field, explain what you changed and why.
-
-### 1. **Optimised Title**
-- Make it search-friendly (include location, key activity, audience)
-- Keep it under 80 characters
-- Make it compelling — would you click on this?
-
-### 2. **Optimised Description**
-- Lead with the value proposition (what attendees get)
-- Include relevant keywords naturally (Bristol, social, the activity type)
-- Structure with short paragraphs, bullet points for scanability
-- Include a clear call-to-action
-- 150-300 words ideal
-
-### 3. **Suggested Tags/Keywords**
-- 5-10 SEO-relevant tags for platform search algorithms
-- Mix of broad (e.g., "Bristol events") and specific (e.g., "networking for professionals")
-
-### 4. **Image Recommendations**
-- What kind of image would work best for this event?
-- Suggested alt text for accessibility and SEO
-- Ideal dimensions/aspect ratio for Meetup and Eventbrite
-
-### 5. **Timing & Pricing Suggestions**
-- Is the date/time optimal for this type of event?
-- Is the price competitive based on similar events?
-
-### 6. **Promotion & Distribution Strategy**
-This is critical. We've proven that targeted community advertising sells out events. Example: a "Frog Walk" event was promoted in ecology-focused Facebook groups in Bristol and sold out.
-
-For THIS event, provide:
-- **Facebook Group Search Queries**: 5-8 specific search terms to find relevant Facebook groups (e.g., for a frog walk: "Bristol ecology group", "Bristol nature walks", "wildlife lovers Bristol", "Bristol environmental")
-- **Recommended Group Types**: What types of communities would be interested? (hobby groups, local area groups, professional groups, university societies, etc.)
-- **Other Platforms**: Reddit communities, Instagram hashtags, local forums, newsletters, notice boards
-- **Cross-promotion**: Which Meetup/Eventbrite categories to list under
-- **Timing**: When to start promoting (how many days before the event)
-- **Post Template**: A short, engaging Facebook group post for this event (2-3 sentences + link)
-
-### 7. **Overall SEO Score**
-Rate the current listing 1-10 and the optimised version 1-10, with brief justification.
-
-Please format your response as structured JSON so the app can auto-apply changes:
-\`\`\`json
-{
-  "title": "Optimised title here",
-  "description": "Optimised description here",
-  "tags": ["tag1", "tag2", ...],
-  "imageAlt": "Suggested alt text",
-  "imageSuggestion": "Description of ideal image",
-  "timingSuggestion": "Your timing advice",
-  "pricingSuggestion": "Your pricing advice",
-  "promotion": {
-    "facebookSearchQueries": ["query1", "query2", ...],
-    "recommendedGroupTypes": ["type1", "type2", ...],
-    "otherPlatforms": ["platform: details", ...],
-    "crossPromotion": "Category suggestions",
-    "promotionTimeline": "When to start promoting",
-    "samplePost": "Ready-to-use Facebook group post"
-  },
-  "currentScore": 4,
-  "optimisedScore": 8,
-  "rationale": "Brief explanation of key changes"
-}
-\`\`\`
-
-Follow the JSON with your detailed reasoning for each change.`;
-}

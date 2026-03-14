@@ -50,6 +50,25 @@ function runMigrations(db: Database): void {
     }
     db.pragma('user_version = 3');
   }
+  if (currentVersion < 4) {
+    db.exec(`CREATE TABLE IF NOT EXISTS event_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT NOT NULL UNIQUE,
+      snapshot_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (event_id) REFERENCES events(id)
+    )`);
+    db.exec(`CREATE TABLE IF NOT EXISTS event_photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT NOT NULL,
+      photo_path TEXT NOT NULL,
+      source TEXT NOT NULL,
+      position INTEGER NOT NULL DEFAULT 0,
+      is_cover INTEGER NOT NULL DEFAULT 0,
+      FOREIGN KEY (event_id) REFERENCES events(id)
+    )`);
+    db.pragma('user_version = 4');
+  }
 }
 
 function createSchema(db: Database): void {
