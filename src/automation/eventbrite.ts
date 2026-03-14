@@ -7,19 +7,16 @@ const SELECTORS = {
   orgIdLink: 'a[href*="/organizations/"]',
 };
 
+// Verified against live Eventbrite DOM 2026-03-14 at /manage/events/create
 const PUBLISH_SELECTORS = {
-  titleInput: '[data-testid="event-title-input"], input[name="title"], #event-title',
-  descriptionEditor: '[data-testid="event-description"] [contenteditable], .ql-editor, [contenteditable="true"]',
-  dateInput: '[data-testid="start-date"], input[name="startDate"], input[type="date"]',
-  timeInput: '[data-testid="start-time"], input[name="startTime"], input[type="time"]',
-  ticketTypeSelector: '[data-testid="ticket-type-selector"], .ticket-type-toggle',
-  freeTicketOption: '[data-testid="free-ticket"], button:contains("Free"), .ticket-free-option',
-  paidTicketOption: '[data-testid="paid-ticket"], button:contains("Paid"), .ticket-paid-option',
-  ticketPriceInput: '[data-testid="ticket-price"], input[name="price"]',
-  ticketQuantityInput: '[data-testid="ticket-quantity"], input[name="quantity"]',
-  venueInput: '[data-testid="venue-input"], input[name="venue"], #venue-search',
-  nextButton: '[data-testid="next-step"], button.eds-btn--submit, button[type="submit"]',
-  publishButton: '[data-testid="publish-button"], button[data-testid="publish"], button.eds-btn--submit:last-of-type',
+  titleInput: '#details-form-event-title, [data-testid="EventTitleFormField"], input[name="title"]',
+  summaryTextarea: '#details-form-summary, [data-testid="SummaryFormField"], textarea[name="summary"]',
+  descriptionEditor: '[role="textbox"][aria-label*="text editor"], [contenteditable="true"]',
+  dateInput: '#form-range-date-field, [data-testid="DateInputInput"], input[name="dates"]',
+  startTimeInput: '#form-start-time-field, [data-testid="TimeInputInput"][name="startTime"], input[name="startTime"]',
+  endTimeInput: '#form-end-time-field, input[name="endTime"]',
+  venueInput: '#VenueLocationField, [data-testid="VenueLocationField"], input[aria-label="Location"]',
+  submitButton: 'button[type="submit"]',
 };
 
 /**
@@ -92,13 +89,15 @@ export function eventbritePublishSteps(event: SocialiseEvent): AutomationStep[] 
   const dateStr = startDate.toISOString().split('T')[0];
   const timeStr = startDate.toTimeString().slice(0, 5);
 
+  // Eventbrite uses .co.uk and a single-page create form at /manage/events/create
+  // All sections (title, summary, description, date, location) are on one page
+  // Verified against live DOM 2026-03-14
   return [
     {
       action: 'navigate',
-      url: 'https://www.eventbrite.com/create',
-      description: 'Opening event creation wizard...',
+      url: 'https://www.eventbrite.co.uk/manage/events/create',
+      description: 'Opening event creation page...',
     },
-    // Step 1: Basic info
     {
       action: 'waitForSelector',
       selector: PUBLISH_SELECTORS.titleInput,
@@ -111,33 +110,43 @@ export function eventbritePublishSteps(event: SocialiseEvent): AutomationStep[] 
       value: event.title,
       description: `Filling title: "${event.title}"`,
     },
+    // Summary (short description, 140 char limit)
+    {
+      action: 'fill',
+      selector: PUBLISH_SELECTORS.summaryTextarea,
+      value: (event.description ?? '').slice(0, 140),
+      description: 'Filling summary...',
+    },
+    // Description (rich text editor — contenteditable div)
     {
       action: 'evaluate',
       script: `(() => {
-        const editor = document.querySelector('${PUBLISH_SELECTORS.descriptionEditor}');
+        const editor = document.querySelector('[role="textbox"][aria-label*="text editor"]');
         if (editor) {
-          editor.innerHTML = ${JSON.stringify(event.description)};
-          editor.dispatchEvent(new Event('input', { bubbles: true }));
-          return true;
+          editor.focus();
+          document.execCommand('selectAll', false, null);
+          document.execCommand('insertText', false, ${JSON.stringify(event.description ?? '')});
+          return 'filled';
         }
-        return false;
+        return 'no-editor';
       })()`,
       description: 'Filling description...',
     },
-    // Date/time step
+    // Date — Eventbrite uses DD/MM/YYYY format
     {
       action: 'fill',
       selector: PUBLISH_SELECTORS.dateInput,
-      value: dateStr,
+      value: dateStr.split('-').reverse().join('/'),
       description: `Setting date: ${dateStr}`,
     },
+    // Start time — HH:MM format
     {
       action: 'fill',
-      selector: PUBLISH_SELECTORS.timeInput,
+      selector: PUBLISH_SELECTORS.startTimeInput,
       value: timeStr,
-      description: `Setting time: ${timeStr}`,
+      description: `Setting start time: ${timeStr}`,
     },
-    // Location step
+    // Location
     ...(event.venue ? [
       {
         action: 'fill' as const,
@@ -146,53 +155,23 @@ export function eventbritePublishSteps(event: SocialiseEvent): AutomationStep[] 
         description: `Setting venue: ${event.venue}`,
       },
     ] : []),
-    // Tickets step — free or paid
-    ...(event.price && event.price > 0 ? [
-      {
-        action: 'click' as const,
-        selector: PUBLISH_SELECTORS.paidTicketOption,
-        description: 'Selecting paid ticket type...',
-      },
-      {
-        action: 'fill' as const,
-        selector: PUBLISH_SELECTORS.ticketPriceInput,
-        value: String(event.price),
-        description: `Setting ticket price: £${event.price}`,
-      },
-    ] : [
-      {
-        action: 'click' as const,
-        selector: PUBLISH_SELECTORS.freeTicketOption,
-        description: 'Selecting free ticket type...',
-      },
-    ]),
-    // Capacity
-    ...(event.capacity ? [
-      {
-        action: 'fill' as const,
-        selector: PUBLISH_SELECTORS.ticketQuantityInput,
-        value: String(event.capacity),
-        description: `Setting capacity: ${event.capacity}`,
-      },
-    ] : []),
-    // Publish
+    // Save and continue (step 1 of wizard — saves as draft, goes to tickets step)
     {
       action: 'click',
-      selector: PUBLISH_SELECTORS.publishButton,
-      description: 'Publishing event...',
+      selector: PUBLISH_SELECTORS.submitButton,
+      description: 'Saving event page...',
     },
     {
       action: 'waitForNavigation',
       timeout: 15_000,
-      description: 'Waiting for confirmation...',
+      description: 'Waiting for save...',
     },
     {
       action: 'evaluate',
       script: `(() => {
         const url = window.location.href;
-        const eidMatch = url.match(/eid=(\\d+)/);
-        const pathMatch = url.match(/event\\/(\\d+)/);
-        const externalId = eidMatch ? eidMatch[1] : pathMatch ? pathMatch[1] : null;
+        const eidMatch = url.match(/events\\/(\\d+)/);
+        const externalId = eidMatch ? eidMatch[1] : null;
         return JSON.stringify({ externalId, externalUrl: url });
       })()`,
       description: 'Extracting event ID...',

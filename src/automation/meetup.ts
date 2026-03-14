@@ -7,14 +7,8 @@ const SELECTORS = {
   groupName: '[data-testid="group-name"], .groupHomeHeader-groupName, h1',
 };
 
-const PUBLISH_SELECTORS = {
-  titleInput: '[data-testid="event-name-input"], input[name="name"], #event-name',
-  descriptionEditor: '[data-testid="event-description"] [contenteditable], .ql-editor, [contenteditable="true"]',
-  dateInput: '[data-testid="event-date-input"], input[type="date"], input[name="date"]',
-  timeInput: '[data-testid="event-time-input"], input[type="time"], input[name="time"]',
-  publishButton: '[data-testid="publish-button"], button[type="submit"]:last-of-type',
-  draftButton: 'button[data-testid="save-draft-button"], button:has(> span:contains("Draft")), button[aria-label*="draft"], button[aria-label*="Draft"]',
-};
+// Meetup publish uses GraphQL mutations (no DOM selectors needed)
+// See meetupPublishSteps() — verified via introspection 2026-03-14
 
 export function meetupConnectSteps(): AutomationStep[] {
   return [
@@ -82,94 +76,74 @@ export function meetupConnectSteps(): AutomationStep[] {
   ];
 }
 
+/**
+ * Publish an event to Meetup via GraphQL createEvent mutation.
+ * No DOM automation needed — uses the gql2 API directly.
+ * Verified via introspection 2026-03-14.
+ */
 export function meetupPublishSteps(event: SocialiseEvent, groupUrlname: string, draft = false): AutomationStep[] {
-  const startDate = new Date(event.start_time);
-  const dateStr = startDate.toISOString().split('T')[0];
-  const timeStr = startDate.toTimeString().slice(0, 5);
-
-  // The final submit step: either click Publish or save as Draft
-  const submitStep: AutomationStep = draft
-    ? {
-        action: 'evaluate',
-        script: `(() => {
-          // Meetup's draft button varies — try multiple strategies
-          const buttons = Array.from(document.querySelectorAll('button'));
-          const draftBtn = buttons.find(b => /draft/i.test(b.textContent ?? '') || /save.*draft/i.test(b.textContent ?? ''));
-          if (draftBtn) { draftBtn.click(); return 'clicked-draft'; }
-          // Fallback: look for a dropdown/menu that reveals draft option
-          const moreBtn = buttons.find(b => /more|options|chevron/i.test(b.getAttribute('aria-label') ?? ''));
-          if (moreBtn) { moreBtn.click(); return 'opened-menu'; }
-          return 'draft-button-not-found';
-        })()`,
-        description: 'Saving as draft...',
-      }
-    : {
-        action: 'click',
-        selector: PUBLISH_SELECTORS.publishButton,
-        description: 'Publishing event...',
-      };
+  // Compute duration in ISO 8601 format (PT2H, PT1H30M, etc.)
+  const durationMin = event.duration_minutes ?? 120;
+  const hours = Math.floor(durationMin / 60);
+  const mins = durationMin % 60;
+  const isoDuration = `PT${hours > 0 ? hours + 'H' : ''}${mins > 0 ? mins + 'M' : ''}`;
 
   return [
     {
       action: 'navigate',
-      url: `https://www.meetup.com/${groupUrlname}/events/create/`,
-      description: 'Opening event creation page...',
+      url: `https://www.meetup.com/${groupUrlname}/`,
+      description: 'Opening Meetup group page...',
     },
     {
       action: 'waitForSelector',
-      selector: PUBLISH_SELECTORS.titleInput,
-      timeout: 15_000,
-      description: 'Waiting for form to load...',
-    },
-    {
-      action: 'fill',
-      selector: PUBLISH_SELECTORS.titleInput,
-      value: event.title,
-      description: `Filling title: "${event.title}"`,
+      selector: 'body',
+      timeout: 10_000,
+      description: 'Waiting for page to load...',
     },
     {
       action: 'evaluate',
-      script: `(() => {
-        const editor = document.querySelector('${PUBLISH_SELECTORS.descriptionEditor}');
-        if (editor) {
-          editor.innerHTML = ${JSON.stringify(event.description)};
-          editor.dispatchEvent(new Event('input', { bubbles: true }));
-          return true;
+      script: `(async () => {
+        try {
+          const resp = await fetch('https://www.meetup.com/gql2', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              query: 'mutation($input: CreateEventInput!) { createEvent(input: $input) { event { id title eventUrl dateTime } errors { code message field } } }',
+              variables: {
+                input: {
+                  groupUrlname: ${JSON.stringify(groupUrlname)},
+                  title: ${JSON.stringify(event.title)},
+                  description: ${JSON.stringify(event.description ?? '')},
+                  startDateTime: ${JSON.stringify(event.start_time)},
+                  duration: ${JSON.stringify(isoDuration)},
+                  publishStatus: ${JSON.stringify(draft ? 'DRAFT' : 'PUBLISHED')},
+                }
+              }
+            })
+          });
+          const json = await resp.json();
+          if (json.errors) {
+            return JSON.stringify({ error: 'GraphQL error: ' + json.errors[0]?.message });
+          }
+          const result = json.data?.createEvent;
+          if (result?.errors?.length > 0) {
+            return JSON.stringify({ error: 'Meetup error: ' + result.errors[0]?.message });
+          }
+          const ev = result?.event;
+          if (!ev) {
+            return JSON.stringify({ error: 'No event returned from createEvent mutation' });
+          }
+          return JSON.stringify({
+            externalId: ev.id,
+            externalUrl: ev.eventUrl,
+            draft: ${draft},
+          });
+        } catch (err) {
+          return JSON.stringify({ error: String(err) });
         }
-        return false;
       })()`,
-      description: 'Filling description...',
-    },
-    {
-      action: 'fill',
-      selector: PUBLISH_SELECTORS.dateInput,
-      value: dateStr,
-      description: `Setting date: ${dateStr}`,
-    },
-    {
-      action: 'fill',
-      selector: PUBLISH_SELECTORS.timeInput,
-      value: timeStr,
-      description: `Setting time: ${timeStr}`,
-    },
-    submitStep,
-    {
-      action: 'waitForNavigation',
-      timeout: 15_000,
-      description: 'Waiting for confirmation...',
-    },
-    {
-      action: 'evaluate',
-      script: `(() => {
-        const url = window.location.href;
-        const match = url.match(/events\\/(\\d+)/);
-        return JSON.stringify({
-          externalId: match ? match[1] : null,
-          externalUrl: url,
-          draft: ${draft},
-        });
-      })()`,
-      description: 'Extracting event ID...',
+      description: draft ? 'Creating draft event via Meetup API...' : 'Publishing event via Meetup API...',
     },
   ];
 }

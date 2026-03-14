@@ -41,16 +41,17 @@ const mockEvent: SocialiseEvent = {
 };
 
 describe('meetupPublishSteps', () => {
-  it('navigates to the group create-event page', () => {
+  it('navigates to the group page', () => {
     const steps = meetupPublishSteps(mockEvent, 'socialise-bristol');
-    expect(steps[0].url).toContain('socialise-bristol/events/create');
+    expect(steps[0].url).toContain('socialise-bristol');
   });
 
-  it('fills the title', () => {
+  it('uses GraphQL createEvent mutation', () => {
     const steps = meetupPublishSteps(mockEvent, 'socialise-bristol');
-    const fillTitle = steps.find(s => s.action === 'fill' && s.description.includes('title'));
-    expect(fillTitle).toBeDefined();
-    expect(fillTitle!.value).toBe('Test Event');
+    const evalStep = steps.find(s => s.action === 'evaluate');
+    expect(evalStep).toBeDefined();
+    expect(evalStep!.script).toContain('createEvent');
+    expect(evalStep!.script).toContain('Test Event');
   });
 
   it('ends with an evaluate step that extracts the event ID', () => {

@@ -15,6 +15,9 @@ export class HeadfirstAutomationClient implements PlatformClient {
   }
 
   async createEvent(event: SocialiseEvent): Promise<PlatformPublishResult> {
+    if (!event.title) {
+      return { platform: 'headfirst', success: false, error: 'Event title is required for publishing' };
+    }
     const result = await requestAutomation({ platform: 'headfirst', action: 'publish', data: event });
     if (!result.success) {
       return { platform: 'headfirst', success: false, error: result.error ?? 'Publish failed' };

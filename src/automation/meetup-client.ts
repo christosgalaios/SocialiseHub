@@ -28,7 +28,11 @@ export class MeetupAutomationClient implements PlatformClient {
   }
 
   async createEvent(event: SocialiseEvent): Promise<PlatformPublishResult> {
-    const result = await requestAutomation({ platform: 'meetup', action: 'publish', data: { ...event, groupUrlname: this.getGroupUrlname() } });
+    const groupUrlname = this.getGroupUrlname();
+    if (!groupUrlname) {
+      return { platform: 'meetup', success: false, error: 'Not connected — missing groupUrlname. Reconnect Meetup from Services page.' };
+    }
+    const result = await requestAutomation({ platform: 'meetup', action: 'publish', data: { ...event, groupUrlname } });
     if (!result.success) {
       return { platform: 'meetup', success: false, error: result.error ?? 'Publish failed' };
     }

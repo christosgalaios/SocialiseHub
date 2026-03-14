@@ -40,9 +40,9 @@ describe('eventbriteConnectSteps', () => {
 });
 
 describe('eventbritePublishSteps', () => {
-  it('navigates to eventbrite.com/create', () => {
+  it('navigates to eventbrite.co.uk/manage/events/create', () => {
     const steps = eventbritePublishSteps(mockEvent);
-    expect(steps[0].url).toContain('eventbrite.com/create');
+    expect(steps[0].url).toContain('eventbrite.co.uk/manage/events/create');
   });
 
   it('fills the title', () => {
@@ -58,27 +58,18 @@ describe('eventbritePublishSteps', () => {
     expect(waitStep!.timeout).toBe(15_000);
   });
 
-  it('selects free ticket for price=0', () => {
+  it('fills summary and description', () => {
     const steps = eventbritePublishSteps(mockEvent);
-    const freeClick = steps.find(s => s.description.includes('free ticket'));
-    expect(freeClick).toBeDefined();
+    const summaryStep = steps.find(s => s.description.includes('summary'));
+    const descStep = steps.find(s => s.description.includes('description'));
+    expect(summaryStep).toBeDefined();
+    expect(descStep).toBeDefined();
   });
 
-  it('selects paid ticket and sets price for price>0', () => {
-    const paidEvent = { ...mockEvent, price: 10 };
-    const steps = eventbritePublishSteps(paidEvent);
-    const paidClick = steps.find(s => s.description.includes('paid ticket'));
-    const priceStep = steps.find(s => s.description.includes('price'));
-    expect(paidClick).toBeDefined();
-    expect(priceStep).toBeDefined();
-    expect(priceStep!.value).toBe('10');
-  });
-
-  it('ends with evaluate extracting event ID from eid param', () => {
+  it('ends with evaluate extracting event ID', () => {
     const steps = eventbritePublishSteps(mockEvent);
     const lastStep = steps[steps.length - 1];
     expect(lastStep.action).toBe('evaluate');
-    expect(lastStep.script).toContain('eid=');
     expect(lastStep.script).toContain('externalId');
   });
 });

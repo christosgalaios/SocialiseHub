@@ -15,6 +15,9 @@ export class EventbriteAutomationClient implements PlatformClient {
   }
 
   async createEvent(event: SocialiseEvent): Promise<PlatformPublishResult> {
+    if (!event.title) {
+      return { platform: 'eventbrite', success: false, error: 'Event title is required for publishing' };
+    }
     const result = await requestAutomation({ platform: 'eventbrite', action: 'publish', data: event });
     if (!result.success) {
       return { platform: 'eventbrite', success: false, error: result.error ?? 'Publish failed' };
