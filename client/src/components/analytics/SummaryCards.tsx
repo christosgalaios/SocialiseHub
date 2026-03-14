@@ -49,17 +49,17 @@ export function SummaryCards({ summary }: Props) {
       />
       <Card
         label="Total Attendees"
-        value={summary.total_attendees.toLocaleString()}
+        value={(summary.total_attendees ?? 0).toLocaleString()}
         color="#10b981"
       />
       <Card
         label="Total Revenue"
-        value={`£${summary.total_revenue.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+        value={`£${(summary.total_revenue ?? 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
         color="#f59e0b"
       />
       <Card
         label="Avg Fill Rate"
-        value={`${summary.avg_fill_rate}%`}
+        value={`${summary.avg_fill_rate ?? 0}%`}
         sub="attendance / capacity"
         color="#8b5cf6"
       />

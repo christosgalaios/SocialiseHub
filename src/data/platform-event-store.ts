@@ -63,7 +63,7 @@ export class PlatformEventStore {
            WHERE platform = ? AND external_id = ?`,
         )
         .run(
-          input.eventId ?? null,
+          input.eventId ?? existing.event_id ?? null,
           input.externalUrl ?? null,
           input.title,
           input.date ?? null,

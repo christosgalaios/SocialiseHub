@@ -25,7 +25,21 @@ export function createGeneratorRouter(
    */
   router.post('/analyze', async (_req, res, next) => {
     try {
-      const marketData = analyzer.getMarketData();
+      let marketData = analyzer.getMarketData();
+      // Fall back to synced platform events if no market data scraped yet
+      if (marketData.length === 0 && platformEventStore) {
+        const platformEvents = platformEventStore.getAll();
+        marketData = platformEvents.map((pe) => ({
+          title: pe.title,
+          date: pe.date ?? '',
+          venue: pe.venue ?? '',
+          platform: pe.platform,
+          url: pe.externalUrl ?? '',
+          category: analyzer.inferCategory(pe.title),
+          price: undefined,
+          attendees: pe.attendance,
+        }));
+      }
       res.json({ events: marketData });
     } catch (err) {
       next(err);

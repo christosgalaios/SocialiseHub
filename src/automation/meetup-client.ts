@@ -75,6 +75,8 @@ export class MeetupAutomationClient implements PlatformClient {
       venue: String(e.venue ?? ''),
       status: (e.status === 'past' ? 'past' : 'active') as 'active' | 'past',
       syncedAt: new Date().toISOString(),
+      attendance: typeof e.going === 'number' ? e.going : undefined,
+      capacity: typeof e.maxTickets === 'number' ? e.maxTickets : undefined,
     }));
   }
 }
