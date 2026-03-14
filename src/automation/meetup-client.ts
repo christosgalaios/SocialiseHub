@@ -65,18 +65,26 @@ export class MeetupAutomationClient implements PlatformClient {
       return [];
     }
     const events = parsed;
-    return events.map((e: Record<string, unknown>) => ({
-      id: '',
-      platform: 'meetup' as const,
-      externalId: String(e.externalId ?? ''),
-      title: String(e.title ?? ''),
-      externalUrl: String(e.url ?? ''),
-      date: String(e.date ?? ''),
-      venue: String(e.venue ?? ''),
-      status: (e.status === 'past' ? 'past' : 'active') as 'active' | 'past',
-      syncedAt: new Date().toISOString(),
-      attendance: typeof e.going === 'number' ? e.going : undefined,
-      capacity: typeof e.maxTickets === 'number' ? e.maxTickets : undefined,
-    }));
+    return events.map((e: Record<string, unknown>) => {
+      // Normalize date to ISO without timezone offset (SQLite strftime compatibility)
+      let dateStr = String(e.date ?? '');
+      if (dateStr) {
+        try { dateStr = new Date(dateStr).toISOString(); } catch { /* keep original */ }
+      }
+      return {
+        id: '',
+        platform: 'meetup' as const,
+        externalId: String(e.externalId ?? ''),
+        title: String(e.title ?? ''),
+        externalUrl: String(e.url ?? ''),
+        date: dateStr,
+        venue: String(e.venue ?? ''),
+        status: (e.status === 'past' ? 'past' : 'active') as 'active' | 'past',
+        syncedAt: new Date().toISOString(),
+        attendance: typeof e.going === 'number' ? e.going : undefined,
+        capacity: typeof e.maxTickets === 'number' ? e.maxTickets : undefined,
+        ticketPrice: typeof e.fee === 'number' ? e.fee : undefined,
+      };
+    });
   }
 }

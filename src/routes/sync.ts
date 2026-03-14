@@ -20,7 +20,21 @@ export async function linkPlatformEventToEvent(
   if (pe.eventId) {
     // Already linked — skip if locally modified
     const existing = eventStore.getById(pe.eventId);
-    if (!existing) return;
+    if (!existing) {
+      // Stale link — event was deleted. Re-create and re-link.
+      const newEvent = eventStore.create({
+        title: pe.title || 'Untitled',
+        description: '',
+        start_time: pe.date ?? new Date().toISOString(),
+        duration_minutes: 120,
+        venue: pe.venue ?? '',
+        price: 0,
+        capacity: pe.capacity ?? 0,
+      });
+      eventStore.updateSyncStatus(newEvent.id, 'synced');
+      platformEventStore.linkToEvent(pe.id, newEvent.id);
+      return;
+    }
     if (existing.sync_status === 'modified') return;
 
     // Update with latest platform data

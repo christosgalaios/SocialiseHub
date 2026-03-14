@@ -309,7 +309,7 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              query: 'query($urlname: String!' + (cursor ? ', $after: String' : '') + ') { groupByUrlname(urlname: $urlname) { events(status: ' + status + ', first: 50, sort: DESC' + afterArg + ') { edges { node { id title dateTime eventUrl going maxTickets venue { name } } } pageInfo { hasNextPage endCursor } } } }',
+              query: 'query($urlname: String!' + (cursor ? ', $after: String' : '') + ') { groupByUrlname(urlname: $urlname) { events(status: ' + status + ', first: 50, sort: DESC' + afterArg + ') { edges { node { id title dateTime eventUrl going maxTickets venue { name } feeSettings { amount currency } } } pageInfo { hasNextPage endCursor } } } }',
               variables: vars,
             }),
           });
@@ -338,6 +338,7 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
                 url: e.node.eventUrl, status: label,
                 going: e.node.going ?? null,
                 maxTickets: e.node.maxTickets ?? null,
+                fee: e.node.feeSettings?.amount ?? null,
               });
             }
             if (!result.hasNext || !result.cursor) break;
