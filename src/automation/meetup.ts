@@ -220,7 +220,7 @@ export function meetupPublicScrapeSteps(): AutomationStep[] {
                   dateTime
                   eventUrl
                   eventType
-                  going
+                  rsvps { totalCount }
                   maxTickets
                   venue {
                     name
@@ -265,7 +265,7 @@ export function meetupPublicScrapeSteps(): AutomationStep[] {
             venue: e.node.venue ? (e.node.venue.name + (e.node.venue.city ? ', ' + e.node.venue.city : '')) : '',
             url: e.node.eventUrl,
             category: e.node.eventType ?? '',
-            going: e.node.going ?? 0,
+            going: e.node.rsvps?.totalCount ?? 0,
             maxTickets: e.node.maxTickets ?? null,
           }));
 
@@ -293,11 +293,14 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
       description: 'Waiting for page to load...',
     },
     // Fetch both upcoming and past events via GraphQL with pagination
+    // Schema verified via introspection 2026-03-14: going→removed (use rsvps.totalCount),
+    // imageUrl→removed (use featuredEventPhoto.baseUrl), venue/maxTickets/feeSettings unchanged
     {
       action: 'evaluate',
       script: `(async () => {
         const allEvents = [];
         const seen = new Set();
+        const NODE_FIELDS = 'id title dateTime eventUrl description maxTickets venue { name } rsvps { totalCount } featuredEventPhoto { baseUrl } feeSettings { amount currency }';
 
         // Helper: fetch a page of events with given status
         async function fetchPage(status, cursor) {
@@ -309,7 +312,7 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
             credentials: 'include',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              query: 'query($urlname: String!' + (cursor ? ', $after: String' : '') + ') { groupByUrlname(urlname: $urlname) { events(status: ' + status + ', first: 50, sort: DESC' + afterArg + ') { edges { node { id title dateTime eventUrl going maxTickets description imageUrl venue { name } feeSettings { amount currency } } } pageInfo { hasNextPage endCursor } } } }',
+              query: 'query($urlname: String!' + (cursor ? ', $after: String' : '') + ') { groupByUrlname(urlname: $urlname) { events(status: ' + status + ', first: 50, sort: DESC' + afterArg + ') { edges { node { ' + NODE_FIELDS + ' } } pageInfo { hasNextPage endCursor } } } }',
               variables: vars,
             }),
           });
@@ -334,6 +337,19 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
           };
         }
 
+        function mapNode(node, label) {
+          return {
+            externalId: node.id, title: node.title,
+            date: node.dateTime, venue: node.venue?.name ?? '',
+            url: node.eventUrl, status: label,
+            going: node.rsvps?.totalCount ?? null,
+            maxTickets: node.maxTickets ?? null,
+            fee: node.feeSettings?.amount ?? null,
+            description: node.description ?? null,
+            imageUrl: node.featuredEventPhoto?.baseUrl ?? null,
+          };
+        }
+
         // Helper: paginate all events for a given status
         async function fetchAllWithStatus(status, label) {
           let cursor = null;
@@ -342,16 +358,7 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
             for (const e of result.edges) {
               if (seen.has(e.node.id)) continue;
               seen.add(e.node.id);
-              allEvents.push({
-                externalId: e.node.id, title: e.node.title,
-                date: e.node.dateTime, venue: e.node.venue?.name ?? '',
-                url: e.node.eventUrl, status: label,
-                going: e.node.going ?? null,
-                maxTickets: e.node.maxTickets ?? null,
-                fee: e.node.feeSettings?.amount ?? null,
-                description: e.node.description ?? null,
-                imageUrl: e.node.imageUrl ?? null,
-              });
+              allEvents.push(mapNode(e.node, label));
             }
             if (!result.hasNext || !result.cursor) break;
             cursor = result.cursor;
@@ -368,16 +375,7 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
         for (const e of testResult.edges) {
           if (seen.has(e.node.id)) continue;
           seen.add(e.node.id);
-          allEvents.push({
-            externalId: e.node.id, title: e.node.title,
-            date: e.node.dateTime, venue: e.node.venue?.name ?? '',
-            url: e.node.eventUrl, status: 'active',
-            going: e.node.going ?? null,
-            maxTickets: e.node.maxTickets ?? null,
-            fee: e.node.feeSettings?.amount ?? null,
-            description: e.node.description ?? null,
-            imageUrl: e.node.imageUrl ?? null,
-          });
+          allEvents.push(mapNode(e.node, 'active'));
         }
 
         // Continue fetching remaining ACTIVE pages
@@ -388,14 +386,7 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
             for (const e of result.edges) {
               if (seen.has(e.node.id)) continue;
               seen.add(e.node.id);
-              allEvents.push({
-                externalId: e.node.id, title: e.node.title,
-                date: e.node.dateTime, venue: e.node.venue?.name ?? '',
-                url: e.node.eventUrl, status: 'active',
-                going: e.node.going ?? null, maxTickets: e.node.maxTickets ?? null,
-                fee: e.node.feeSettings?.amount ?? null,
-                description: e.node.description ?? null, imageUrl: e.node.imageUrl ?? null,
-              });
+              allEvents.push(mapNode(e.node, 'active'));
             }
             if (!result.hasNext || !result.cursor) break;
             cursor = result.cursor;
