@@ -15,6 +15,8 @@ import {
   getServices,
   createTemplate,
   optimizeEvent,
+  magicFill,
+  autoFillPhotos,
 } from '../api/events';
 import { PlatformSelector } from '../components/PlatformSelector';
 import { StatusBadge } from '../components/StatusBadge';
@@ -60,7 +62,6 @@ export function EventDetailPage() {
   const [venue, setVenue] = useState('');
   const [price, setPrice] = useState(0);
   const [capacity, setCapacity] = useState(50);
-  const [imageUrl, setImageUrl] = useState('');
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformName[]>([]);
 
   // Pre-fill date from query param (calendar day click)
@@ -106,7 +107,6 @@ export function EventDetailPage() {
         setVenue(ev.venue);
         setPrice(ev.price);
         setCapacity(ev.capacity);
-        setImageUrl(ev.imageUrl ?? '');
         setSelectedPlatforms(ev.platforms.map((p) => p.platform));
       })
       .catch((err: unknown) =>
@@ -115,12 +115,17 @@ export function EventDetailPage() {
       .finally(() => setLoading(false));
   }, [id]);
 
-  // Auto-trigger optimize if ?optimize=true
+  // Auto-trigger optimize if ?optimize=true or magic fill if ?magic=true
   const autoOptimizeTriggered = useRef(false);
   useEffect(() => {
-    if (id && !loading && event && searchParams.get('optimize') === 'true' && !autoOptimizeTriggered.current) {
-      autoOptimizeTriggered.current = true;
-      handleOptimize();
+    if (id && !loading && event && !autoOptimizeTriggered.current) {
+      if (searchParams.get('optimize') === 'true') {
+        autoOptimizeTriggered.current = true;
+        handleOptimize();
+      } else if (searchParams.get('magic') === 'true' && !isNew) {
+        autoOptimizeTriggered.current = true;
+        handleMagicFill();
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, loading, event]);
@@ -134,7 +139,6 @@ export function EventDetailPage() {
     venue,
     price,
     capacity,
-    imageUrl: imageUrl || undefined,
     platforms: selectedPlatforms,
   });
 
@@ -189,7 +193,6 @@ export function EventDetailPage() {
         durationMinutes,
         price,
         capacity,
-        imageUrl: imageUrl || undefined,
         platforms: selectedPlatforms,
       });
       setShowTemplateModal(false);
@@ -214,6 +217,54 @@ export function EventDetailPage() {
       setError(err instanceof Error ? err.message : 'Optimize failed');
     } finally {
       setOptimizing(false);
+    }
+  };
+
+  /** Magic fill — send magic-fill prompt to Claude and apply JSON response */
+  const handleMagicFill = async () => {
+    if (!id) return;
+    const w = window as Window & { electronAPI?: { sendPromptToClaude: (p: string) => Promise<{ response?: string; error?: string }> } };
+    try {
+      const { prompt } = await magicFill(id);
+      if (w.electronAPI?.sendPromptToClaude) {
+        const result = await w.electronAPI.sendPromptToClaude(prompt);
+        if (result.error) {
+          setError(`Claude: ${result.error}`);
+          return;
+        }
+        if (result.response) {
+          // Extract first JSON object from response
+          const startIdx = result.response.indexOf('{');
+          const endIdx = result.response.lastIndexOf('}');
+          if (startIdx !== -1 && endIdx !== -1) {
+            try {
+              const optimized = JSON.parse(result.response.slice(startIdx, endIdx + 1));
+              if (optimized.title) setTitle(optimized.title);
+              if (optimized.description) setDescription(optimized.description);
+              if (optimized.venue) setVenue(optimized.venue);
+              if (optimized.price !== undefined) setPrice(Number(optimized.price));
+              if (optimized.capacity !== undefined) setCapacity(Number(optimized.capacity));
+              if (optimized.duration_minutes !== undefined) setDurationMinutes(Number(optimized.duration_minutes));
+              // Save the applied fields
+              await updateEvent(id, {
+                title: optimized.title ?? title,
+                description: optimized.description ?? description,
+                venue: optimized.venue ?? venue,
+                price: optimized.price !== undefined ? Number(optimized.price) : price,
+                capacity: optimized.capacity !== undefined ? Number(optimized.capacity) : capacity,
+                duration_minutes: optimized.duration_minutes !== undefined ? Number(optimized.duration_minutes) : durationMinutes,
+              });
+              showToast('Magic fill applied', 'success');
+            } catch {
+              setError('Could not parse magic fill JSON');
+            }
+          }
+        }
+      }
+      // Auto-fill photos in background
+      autoFillPhotos(id).catch(() => {});
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Magic fill failed');
     }
   };
 
@@ -314,7 +365,6 @@ export function EventDetailPage() {
     venue,
     price,
     capacity,
-    imageUrl: imageUrl || undefined,
     status: event?.status ?? 'draft' as const,
     platforms: event?.platforms ?? [],
     createdAt: event?.createdAt ?? '',
@@ -434,25 +484,15 @@ export function EventDetailPage() {
           />
         </label>
 
-        <label style={styles.field}>
-          <span style={styles.label}>Image URL</span>
-          <input
-            style={styles.input}
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            placeholder="https://example.com/event-image.jpg"
-            type="url"
-          />
-          {imageUrl && (
-            <img
-              src={imageUrl}
-              alt="Event preview"
-              style={styles.imagePreview}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-              onLoad={(e) => { (e.target as HTMLImageElement).style.display = 'block'; }}
-            />
+        {/* Photos */}
+        <div style={styles.field}>
+          <label style={styles.label}>Photos</label>
+          {id && !isNew ? (
+            <OptimizePanel eventId={id} eventTitle={title} />
+          ) : (
+            <p style={{ color: '#999', fontSize: 13 }}>Save the event first to add photos</p>
           )}
-        </label>
+        </div>
 
         <PlatformSelector
           selected={selectedPlatforms}
@@ -510,11 +550,6 @@ export function EventDetailPage() {
         </div>
       )}
       </div>
-
-      {/* Optimize Panel — photos + AI gen prompt */}
-      {event && (
-        <OptimizePanel eventId={event.id} eventTitle={event.title} />
-      )}
 
       {/* Publish results panel */}
       {publishResults && publishResults.length > 0 && (

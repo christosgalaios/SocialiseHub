@@ -10,6 +10,7 @@ import type {
   SyncLogEntry,
   Template,
   CreateTemplateInput,
+  QueuedIdea,
 } from '@shared/types';
 
 const BASE = '/api';
@@ -334,6 +335,42 @@ export async function getAnalyticsInsights(): Promise<{ prompt: string }> {
   const res = await fetch(`${BASE}/analytics/insights`, { method: 'POST' });
   const body = await json<{ data: { prompt: string } }>(res);
   return body.data;
+}
+
+// ── Magic / Idea Queue ─────────────────────────────────
+
+export async function getNextIdea(): Promise<{ idea: QueuedIdea | null; remaining: number }> {
+  const res = await fetch(`${BASE}/ideas/next`);
+  return json<{ idea: QueuedIdea | null; remaining: number }>(res);
+}
+
+export async function generateIdeasPrompt(): Promise<{ prompt: string }> {
+  const res = await fetch(`${BASE}/ideas/generate-prompt`, { method: 'POST' });
+  return json<{ prompt: string }>(res);
+}
+
+export async function storeIdeas(ideas: any[]): Promise<{ stored: number }> {
+  const res = await fetch(`${BASE}/ideas`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ideas }),
+  });
+  return json<{ stored: number }>(res);
+}
+
+export async function acceptIdea(ideaId: number): Promise<{ eventId: string }> {
+  const res = await fetch(`${BASE}/ideas/${ideaId}/accept`, { method: 'POST' });
+  return json<{ eventId: string }>(res);
+}
+
+export async function magicFill(eventId: string): Promise<{ prompt: string; eventId: string }> {
+  const res = await fetch(`${BASE}/events/${eventId}/magic-fill`, { method: 'POST' });
+  return json<{ prompt: string; eventId: string }>(res);
+}
+
+export async function autoFillPhotos(eventId: string): Promise<{ photos: any[] }> {
+  const res = await fetch(`${BASE}/events/${eventId}/auto-photos`, { method: 'POST' });
+  return json<{ photos: any[] }>(res);
 }
 
 // ── Service Setup ──────────────────────────────────────

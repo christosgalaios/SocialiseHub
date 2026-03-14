@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { SocialiseEvent, Template } from '@shared/types';
-import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushEvent } from '../api/events';
+import type { SocialiseEvent, Template, QueuedIdea } from '@shared/types';
+import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushEvent, getNextIdea, generateIdeasPrompt, storeIdeas, acceptIdea } from '../api/events';
 import { EventCard } from '../components/EventCard';
 import { GridSkeleton } from '../components/Skeleton';
 import { useToast } from '../context/ToastContext';
+import { IdeaCardModal } from '../components/IdeaCardModal';
 
 type FilterTab = 'all' | 'draft' | 'published' | 'past';
 
@@ -19,6 +20,9 @@ export function EventsPage() {
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [templates, setTemplates] = useState<Template[]>([]);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [showIdeaModal, setShowIdeaModal] = useState(false);
+  const [currentIdea, setCurrentIdea] = useState<QueuedIdea | null>(null);
+  const [ideaLoading, setIdeaLoading] = useState(false);
   const nav = useNavigate();
   const { showToast } = useToast();
 
@@ -87,6 +91,81 @@ export function EventsPage() {
     nav(`/events/${id}?optimize=true`);
   };
 
+  const handleMagicNew = async () => {
+    setShowIdeaModal(true);
+    setIdeaLoading(true);
+    setCurrentIdea(null);
+    try {
+      const { idea } = await getNextIdea();
+      if (idea) {
+        setCurrentIdea(idea);
+        setIdeaLoading(false);
+        return;
+      }
+      // No queued ideas — generate via Claude
+      const { prompt } = await generateIdeasPrompt();
+      const w = window as Window & { electronAPI?: { sendPromptToClaude: (p: string) => Promise<{ response?: string; error?: string }> } };
+      if (w.electronAPI?.sendPromptToClaude) {
+        const result = await w.electronAPI.sendPromptToClaude(prompt);
+        if (result.response) {
+          try {
+            // Extract JSON array from response
+            const startIdx = result.response.indexOf('[');
+            const endIdx = result.response.lastIndexOf(']');
+            if (startIdx !== -1 && endIdx !== -1) {
+              const ideas = JSON.parse(result.response.slice(startIdx, endIdx + 1));
+              await storeIdeas(ideas);
+            }
+          } catch {
+            // parse failed — silently continue
+          }
+          const { idea: nextIdea } = await getNextIdea();
+          setCurrentIdea(nextIdea);
+        }
+      } else {
+        // Fallback: copy prompt to clipboard
+        await navigator.clipboard.writeText(prompt).catch(() => {});
+        showToast('Prompt copied — paste into Claude then come back', 'success');
+        setShowIdeaModal(false);
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to load ideas', 'error');
+      setShowIdeaModal(false);
+    } finally {
+      setIdeaLoading(false);
+    }
+  };
+
+  const handleNextIdea = async () => {
+    setIdeaLoading(true);
+    setCurrentIdea(null);
+    try {
+      const { idea } = await getNextIdea();
+      if (idea) {
+        setCurrentIdea(idea);
+      } else {
+        // Queue exhausted — regenerate
+        await handleMagicNew();
+        return;
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to load next idea', 'error');
+    } finally {
+      setIdeaLoading(false);
+    }
+  };
+
+  const handleAcceptIdea = async (ideaId: number) => {
+    try {
+      const { eventId } = await acceptIdea(ideaId);
+      setShowIdeaModal(false);
+      setCurrentIdea(null);
+      nav(`/events/${eventId}?magic=true`);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to accept idea', 'error');
+    }
+  };
+
   const counts = {
     all: events.length,
     draft: events.filter((e) => e.status === 'draft').length,
@@ -145,6 +224,9 @@ export function EventsPage() {
           <button style={styles.createBtn} onClick={() => nav('/events/new')}>
             + New Event
           </button>
+          <button style={{ ...styles.createBtn, background: '#a855f7' }} onClick={handleMagicNew}>
+            ✦ Magic
+          </button>
         </div>
       </div>
 
@@ -195,6 +277,16 @@ export function EventsPage() {
             />
           ))}
         </div>
+      )}
+
+      {showIdeaModal && (
+        <IdeaCardModal
+          idea={currentIdea}
+          loading={ideaLoading}
+          onAccept={handleAcceptIdea}
+          onNext={handleNextIdea}
+          onClose={() => { setShowIdeaModal(false); setCurrentIdea(null); }}
+        />
       )}
     </div>
   );
