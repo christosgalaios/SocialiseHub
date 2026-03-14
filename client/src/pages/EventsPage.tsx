@@ -123,9 +123,26 @@ export function EventsPage() {
           setCurrentIdea(nextIdea);
         }
       } else {
-        // Fallback: copy prompt to clipboard
+        // Fallback: copy prompt to clipboard and show paste-response UI
         await navigator.clipboard.writeText(prompt).catch(() => {});
-        showToast('Prompt copied — paste into Claude then come back', 'success');
+        showToast('Prompt copied to clipboard — paste into Claude, copy the JSON response, then paste it back here', 'success');
+        // Show a prompt asking user to paste Claude's response
+        const response = window.prompt('Paste Claude\'s JSON response here (the array of event ideas):');
+        if (response) {
+          try {
+            const startIdx = response.indexOf('[');
+            const endIdx = response.lastIndexOf(']');
+            if (startIdx !== -1 && endIdx !== -1) {
+              const ideas = JSON.parse(response.slice(startIdx, endIdx + 1));
+              await storeIdeas(ideas);
+              const { idea: nextIdea } = await getNextIdea();
+              setCurrentIdea(nextIdea);
+              return; // keep modal open with the idea
+            }
+          } catch {
+            showToast('Failed to parse response — try again', 'error');
+          }
+        }
         setShowIdeaModal(false);
       }
     } catch (err) {
