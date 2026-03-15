@@ -8,10 +8,12 @@ export function EventTags({ eventId }: { eventId: string }) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     getEventTags(eventId)
-      .then(setTags)
-      .catch(() => setError('Failed to load tags'))
-      .finally(() => setLoading(false));
+      .then(data => { if (!cancelled) setTags(data); })
+      .catch(() => { if (!cancelled) setError('Failed to load tags'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [eventId]);
 
   const handleAdd = async () => {

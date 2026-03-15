@@ -16,18 +16,25 @@ export function EventChecklist({ eventId }: { eventId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const load = async () => {
+  const load = async (signal?: { cancelled: boolean }) => {
     setError(null);
     try {
       const res = await getEventChecklist(eventId);
+      if (signal?.cancelled) return;
       setItems(res.data);
       setTotal(res.total);
       setDone(res.done);
-    } catch { setError('Failed to load checklist'); }
-    setLoading(false);
+    } catch {
+      if (!signal?.cancelled) setError('Failed to load checklist');
+    }
+    if (!signal?.cancelled) setLoading(false);
   };
 
-  useEffect(() => { load(); }, [eventId]);
+  useEffect(() => {
+    const signal = { cancelled: false };
+    load(signal);
+    return () => { signal.cancelled = true; };
+  }, [eventId]);
 
   const handleAdd = async () => {
     if (!newLabel.trim()) return;
