@@ -1252,6 +1252,24 @@ describe('App', () => {
     expect(res.body.data[1].start_time).toContain('2030-03-15');
   });
 
+  it('POST /api/events/:id/recur copies tags to recurring events', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Tagged Recur', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    await request(app).put(`/api/events/${id}/tags`).send({ tags: ['weekly', 'social'] });
+
+    const res = await request(app).post(`/api/events/${id}/recur`).send({
+      frequency: 'weekly', count: 2,
+    });
+    expect(res.status).toBe(201);
+
+    const tags1 = await request(app).get(`/api/events/${res.body.data[0].id}/tags`);
+    expect(tags1.body.data).toEqual(['social', 'weekly']);
+  });
+
   it('POST /api/events/:id/recur returns 400 for invalid frequency', async () => {
     const app = createTestApp();
     const created = await request(app).post('/api/events').send({

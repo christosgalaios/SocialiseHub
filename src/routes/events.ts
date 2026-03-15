@@ -960,6 +960,20 @@ export function createEventsRouter(
           capacity: original.capacity,
           category: original.category,
         });
+
+        // Copy tags to recurring events
+        if (db) {
+          const tags = db.prepare(
+            'SELECT tag FROM event_tags WHERE event_id = ?'
+          ).all(req.params.id) as Array<{ tag: string }>;
+          const insertTag = db.prepare(
+            'INSERT OR IGNORE INTO event_tags (event_id, tag) VALUES (?, ?)'
+          );
+          for (const { tag } of tags) {
+            insertTag.run(event.id, tag);
+          }
+        }
+
         created.push(event);
       }
 
