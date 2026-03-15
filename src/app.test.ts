@@ -1756,7 +1756,7 @@ describe('App', () => {
       price: 0,
     });
     expect(res.status).toBe(400);
-    expect(res.body.error).toContain('Name');
+    expect(res.body.error).toContain('name');
   });
 
   it('POST /api/templates returns 400 without title', async () => {
@@ -1768,6 +1768,33 @@ describe('App', () => {
     });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('title');
+  });
+
+  it('POST /api/templates rejects negative price', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/templates').send({
+      name: 'Bad', title: 'Bad Template', price: -5,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('price');
+  });
+
+  it('POST /api/templates rejects invalid capacity', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/templates').send({
+      name: 'Bad', title: 'Bad Template', capacity: 99999,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('capacity');
+  });
+
+  it('POST /api/templates rejects invalid durationMinutes', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/templates').send({
+      name: 'Bad', title: 'Bad Template', durationMinutes: 0,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('durationMinutes');
   });
 
   it('GET /api/templates/:id returns a template', async () => {

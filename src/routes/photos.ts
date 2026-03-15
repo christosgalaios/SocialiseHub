@@ -188,42 +188,56 @@ export function createPhotosRouter(db: Database): Router {
       );
 
       const createdPhotos: ReturnType<typeof photoToDto>[] = [];
+      let downloadFailures = 0;
 
       for (const result of searchData.results) {
         const filename = `${Date.now()}_unsplash_${result.id}.jpg`;
         const filePath = join(photoDir, filename);
         const relativePath = `/data/photos/${eventId}/${filename}`;
 
-        // Download photo to disk
-        const dlResp = await fetch(result.urls.regular);
-        if (!dlResp.ok || !dlResp.body) continue;
+        try {
+          // Download photo to disk
+          const dlResp = await fetch(result.urls.regular);
+          if (!dlResp.ok || !dlResp.body) {
+            downloadFailures++;
+            continue;
+          }
 
-        await pipeline(
-          // Node 18+ supports ReadableStream → Readable conversion via stream.Readable.fromWeb
-          // but we use the simpler approach: collect body as buffer
-          (async function* () {
-            const reader = dlResp.body!.getReader();
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              yield Buffer.from(value);
-            }
-          })(),
-          createWriteStream(filePath),
-        );
+          await pipeline(
+            // Node 18+ supports ReadableStream → Readable conversion via stream.Readable.fromWeb
+            // but we use the simpler approach: collect body as buffer
+            (async function* () {
+              const reader = dlResp.body!.getReader();
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                yield Buffer.from(value);
+              }
+            })(),
+            createWriteStream(filePath),
+          );
 
-        const isCover = nextPos === 0 ? 1 : 0;
-        const dbResult = insertStmt.run(eventId, relativePath, 'unsplash', nextPos, isCover);
+          const isCover = nextPos === 0 ? 1 : 0;
+          const dbResult = insertStmt.run(eventId, relativePath, 'unsplash', nextPos, isCover);
 
-        const photoRow = db.prepare<[number], PhotoRow>(
-          'SELECT * FROM event_photos WHERE id = ?'
-        ).get(dbResult.lastInsertRowid as number);
+          const photoRow = db.prepare<[number], PhotoRow>(
+            'SELECT * FROM event_photos WHERE id = ?'
+          ).get(dbResult.lastInsertRowid as number);
 
-        if (photoRow) createdPhotos.push(photoToDto(photoRow));
-        nextPos++;
+          if (photoRow) createdPhotos.push(photoToDto(photoRow));
+          nextPos++;
+        } catch {
+          downloadFailures++;
+        }
       }
 
-      res.status(201).json({ photos: createdPhotos });
+      if (createdPhotos.length === 0 && downloadFailures > 0) {
+        return res.status(502).json({ error: `All ${downloadFailures} photo downloads failed` });
+      }
+      res.status(201).json({
+        photos: createdPhotos,
+        ...(downloadFailures > 0 ? { warnings: [`${downloadFailures} photo download(s) failed`] } : {}),
+      });
     } catch (err) {
       next(err);
     }

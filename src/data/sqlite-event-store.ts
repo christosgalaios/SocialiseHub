@@ -186,7 +186,7 @@ export class SqliteEventStore {
       // Match events on the same day
       const datePrefix = date.slice(0, 10); // YYYY-MM-DD
       candidates = this.db
-        .prepare<[string], EventRow>(`SELECT * FROM events WHERE start_time LIKE ? || '%'`)
+        .prepare<[string], EventRow>(`SELECT * FROM events WHERE substr(start_time, 1, 10) = ?`)
         .all(datePrefix);
     } else {
       // No date — search all (expensive, but rare)
