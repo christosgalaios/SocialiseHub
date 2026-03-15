@@ -36,6 +36,7 @@ export function createDashboardRouter(
           e.title,
           e.description,
           e.start_time,
+          e.status,
           e.venue,
           e.capacity,
           e.sync_status,
@@ -52,6 +53,7 @@ export function createDashboardRouter(
         title: string;
         description: string | null;
         start_time: string;
+        status: string;
         venue: string | null;
         capacity: number | null;
         sync_status: string | null;
@@ -162,6 +164,32 @@ export function createDashboardRouter(
             problem: 'no_capacity',
             problemLabel: 'No capacity set',
             urgency: 'low',
+            platforms,
+            date: ev.start_time,
+          });
+        }
+
+        // Not on any platform — event is going nowhere
+        if (isUpcoming && platforms.length === 0 && ev.status !== 'draft') {
+          items.push({
+            eventId: ev.id,
+            eventTitle: ev.title,
+            problem: 'no_platform',
+            problemLabel: 'Not on any platform',
+            urgency: 'high',
+            platforms,
+            date: ev.start_time,
+          });
+        }
+
+        // Was synced but lost all platform links (orphaned)
+        if (ev.sync_status === 'synced' && platforms.length === 0 && isUpcoming) {
+          items.push({
+            eventId: ev.id,
+            eventTitle: ev.title,
+            problem: 'orphaned',
+            problemLabel: 'Disappeared from platforms',
+            urgency: 'high',
             platforms,
             date: ev.start_time,
           });
