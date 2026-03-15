@@ -156,6 +156,17 @@ function runMigrations(db: Database): void {
     try { db.exec('ALTER TABLE events ADD COLUMN category TEXT'); } catch { /* exists */ }
     db.pragma('user_version = 9');
   }
+  if (currentVersion < 10) {
+    db.exec(`CREATE TABLE IF NOT EXISTS event_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      author TEXT DEFAULT 'manager',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (event_id) REFERENCES events(id)
+    )`);
+    db.pragma('user_version = 10');
+  }
 }
 
 function createSchema(db: Database): void {

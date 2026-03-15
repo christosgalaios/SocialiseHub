@@ -21,6 +21,7 @@ import { createOptimizeRouter } from './routes/optimize.js';
 import { createPhotosRouter } from './routes/photos.js';
 import { createScoreRouter } from './routes/score.js';
 import { createDashboardRouter } from './routes/dashboard.js';
+import { createNotesRouter } from './routes/notes.js';
 import { SyncSnapshotStore } from './data/sync-snapshot-store.js';
 import { TemplateStore } from './data/template-store.js';
 import { MarketAnalyzer } from './agents/market-analyzer.js';
@@ -97,6 +98,7 @@ export function createApp(deps?: AppDeps): express.Express {
   app.use('/api/events', createPhotosRouter(db));
   app.use('/api/events', createScoreRouter(db, eventStore));
   app.use('/api/dashboard', createDashboardRouter(db, eventStore));
+  app.use('/api/events', createNotesRouter(db));
   app.use('/data', express.static(join(process.cwd(), 'data')));
   // 404 for unknown API routes (before SPA fallback)
   app.all('/api/{*path}', (_req: Request, res: Response) => {

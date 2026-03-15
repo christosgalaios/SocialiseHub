@@ -581,6 +581,39 @@ export async function saveEventScore(id: string, data: { overall: number; breakd
   }
 }
 
+// ── Notes ─────────────────────────────────────────────
+
+export interface EventNote {
+  id: number;
+  eventId: string;
+  content: string;
+  author: string;
+  createdAt: string;
+}
+
+export async function getEventNotes(eventId: string): Promise<{ data: EventNote[]; total: number }> {
+  const res = await fetch(`${BASE}/events/${eventId}/notes`);
+  return json(res);
+}
+
+export async function addEventNote(eventId: string, content: string, author?: string): Promise<EventNote> {
+  const res = await fetch(`${BASE}/events/${eventId}/notes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, author }),
+  });
+  const result = await json<{ data: EventNote }>(res);
+  return result.data;
+}
+
+export async function deleteEventNote(eventId: string, noteId: number): Promise<void> {
+  const res = await fetch(`${BASE}/events/${eventId}/notes/${noteId}`, { method: 'DELETE' });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(body.error || res.statusText);
+  }
+}
+
 // ── Service Setup ──────────────────────────────────────
 
 export async function setupService(

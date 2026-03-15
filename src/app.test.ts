@@ -2329,4 +2329,145 @@ describe('App', () => {
     const lines = res.text.split('\n');
     expect(lines).toHaveLength(1); // just header
   });
+
+  // ── Event Notes ─────────────────────────────────────────
+
+  it('GET /api/events/:id/notes returns empty array initially', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Notes Event', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).get(`/api/events/${created.body.data.id}/notes`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.total).toBe(0);
+  });
+
+  it('POST /api/events/:id/notes creates a note', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Noted Event', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const id = created.body.data.id;
+    const res = await request(app).post(`/api/events/${id}/notes`).send({
+      content: 'This event needs a better venue',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data.content).toBe('This event needs a better venue');
+    expect(res.body.data.author).toBe('manager');
+    expect(res.body.data.eventId).toBe(id);
+  });
+
+  it('POST /api/events/:id/notes uses custom author', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Custom Author', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${created.body.data.id}/notes`).send({
+      content: 'Great progress!', author: 'assistant',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data.author).toBe('assistant');
+  });
+
+  it('POST /api/events/:id/notes returns 400 for empty content', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Empty Note', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${created.body.data.id}/notes`).send({
+      content: '',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/events/:id/notes returns 400 for too long content', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Long Note', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${created.body.data.id}/notes`).send({
+      content: 'x'.repeat(5001),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /api/events/:id/notes lists notes newest first', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Multi Notes', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const id = created.body.data.id;
+    await request(app).post(`/api/events/${id}/notes`).send({ content: 'First note' });
+    await request(app).post(`/api/events/${id}/notes`).send({ content: 'Second note' });
+
+    const res = await request(app).get(`/api/events/${id}/notes`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.total).toBe(2);
+    // Newest first
+    expect(res.body.data[0].content).toBe('Second note');
+    expect(res.body.data[1].content).toBe('First note');
+  });
+
+  it('DELETE /api/events/:id/notes/:noteId deletes a note', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Delete Note', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const id = created.body.data.id;
+    const noteRes = await request(app).post(`/api/events/${id}/notes`).send({ content: 'Delete me' });
+    const noteId = noteRes.body.data.id;
+
+    const res = await request(app).delete(`/api/events/${id}/notes/${noteId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    // Verify it's gone
+    const listRes = await request(app).get(`/api/events/${id}/notes`);
+    expect(listRes.body.data).toHaveLength(0);
+  });
+
+  it('DELETE /api/events/:id/notes/:noteId returns 404 for missing note', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Missing Note', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).delete(`/api/events/${created.body.data.id}/notes/99999`);
+    expect(res.status).toBe(404);
+  });
+
+  it('DELETE /api/events/:id/notes/:noteId returns 400 for invalid note ID', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Bad Note ID', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).delete(`/api/events/${created.body.data.id}/notes/abc`);
+    expect(res.status).toBe(400);
+  });
+
+  it('deleting an event also deletes its notes', async () => {
+    const { app, db } = createTestAppWithDb();
+    const created = await request(app).post('/api/events').send({
+      title: 'Delete With Notes', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const id = created.body.data.id;
+    await request(app).post(`/api/events/${id}/notes`).send({ content: 'Will be deleted' });
+
+    await request(app).delete(`/api/events/${id}`);
+
+    // Notes should be gone
+    const count = db.prepare('SELECT COUNT(*) as cnt FROM event_notes WHERE event_id = ?').get(id) as { cnt: number };
+    expect(count.cnt).toBe(0);
+  });
 });
