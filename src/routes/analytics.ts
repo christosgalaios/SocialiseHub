@@ -25,12 +25,19 @@ export function createAnalyticsRouter(db: Database): Router {
         )
         .get() as { avg_fill: number | null };
 
+      const totalAttendees = totalAttendeesRow.total ?? 0;
+      const totalRevenue = totalRevenueRow.total ?? 0;
+      const revenuePerAttendee = totalAttendees > 0
+        ? Math.round((totalRevenue / totalAttendees) * 100) / 100
+        : 0;
+
       res.json({
         data: {
           total_events: totalEvents,
-          total_attendees: totalAttendeesRow.total ?? 0,
-          total_revenue: totalRevenueRow.total ?? 0,
+          total_attendees: totalAttendees,
+          total_revenue: totalRevenue,
           avg_fill_rate: fillRateRow.avg_fill != null ? Math.round(fillRateRow.avg_fill * 100) : 0,
+          revenue_per_attendee: revenuePerAttendee,
         },
       });
     } catch (err) {

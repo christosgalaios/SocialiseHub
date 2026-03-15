@@ -5361,4 +5361,56 @@ describe('App', () => {
       expect(res.body.data.byCategory.networking).toBe(2);
     });
   });
+
+  // ── Analytics revenue_per_attendee ─────────────────────
+
+  describe('Analytics revenue per attendee', () => {
+    it('GET /api/analytics/summary includes revenue_per_attendee', async () => {
+      const { app, db } = createTestAppWithDb();
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO platform_events (id, platform, external_id, title, date, status, synced_at, attendance, revenue)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        'pe-rpa-1', 'meetup', 'ext-rpa1', 'Rev Event', now, 'active', now, 20, 200.00
+      );
+      const res = await request(app).get('/api/analytics/summary');
+      expect(res.status).toBe(200);
+      expect(res.body.data.revenue_per_attendee).toBe(10);
+    });
+
+    it('GET /api/analytics/summary revenue_per_attendee is 0 when no attendees', async () => {
+      const app = createTestApp();
+      const res = await request(app).get('/api/analytics/summary');
+      expect(res.status).toBe(200);
+      expect(res.body.data.revenue_per_attendee).toBe(0);
+    });
+  });
+
+  // ── Dashboard attention limit param ────────────────────
+
+  describe('Dashboard attention limit', () => {
+    it('GET /api/dashboard/attention accepts limit param', async () => {
+      const app = createTestApp();
+      const res = await request(app).get('/api/dashboard/attention?limit=3');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.items)).toBe(true);
+    });
+
+    it('GET /api/dashboard/upcoming accepts limit param', async () => {
+      const app = createTestApp();
+      const res = await request(app).get('/api/dashboard/upcoming?limit=2');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.events)).toBe(true);
+    });
+  });
+
+  // ── Sync pull platform filter ──────────────────────────
+
+  describe('Sync pull platform filter', () => {
+    it('POST /api/sync/pull?platform=invalid returns 400', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/sync/pull?platform=invalid');
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('Invalid platform');
+    });
+  });
 });

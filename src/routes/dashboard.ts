@@ -9,7 +9,7 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
    * GET /api/dashboard/attention
    * Find events with problems needing attention.
    */
-  router.get('/attention', (_req, res, next) => {
+  router.get('/attention', (req, res, next) => {
     try {
       const items: Array<{
         eventId: string;
@@ -214,7 +214,7 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
           const urgencyOrder = { high: 0, medium: 1, low: 2 };
           return (urgencyOrder[a.urgency] ?? 2) - (urgencyOrder[b.urgency] ?? 2);
         })
-        .slice(0, 10); // Max 10 events on dashboard
+        .slice(0, Math.min(Math.max(parseInt(String(req.query.limit)) || 10, 1), 50));
 
       res.json({ items: groupedItems, count: Object.keys(grouped).length });
     } catch (err) {
