@@ -17,6 +17,7 @@ import {
   optimizeEvent,
   magicFill,
   autoFillPhotos,
+  getEventPhotos,
   getEventScore,
   scoreEvent,
   saveEventScore,
@@ -362,8 +363,12 @@ export function EventDetailPage() {
           }
         },
       });
-      // Auto-fill photos in background
-      autoFillPhotos(id).catch(() => {});
+      // Auto-fill photos in background (only if no photos exist yet)
+      getEventPhotos(id).then(existing => {
+        if (existing.length === 0) {
+          autoFillPhotos(id).catch(() => {});
+        }
+      }).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Magic fill failed');
     }
