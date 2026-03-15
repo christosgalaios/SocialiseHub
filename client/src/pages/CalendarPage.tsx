@@ -103,10 +103,31 @@ export function CalendarPage() {
         <h2 style={styles.monthLabel}>{MONTH_NAMES[month]} {year}</h2>
       </div>
 
+      {/* Monthly summary */}
+      {!loading && !error && (
+        <div style={styles.summary}>
+          {eventsByDay.size > 0 ? (
+            <span>{Array.from(eventsByDay.values()).reduce((sum, evts) => sum + evts.length, 0)} event{Array.from(eventsByDay.values()).reduce((sum, evts) => sum + evts.length, 0) !== 1 ? 's' : ''} this month</span>
+          ) : (
+            <span>No events this month — click a day to create one</span>
+          )}
+        </div>
+      )}
+
       {loading ? (
         <p style={{ color: '#7a7a7a' }}>Loading...</p>
       ) : error ? (
-        <p style={{ color: '#ef4444' }}>{error}</p>
+        <div style={styles.errorBanner}>
+          {error}
+          <button style={styles.retryBtn} onClick={() => {
+            setLoading(true);
+            setError(null);
+            getEvents()
+              .then(r => setEvents(r.data))
+              .catch(err => setError(err instanceof Error ? err.message : 'Failed to load events'))
+              .finally(() => setLoading(false));
+          }}>Retry</button>
+        </div>
       ) : (
         <div style={styles.calendar}>
           {DAY_HEADERS.map((d) => (
@@ -338,5 +359,33 @@ const styles: Record<string, React.CSSProperties> = {
   popoverMeta: {
     fontSize: 11,
     color: '#7a7a7a',
+  },
+  summary: {
+    fontSize: 14,
+    color: '#7a7a7a',
+    marginBottom: 16,
+  },
+  errorBanner: {
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
+    borderRadius: 12,
+    padding: '14px 20px',
+    color: '#dc2626',
+    fontSize: 14,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  retryBtn: {
+    padding: '6px 16px',
+    borderRadius: 8,
+    border: '1px solid #fecaca',
+    background: '#fff',
+    color: '#dc2626',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
   },
 };
