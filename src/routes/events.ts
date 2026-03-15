@@ -5,7 +5,7 @@ import type { PlatformEventStore } from '../data/platform-event-store.js';
 import type { SyncLogStore } from '../data/sync-log-store.js';
 import type { SyncSnapshotStore } from '../data/sync-snapshot-store.js';
 import { computeSyncHash } from '../data/sync-snapshot-store.js';
-import type { PlatformName } from '../shared/types.js';
+import type { PlatformName, EventStatus } from '../shared/types.js';
 import { validateCreateEventInput, validateUpdateEventInput } from '../lib/validate.js';
 import { checkEventReadiness } from '../lib/event-readiness.js';
 
@@ -22,7 +22,12 @@ export function createEventsRouter(
     try {
       let events = store.getAll();
 
-      // Filter by status (draft, published, cancelled)
+      // Exclude archived events by default unless explicitly included
+      if (req.query.include_archived !== 'true') {
+        events = events.filter(e => e.status !== 'archived');
+      }
+
+      // Filter by status (draft, published, cancelled, archived)
       const status = req.query.status as string | undefined;
       if (status) events = events.filter(e => e.status === status);
 
@@ -116,7 +121,7 @@ export function createEventsRouter(
       if (ids.some(id => typeof id !== 'string' || !id)) {
         return res.status(400).json({ error: 'Each id must be a non-empty string' });
       }
-      const validStatuses = ['draft', 'published', 'cancelled'];
+      const validStatuses = ['draft', 'published', 'cancelled', 'archived'];
       if (!status || !validStatuses.includes(status)) {
         return res.status(400).json({ error: `status must be one of: ${validStatuses.join(', ')}` });
       }
@@ -128,7 +133,7 @@ export function createEventsRouter(
           results.push({ id, success: false, error: 'Not found' });
           continue;
         }
-        store.updateStatus(id, status as 'draft' | 'published' | 'cancelled');
+        store.updateStatus(id, status as EventStatus);
         results.push({ id, success: true });
       }
 
@@ -188,6 +193,37 @@ export function createEventsRouter(
       }
 
       res.json({ data: results, deleted: results.filter(r => r.success).length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/batch/archive', (req, res, next) => {
+    try {
+      const { ids, unarchive } = req.body as { ids?: string[]; unarchive?: boolean };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+
+      const results: { id: string; success: boolean; error?: string }[] = [];
+      for (const id of ids) {
+        const event = store.getById(id);
+        if (!event) {
+          results.push({ id, success: false, error: 'Not found' });
+          continue;
+        }
+        if (unarchive) {
+          store.updateStatus(id, 'draft');
+        } else {
+          store.updateStatus(id, 'archived');
+        }
+        results.push({ id, success: true });
+      }
+
+      res.json({ data: results, updated: results.filter(r => r.success).length });
     } catch (err) {
       next(err);
     }

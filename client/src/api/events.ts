@@ -158,6 +158,18 @@ export async function batchDeleteEvents(
   return json(res);
 }
 
+export async function archiveEvents(
+  ids: string[],
+  unarchive = false,
+): Promise<{ data: { id: string; success: boolean; error?: string }[]; updated: number }> {
+  const res = await fetch(`${BASE}/events/batch/archive`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, unarchive }),
+  });
+  return json(res);
+}
+
 export interface CalendarDay {
   date: string;
   events: { id: string; title: string; start_time: string; status: string; venue: string }[];

@@ -1755,4 +1755,202 @@ describe('App', () => {
     });
     expect(res.status).toBe(404);
   });
+
+  // ── Archive (soft-delete) ───────────────────────────────
+
+  it('POST /api/events/batch/archive archives events', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Archive Me', description: 'Will be archived',
+      start_time: '2030-01-01T19:00:00Z', venue: 'Pub', price: 5, capacity: 20,
+    });
+    const id = created.body.data.id;
+    const res = await request(app).post('/api/events/batch/archive').send({ ids: [id] });
+    expect(res.status).toBe(200);
+    expect(res.body.updated).toBe(1);
+
+    // Archived events excluded from default list
+    const listRes = await request(app).get('/api/events');
+    expect(listRes.body.data.find((e: { id: string }) => e.id === id)).toBeUndefined();
+
+    // But visible with include_archived=true
+    const archivedRes = await request(app).get('/api/events?include_archived=true');
+    const found = archivedRes.body.data.find((e: { id: string }) => e.id === id);
+    expect(found).toBeDefined();
+    expect(found.status).toBe('archived');
+  });
+
+  it('POST /api/events/batch/archive unarchives events', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Unarchive Me', description: 'Will be unarchived',
+      start_time: '2030-01-01T19:00:00Z', venue: 'Pub', price: 5, capacity: 20,
+    });
+    const id = created.body.data.id;
+    // Archive first
+    await request(app).post('/api/events/batch/archive').send({ ids: [id] });
+    // Unarchive
+    const res = await request(app).post('/api/events/batch/archive').send({ ids: [id], unarchive: true });
+    expect(res.status).toBe(200);
+    expect(res.body.updated).toBe(1);
+
+    // Now visible in default list again
+    const listRes = await request(app).get('/api/events');
+    const found = listRes.body.data.find((e: { id: string }) => e.id === id);
+    expect(found).toBeDefined();
+    expect(found.status).toBe('draft');
+  });
+
+  it('POST /api/events/batch/archive returns 400 without ids', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/batch/archive').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /api/events?status=archived only returns archived events', async () => {
+    const app = createTestApp();
+    const c1 = await request(app).post('/api/events').send({
+      title: 'Active Event', description: 'Still active',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const c2 = await request(app).post('/api/events').send({
+      title: 'Archived Event', description: 'Gone',
+      start_time: '2030-01-02T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    await request(app).post('/api/events/batch/archive').send({ ids: [c2.body.data.id] });
+
+    const res = await request(app).get('/api/events?status=archived&include_archived=true');
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].title).toBe('Archived Event');
+  });
+
+  // ── Generator Routes ────────────────────────────────────
+
+  it('POST /api/generator/analyze returns events array', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/generator/analyze');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.events)).toBe(true);
+  });
+
+  it('POST /api/generator/prompt returns a prompt string', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/generator/prompt');
+    expect(res.status).toBe(200);
+    expect(typeof res.body.prompt).toBe('string');
+    expect(res.body.prompt).toContain('Socialise');
+  });
+
+  it('POST /api/generator/save creates event from idea', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/generator/save').send({
+      title: 'Generated Event',
+      description: 'AI-generated description',
+      venue: 'Cool Venue',
+      date: '2030-06-15',
+      category: 'Social',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data.title).toBe('Generated Event');
+    expect(res.body.data.category).toBe('Social');
+    expect(res.body.data.status).toBe('draft');
+  });
+
+  it('POST /api/generator/save returns 400 without title', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/generator/save').send({
+      description: 'No title provided',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/generator/save returns 400 for invalid date format', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/generator/save').send({
+      title: 'Bad Date Event',
+      description: 'Has an invalid date',
+      date: 'not-a-date',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('YYYY-MM-DD');
+  });
+
+  it('GET /api/generator/ideas returns idea and remaining count', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/generator/ideas');
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('remaining');
+    expect(typeof res.body.remaining).toBe('number');
+  });
+
+  it('POST /api/generator/ideas/generate returns a prompt', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/generator/ideas/generate');
+    expect(res.status).toBe(200);
+    expect(typeof res.body.prompt).toBe('string');
+    expect(res.body.prompt).toContain('12');
+  });
+
+  it('POST /api/generator/ideas/store stores and retrieves ideas', async () => {
+    const app = createTestApp();
+    const storeRes = await request(app).post('/api/generator/ideas/store').send({
+      ideas: [
+        { title: 'Quiz Night', shortDescription: 'Fun pub quiz', category: 'Social', suggestedDate: '2030-07-01', confidence: 'high' },
+        { title: 'Yoga Morning', shortDescription: 'Morning yoga', category: 'Wellness', suggestedDate: '2030-07-05', confidence: 'medium' },
+      ],
+    });
+    expect(storeRes.status).toBe(200);
+    expect(storeRes.body.stored).toBe(2);
+
+    // Retrieve next idea
+    const ideaRes = await request(app).get('/api/generator/ideas');
+    expect(ideaRes.status).toBe(200);
+    expect(ideaRes.body.idea).toBeDefined();
+    expect(ideaRes.body.idea.title).toBe('Quiz Night');
+    expect(ideaRes.body.remaining).toBe(2);
+  });
+
+  it('POST /api/generator/ideas/store returns 400 for empty array', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/generator/ideas/store').send({ ideas: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/generator/ideas/store returns 400 for ideas without titles', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/generator/ideas/store').send({
+      ideas: [{ title: '', shortDescription: 'No title' }],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/generator/ideas/:id/accept creates event from idea', async () => {
+    const app = createTestApp();
+    // Store an idea first
+    await request(app).post('/api/generator/ideas/store').send({
+      ideas: [{ title: 'Accept Me', shortDescription: 'Event from idea', category: 'Comedy', suggestedDate: '2030-08-01', confidence: 'high' }],
+    });
+    const ideaRes = await request(app).get('/api/generator/ideas');
+    const ideaId = ideaRes.body.idea.id;
+
+    const res = await request(app).post(`/api/generator/ideas/${ideaId}/accept`);
+    expect(res.status).toBe(201);
+    expect(res.body.eventId).toBeDefined();
+
+    // Idea should now be marked as used
+    const nextRes = await request(app).get('/api/generator/ideas');
+    expect(nextRes.body.remaining).toBe(0);
+  });
+
+  it('POST /api/generator/ideas/:id/accept returns 404 for missing idea', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/generator/ideas/99999/accept');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /api/generator/ideas/:id/accept returns 400 for invalid id', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/generator/ideas/abc/accept');
+    expect(res.status).toBe(400);
+  });
 });
