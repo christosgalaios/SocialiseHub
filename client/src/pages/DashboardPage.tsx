@@ -6,6 +6,7 @@ import { AttentionSection } from '../components/dashboard/AttentionSection';
 import { UpcomingSection } from '../components/dashboard/UpcomingSection';
 import { PerformanceSection } from '../components/dashboard/PerformanceSection';
 import { SuggestionsSection } from '../components/dashboard/SuggestionsSection';
+import { WeekSection } from '../components/dashboard/WeekSection';
 import { useToast } from '../context/ToastContext';
 import { ListSkeleton } from '../components/Skeleton';
 
@@ -106,12 +107,16 @@ export function DashboardPage() {
 
       {/* Error */}
       {!loading && error && (
-        <div style={styles.errorBanner}>{error}</div>
+        <div style={styles.errorBanner}>
+          {error}
+          <button style={styles.retryBtn} onClick={load}>Retry</button>
+        </div>
       )}
 
       {/* Content */}
       {!loading && !error && data && (
         <div style={styles.sections}>
+          <WeekSection />
           <AttentionSection items={data.attentionItems} totalCount={data.attentionTotalCount} />
           <UpcomingSection events={data.upcomingEvents} />
           <PerformanceSection stats={data.performance} />
@@ -171,6 +176,21 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '14px 20px',
     color: '#dc2626',
     fontSize: 14,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  retryBtn: {
+    padding: '6px 16px',
+    borderRadius: 8,
+    border: '1px solid #fecaca',
+    background: '#fff',
+    color: '#dc2626',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
   },
   sections: {
     display: 'flex',
