@@ -43,7 +43,32 @@ export function createEventsRouter(
         events = events.filter(e => e.start_time > now);
       }
 
-      res.json({ data: events, total: events.length });
+      // Sorting
+      const sortBy = req.query.sort_by as string | undefined;
+      const order = req.query.order === 'asc' ? 'asc' : 'desc';
+      const validSortFields = new Set(['title', 'start_time', 'created_at', 'updated_at', 'price', 'capacity', 'status']);
+      if (sortBy && validSortFields.has(sortBy)) {
+        events.sort((a, b) => {
+          const aVal = (a as Record<string, unknown>)[sortBy];
+          const bVal = (b as Record<string, unknown>)[sortBy];
+          if (aVal == null && bVal == null) return 0;
+          if (aVal == null) return 1;
+          if (bVal == null) return -1;
+          const cmp = typeof aVal === 'string' ? aVal.localeCompare(bVal as string) : (aVal as number) - (bVal as number);
+          return order === 'asc' ? cmp : -cmp;
+        });
+      }
+
+      // Pagination
+      const total = events.length;
+      const page = Math.max(1, Number(req.query.page) || 1);
+      const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 0));
+      if (req.query.per_page) {
+        const start = (page - 1) * perPage;
+        events = events.slice(start, start + perPage);
+      }
+
+      res.json({ data: events, total, ...(req.query.per_page ? { page, per_page: perPage } : {}) });
     } catch (err) {
       next(err);
     }
@@ -91,6 +116,37 @@ export function createEventsRouter(
       const deleted = store.delete(req.params.id);
       if (!deleted) return res.status(404).json({ error: 'Event not found' });
       res.status(204).end();
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch('/batch/status', (req, res, next) => {
+    try {
+      const { ids, status } = req.body as { ids?: string[]; status?: string };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+      const validStatuses = ['draft', 'published', 'cancelled'];
+      if (!status || !validStatuses.includes(status)) {
+        return res.status(400).json({ error: `status must be one of: ${validStatuses.join(', ')}` });
+      }
+
+      const results: { id: string; success: boolean; error?: string }[] = [];
+      for (const id of ids) {
+        const event = store.getById(id);
+        if (!event) {
+          results.push({ id, success: false, error: 'Not found' });
+          continue;
+        }
+        store.updateStatus(id, status as 'draft' | 'published' | 'cancelled');
+        results.push({ id, success: true });
+      }
+
+      res.json({ data: results, updated: results.filter(r => r.success).length });
     } catch (err) {
       next(err);
     }

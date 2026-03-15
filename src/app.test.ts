@@ -132,4 +132,142 @@ describe('App', () => {
     expect(res.body.data.totalEvents).toBe(0);
     expect(res.body.data.byPlatform).toEqual({ meetup: 0, eventbrite: 0, headfirst: 0 });
   });
+
+  // ── Sorting ───────────────────────────────────────────
+
+  it('GET /api/events?sort_by=title&order=asc sorts alphabetically', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Zebra Night', description: 'Z', start_time: '2030-01-01T19:00:00Z',
+      venue: 'Zoo', price: 5, capacity: 20,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Alpha Party', description: 'A', start_time: '2030-01-02T19:00:00Z',
+      venue: 'Club', price: 10, capacity: 30,
+    });
+    const res = await request(app).get('/api/events?sort_by=title&order=asc');
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.data[0].title).toBe('Alpha Party');
+    expect(res.body.data[1].title).toBe('Zebra Night');
+  });
+
+  it('GET /api/events?sort_by=price&order=desc sorts by price descending', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Cheap', description: 'C', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Expensive', description: 'E', start_time: '2030-01-02T19:00:00Z',
+      venue: 'V', price: 50, capacity: 20,
+    });
+    const res = await request(app).get('/api/events?sort_by=price&order=desc');
+    expect(res.body.data[0].title).toBe('Expensive');
+    expect(res.body.data[1].title).toBe('Cheap');
+  });
+
+  it('GET /api/events?sort_by=invalid ignores invalid sort field', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Event', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get('/api/events?sort_by=hacked');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+  });
+
+  // ── Pagination ────────────────────────────────────────
+
+  it('GET /api/events?per_page=1&page=1 returns first page', async () => {
+    const app = createTestApp();
+    for (let i = 1; i <= 3; i++) {
+      await request(app).post('/api/events').send({
+        title: `Event ${i}`, description: 'D', start_time: `2030-01-0${i}T19:00:00Z`,
+        venue: 'V', price: 0, capacity: 10,
+      });
+    }
+    const res = await request(app).get('/api/events?per_page=1&page=1');
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.total).toBe(3);
+    expect(res.body.page).toBe(1);
+    expect(res.body.per_page).toBe(1);
+  });
+
+  it('GET /api/events?per_page=2&page=2 returns second page', async () => {
+    const app = createTestApp();
+    for (let i = 1; i <= 5; i++) {
+      await request(app).post('/api/events').send({
+        title: `Event ${i}`, description: 'D', start_time: `2030-01-0${i}T19:00:00Z`,
+        venue: 'V', price: 0, capacity: 10,
+      });
+    }
+    const res = await request(app).get('/api/events?per_page=2&page=2&sort_by=start_time&order=asc');
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.total).toBe(5);
+    expect(res.body.page).toBe(2);
+  });
+
+  it('GET /api/events?per_page=10&page=99 returns empty for out-of-range page', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Solo', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get('/api/events?per_page=10&page=99');
+    expect(res.body.data).toHaveLength(0);
+    expect(res.body.total).toBe(1);
+  });
+
+  // ── Batch Status ──────────────────────────────────────
+
+  it('PATCH /api/events/batch/status updates multiple events', async () => {
+    const app = createTestApp();
+    const e1 = await request(app).post('/api/events').send({
+      title: 'Batch 1', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const e2 = await request(app).post('/api/events').send({
+      title: 'Batch 2', description: 'D', start_time: '2030-01-02T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app)
+      .patch('/api/events/batch/status')
+      .send({ ids: [e1.body.data.id, e2.body.data.id], status: 'cancelled' });
+    expect(res.status).toBe(200);
+    expect(res.body.updated).toBe(2);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.data.every((r: { success: boolean }) => r.success)).toBe(true);
+
+    // Verify the status changed
+    const check = await request(app).get(`/api/events/${e1.body.data.id}`);
+    expect(check.body.data.status).toBe('cancelled');
+  });
+
+  it('PATCH /api/events/batch/status returns 400 for empty ids', async () => {
+    const app = createTestApp();
+    const res = await request(app).patch('/api/events/batch/status').send({ ids: [], status: 'draft' });
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH /api/events/batch/status returns 400 for invalid status', async () => {
+    const app = createTestApp();
+    const res = await request(app).patch('/api/events/batch/status').send({ ids: ['x'], status: 'bogus' });
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH /api/events/batch/status handles missing events gracefully', async () => {
+    const app = createTestApp();
+    const e1 = await request(app).post('/api/events').send({
+      title: 'Real', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app)
+      .patch('/api/events/batch/status')
+      .send({ ids: [e1.body.data.id, 'nonexistent'], status: 'published' });
+    expect(res.status).toBe(200);
+    expect(res.body.updated).toBe(1);
+    expect(res.body.data[1].success).toBe(false);
+    expect(res.body.data[1].error).toBe('Not found');
+  });
 });
