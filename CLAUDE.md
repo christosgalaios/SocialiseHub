@@ -174,6 +174,8 @@ npx vitest --watch         # Watch mode
 - Eventbrite/Headfirst organizer is always "Ben" (single org owner)
 - Revenue computed as ticketPrice × attendance for Meetup (Eventbrite computes in scrape)
 - Conflict detection uses cross-platform field comparison, not scheduling overlap
+- VERSION file contains commit count number — bump on each release to main
+- Migration version: 16
 - Event fields are the union of all platform fields (Meetup, Eventbrite, Headfirst) — even if a field is irrelevant to one platform, it exists in the hub
 - event_type validates to 'in_person', 'online', or 'hybrid'
 - Data management endpoints: DELETE /api/data/all (clears all tables), DELETE /api/data/:category (events, platforms, templates, ideas, market, dashboard)

@@ -15,7 +15,6 @@ if errorlevel 1 (
   echo  Node.js is not installed. Installing...
   echo.
 
-  :: Detect architecture
   set "NODE_VERSION=20.18.1"
   if "%PROCESSOR_ARCHITECTURE%"=="AMD64" (
     set "NODE_ARCH=x64"
@@ -64,94 +63,70 @@ if errorlevel 1 (
   echo.
 )
 
-:: Show Node version
 for /f "tokens=*" %%v in ('node --version') do echo  Node.js %%v detected.
 echo.
 
-:: ── Auto-update (git or curl) ──────────────────────────
-:: Check if git is available
+:: ── Auto-update (version-based) ────────────────────────
+:: Read local version from VERSION file
+set "LOCAL_VER=0"
+if exist "%~dp0VERSION" (
+  set /p LOCAL_VER=<"%~dp0VERSION"
+)
+:: Trim whitespace
+for /f "tokens=*" %%a in ("!LOCAL_VER!") do set "LOCAL_VER=%%a"
+
+echo  Local version: v!LOCAL_VER!
+
+:: Fetch remote VERSION from GitHub (raw file on main branch)
+set "REMOTE_VER="
+for /f "usebackq delims=" %%i in (`curl -s "https://raw.githubusercontent.com/christosgalaios/SocialiseHub/main/VERSION" 2^>nul`) do (
+  set "REMOTE_VER=%%i"
+)
+for /f "tokens=*" %%a in ("!REMOTE_VER!") do set "REMOTE_VER=%%a"
+
+if not defined REMOTE_VER (
+  echo  Could not check for updates (offline?)
+  echo.
+  goto :skip_update
+)
+
+echo  Latest version: v!REMOTE_VER!
+
+:: Compare versions (numeric)
+if !REMOTE_VER! LEQ !LOCAL_VER! (
+  echo  Already up to date.
+  echo.
+  goto :skip_update
+)
+
+echo.
+echo  Update available! v!LOCAL_VER! → v!REMOTE_VER!
+
+:: Check if git is available — prefer git pull over zip download
 where git >nul 2>&1
 if errorlevel 1 goto :curl_update
 
-:: Git is available — use git-based update (developer mode)
-for /f %%i in ('git rev-parse --abbrev-ref HEAD 2^>nul') do set "CURRENT_BRANCH=%%i"
-if /i not "%CURRENT_BRANCH%"=="main" (
-  echo  On branch '%CURRENT_BRANCH%' — skipping auto-update.
-  echo.
-  goto :skip_update
-)
-
-echo  Checking for updates (git)...
+:: ── Git-based update ───────────────────────────────────
+echo  Updating via git...
 git fetch origin main >nul 2>&1
-if errorlevel 1 (
-  echo  Could not check for updates (offline?)
-  echo.
-  goto :skip_update
-)
+if errorlevel 1 goto :curl_update
 
-for /f %%i in ('git rev-parse HEAD') do set "LOCAL_HEAD=%%i"
-for /f %%i in ('git rev-parse origin/main') do set "REMOTE_MAIN=%%i"
-
-if "%LOCAL_HEAD%"=="%REMOTE_MAIN%" (
-  echo  Already up to date.
-  echo.
-  goto :skip_update
-)
-
-git merge-base --is-ancestor HEAD origin/main >nul 2>&1
-if errorlevel 1 (
-  echo  Local changes detected — skipping auto-update.
-  echo.
-  goto :skip_update
-)
-
-echo  Update available! Updating...
 git merge origin/main --ff-only >nul 2>&1
 if errorlevel 1 (
-  echo  Auto-update failed. Continuing with current version.
-  echo.
-  goto :skip_update
+  echo  Git merge failed — falling back to download...
+  goto :curl_update
 )
 echo  Updated successfully!
 echo.
+
+:: Reinstall deps if needed
+call npm install >nul 2>&1
 goto :skip_update
 
-:: ── Curl-based update (no git — end-user mode) ─────────
+:: ── Curl-based update (no git) ─────────────────────────
 :curl_update
-echo  Checking for updates...
+echo  Downloading update...
 
-:: Store current version hash if we have one
-set "VERSION_FILE=%~dp0.version"
-set "LOCAL_VERSION="
-if exist "%VERSION_FILE%" (
-  set /p LOCAL_VERSION=<"%VERSION_FILE%"
-)
-
-:: Get latest commit SHA from GitHub API
-for /f "usebackq delims=" %%i in (`curl -s "https://api.github.com/repos/christosgalaios/SocialiseHub/commits/main" 2^>nul ^| findstr /C:"\"sha\""`) do (
-  set "RAW_LINE=%%i"
-)
-:: Extract SHA from JSON line like:   "sha": "abc123...",
-set "REMOTE_SHA="
-if defined RAW_LINE (
-  for /f "tokens=2 delims=:, " %%a in ("!RAW_LINE!") do set "REMOTE_SHA=%%~a"
-)
-
-if not defined REMOTE_SHA (
-  echo  Could not check for updates (offline?)
-  echo.
-  goto :skip_update
-)
-
-if "%LOCAL_VERSION%"=="%REMOTE_SHA%" (
-  echo  Already up to date.
-  echo.
-  goto :skip_update
-)
-
-echo  Update available! Downloading latest version...
-
-:: Download zip of main branch
 curl -L -o "%TEMP%\socialise-update.zip" "https://github.com/christosgalaios/SocialiseHub/archive/refs/heads/main.zip" 2>nul
 if errorlevel 1 (
   echo  Download failed. Continuing with current version.
@@ -159,7 +134,7 @@ if errorlevel 1 (
   goto :skip_update
 )
 
-:: Extract to temp folder
+:: Extract
 if exist "%TEMP%\socialise-update" rmdir /S /Q "%TEMP%\socialise-update" 2>nul
 powershell -NoProfile -Command "Expand-Archive -LiteralPath '%TEMP%\socialise-update.zip' -DestinationPath '%TEMP%\socialise-update' -Force" 2>nul
 if errorlevel 1 (
@@ -168,42 +143,36 @@ if errorlevel 1 (
   goto :skip_update
 )
 
-:: Find the extracted folder (GitHub zips as SocialiseHub-main/)
 set "UPDATE_SRC="
 for /d %%d in ("%TEMP%\socialise-update\*") do set "UPDATE_SRC=%%d"
 
 if not defined UPDATE_SRC (
-  echo  Extract produced no folder. Continuing with current version.
+  echo  Extract failed. Continuing with current version.
   echo.
   goto :skip_update
 )
 
-:: Copy updated files (preserve node_modules and data/)
+:: Copy updated files (preserve node_modules, data/, .git/)
 echo  Applying update...
-:: Copy source files, configs, and scripts — skip node_modules, data, .git
-for %%f in (package.json package-lock.json tsconfig.json vite.config.ts SocialiseHub.bat) do (
+for %%f in (package.json package-lock.json tsconfig.json vite.config.ts SocialiseHub.bat VERSION CLAUDE.md) do (
   if exist "!UPDATE_SRC!\%%f" copy /Y "!UPDATE_SRC!\%%f" "%~dp0%%f" >nul 2>&1
 )
-:: Copy source directories
 for %%d in (src client electron .githooks) do (
   if exist "!UPDATE_SRC!\%%d" (
     xcopy /E /Y /Q "!UPDATE_SRC!\%%d" "%~dp0%%d\" >nul 2>&1
   )
 )
 
-:: Save version hash
-echo !REMOTE_SHA!>"%VERSION_FILE%"
-
 :: Clean up
 rmdir /S /Q "%TEMP%\socialise-update" 2>nul
 del "%TEMP%\socialise-update.zip" 2>nul
 
-echo  Updated successfully!
+echo  Updated to v!REMOTE_VER!!
 echo.
 
-:: Check if package.json changed — reinstall deps
+:: Reinstall deps
 if exist "node_modules" (
-  echo  Reinstalling dependencies (update may have changed them)...
+  echo  Updating dependencies...
   call npm install
   echo.
 )
