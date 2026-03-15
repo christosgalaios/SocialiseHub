@@ -233,6 +233,9 @@ export function createEventsRouter(
     try {
       let events = store.getAll();
 
+      // Exclude archived events from calendar
+      events = events.filter(e => e.status !== 'archived');
+
       // Optional month filter: ?month=2030-01
       const month = req.query.month as string | undefined;
       if (month && /^\d{4}-\d{2}$/.test(month)) {
@@ -308,6 +311,11 @@ export function createEventsRouter(
     try {
       let events = store.getAll();
 
+      // Exclude archived by default
+      if (req.query.include_archived !== 'true') {
+        events = events.filter(e => e.status !== 'archived');
+      }
+
       const status = req.query.status as string | undefined;
       if (status) events = events.filter(e => e.status === status);
       if (req.query.upcoming === 'true') {
@@ -356,6 +364,52 @@ export function createEventsRouter(
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Content-Disposition', 'attachment; filename="events.json"');
       res.json({ data: events, exported_at: new Date().toISOString(), total: events.length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/import/json', (req, res, next) => {
+    try {
+      const { events: importEvents } = req.body as { events?: Array<{
+        title?: string; description?: string; start_time?: string;
+        venue?: string; price?: number; capacity?: number; category?: string;
+        duration_minutes?: number;
+      }> };
+
+      if (!Array.isArray(importEvents) || importEvents.length === 0) {
+        return res.status(400).json({ error: 'events must be a non-empty array' });
+      }
+      if (importEvents.length > 200) {
+        return res.status(400).json({ error: 'Maximum 200 events per import' });
+      }
+
+      const results: { index: number; success: boolean; id?: string; error?: string }[] = [];
+      for (let i = 0; i < importEvents.length; i++) {
+        const item = importEvents[i];
+        if (!item.title || !item.start_time) {
+          results.push({ index: i, success: false, error: 'title and start_time are required' });
+          continue;
+        }
+        try {
+          const event = store.create({
+            title: item.title,
+            description: item.description,
+            start_time: item.start_time,
+            venue: item.venue,
+            price: item.price,
+            capacity: item.capacity,
+            category: item.category,
+            duration_minutes: item.duration_minutes,
+          });
+          results.push({ index: i, success: true, id: event.id });
+        } catch (err) {
+          results.push({ index: i, success: false, error: err instanceof Error ? err.message : 'Unknown error' });
+        }
+      }
+
+      const imported = results.filter(r => r.success).length;
+      res.status(201).json({ data: results, imported, total: importEvents.length });
     } catch (err) {
       next(err);
     }

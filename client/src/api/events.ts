@@ -224,6 +224,17 @@ export function getEventsExportUrl(params?: { status?: string; upcoming?: boolea
   return `${BASE}/events/export/csv${qs.toString() ? '?' + qs.toString() : ''}`;
 }
 
+export async function importEventsFromJson(
+  events: Array<{ title: string; description?: string; start_time: string; venue?: string; price?: number; capacity?: number; category?: string }>,
+): Promise<{ data: Array<{ index: number; success: boolean; id?: string; error?: string }>; imported: number; total: number }> {
+  const res = await fetch(`${BASE}/events/import/json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ events }),
+  });
+  return json(res);
+}
+
 export function getEventsJsonExportUrl(params?: { status?: string; upcoming?: boolean }): string {
   const qs = new URLSearchParams();
   if (params?.status) qs.set('status', params.status);

@@ -2162,4 +2162,80 @@ describe('App', () => {
     const res = await request(app).get('/api/events/export/json');
     expect(res.body.data).toHaveLength(0);
   });
+
+  // ── JSON Import ─────────────────────────────────────────
+
+  it('POST /api/events/import/json imports multiple events', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/import/json').send({
+      events: [
+        { title: 'Import Event 1', start_time: '2030-01-01T19:00:00Z', venue: 'Pub', price: 5, capacity: 20 },
+        { title: 'Import Event 2', start_time: '2030-01-02T19:00:00Z', venue: 'Bar', price: 10, capacity: 30, category: 'Social' },
+      ],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.imported).toBe(2);
+    expect(res.body.total).toBe(2);
+    expect(res.body.data.every((r: { success: boolean }) => r.success)).toBe(true);
+
+    // Verify events exist
+    const listRes = await request(app).get('/api/events');
+    expect(listRes.body.data).toHaveLength(2);
+  });
+
+  it('POST /api/events/import/json skips invalid events', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/import/json').send({
+      events: [
+        { title: 'Valid Event', start_time: '2030-01-01T19:00:00Z' },
+        { description: 'Missing title and start_time' },
+        { title: 'Another Valid', start_time: '2030-01-02T19:00:00Z' },
+      ],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.imported).toBe(2);
+    expect(res.body.data[1].success).toBe(false);
+    expect(res.body.data[1].error).toContain('title');
+  });
+
+  it('POST /api/events/import/json returns 400 for empty array', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/import/json').send({ events: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/events/import/json returns 400 without events field', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/import/json').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/events/import/json returns 400 when over 200 events', async () => {
+    const app = createTestApp();
+    const tooMany = Array.from({ length: 201 }, (_, i) => ({
+      title: `Event ${i}`, start_time: '2030-01-01T19:00:00Z',
+    }));
+    const res = await request(app).post('/api/events/import/json').send({ events: tooMany });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('200');
+  });
+
+  // ── Calendar excludes archived ──────────────────────────
+
+  it('GET /api/events/calendar excludes archived events', async () => {
+    const app = createTestApp();
+    const c1 = await request(app).post('/api/events').send({
+      title: 'Active Calendar', description: 'Visible',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const c2 = await request(app).post('/api/events').send({
+      title: 'Archived Calendar', description: 'Hidden',
+      start_time: '2030-06-01T20:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    await request(app).post('/api/events/batch/archive').send({ ids: [c2.body.data.id] });
+
+    const res = await request(app).get('/api/events/calendar?month=2030-06');
+    expect(res.status).toBe(200);
+    expect(res.body.totalEvents).toBe(1);
+  });
 });
