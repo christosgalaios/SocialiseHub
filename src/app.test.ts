@@ -1937,6 +1937,14 @@ describe('App', () => {
     expect(res.status).toBe(400);
   });
 
+  it('POST /api/generator/ideas/store returns 400 for more than 50 ideas', async () => {
+    const app = createTestApp();
+    const ideas = Array.from({ length: 51 }, (_, i) => ({ title: `Idea ${i}`, shortDescription: 'D' }));
+    const res = await request(app).post('/api/generator/ideas/store').send({ ideas });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('50');
+  });
+
   it('POST /api/generator/ideas/:id/accept creates event from idea', async () => {
     const app = createTestApp();
     // Store an idea first
@@ -2908,6 +2916,56 @@ describe('App', () => {
     const res = await request(app).get('/api/nonexistent');
     expect(res.status).toBe(404);
     expect(res.body.error).toBe('Not found');
+  });
+
+  // ── Duplicates ───────────────────────────────────────
+
+  it('GET /api/events/duplicates detects events with same title on same date', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Quiz Night', description: 'D', start_time: '2030-03-15T19:00:00Z',
+      venue: 'Pub A', price: 5, capacity: 30,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Quiz Night', description: 'D2', start_time: '2030-03-15T20:00:00Z',
+      venue: 'Pub B', price: 8, capacity: 40,
+    });
+    const res = await request(app).get('/api/events/duplicates');
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.data[0].events).toHaveLength(2);
+    expect(res.body.data[0].date).toBe('2030-03-15');
+  });
+
+  it('GET /api/events/duplicates returns empty when no duplicates', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Unique Event', description: 'D', start_time: '2030-03-15T19:00:00Z',
+      venue: 'V', price: 5, capacity: 30,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Different Event', description: 'D', start_time: '2030-03-16T19:00:00Z',
+      venue: 'V', price: 5, capacity: 30,
+    });
+    const res = await request(app).get('/api/events/duplicates');
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(0);
+    expect(res.body.data).toEqual([]);
+  });
+
+  it('GET /api/events/duplicates detects fuzzy title matches on same date', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Bristol Social Mixer', description: 'D', start_time: '2030-04-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 30,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Bristol Social Mixer!', description: 'D', start_time: '2030-04-01T20:00:00Z',
+      venue: 'V2', price: 10, capacity: 40,
+    });
+    const res = await request(app).get('/api/events/duplicates');
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
   });
 
   // ── Compare ──────────────────────────────────────────

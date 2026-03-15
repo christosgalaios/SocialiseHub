@@ -150,6 +150,9 @@ export function createGeneratorRouter(
       if (!Array.isArray(ideas) || ideas.length === 0) {
         return res.status(400).json({ error: 'ideas must be a non-empty array' });
       }
+      if (ideas.length > 50) {
+        return res.status(400).json({ error: 'Maximum 50 ideas per batch' });
+      }
       const invalid = ideas.some((idea) => !idea || typeof idea.title !== 'string' || !idea.title.trim());
       if (invalid) {
         return res.status(400).json({ error: 'Each idea must have a non-empty title' });

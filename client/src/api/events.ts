@@ -262,6 +262,16 @@ export async function quickCreateEvent(
   return body.data;
 }
 
+export interface DuplicateGroup {
+  date: string;
+  events: Array<{ id: string; title: string; venue: string; status: string }>;
+}
+
+export async function getEventDuplicates(): Promise<{ data: DuplicateGroup[]; total: number }> {
+  const res = await fetch(`${BASE}/events/duplicates`);
+  return json(res);
+}
+
 export interface CompareEventResult {
   id: string;
   found: boolean;

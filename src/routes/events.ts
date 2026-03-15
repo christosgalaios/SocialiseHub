@@ -420,6 +420,66 @@ export function createEventsRouter(
     }
   });
 
+  /**
+   * GET /api/events/duplicates
+   * Scans all non-archived events for potential duplicates based on normalized title + same date.
+   */
+  router.get('/duplicates', (_req, res, next) => {
+    try {
+      const events = store.getAll().filter(e => e.status !== 'archived');
+
+      const normalize = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+
+      // Group by date prefix (YYYY-MM-DD)
+      const byDate: Record<string, typeof events> = {};
+      for (const e of events) {
+        const date = e.start_time.slice(0, 10);
+        if (!byDate[date]) byDate[date] = [];
+        byDate[date].push(e);
+      }
+
+      const duplicateGroups: Array<{ date: string; events: Array<{ id: string; title: string; venue: string; status: string }> }> = [];
+
+      for (const [date, dateEvents] of Object.entries(byDate)) {
+        if (dateEvents.length < 2) continue;
+
+        // Compare each pair by normalized title
+        const seen = new Map<string, typeof events>();
+        for (const e of dateEvents) {
+          const norm = normalize(e.title);
+          if (!norm) continue;
+
+          let matched = false;
+          for (const [key, group] of seen) {
+            const shorter = key.length <= norm.length ? key : norm;
+            const longer = key.length > norm.length ? key : norm;
+            if (key === norm || (shorter.length >= longer.length * 0.6 && longer.includes(shorter))) {
+              group.push(e);
+              matched = true;
+              break;
+            }
+          }
+          if (!matched) {
+            seen.set(norm, [e]);
+          }
+        }
+
+        for (const group of seen.values()) {
+          if (group.length >= 2) {
+            duplicateGroups.push({
+              date,
+              events: group.map(e => ({ id: e.id, title: e.title, venue: e.venue, status: e.status })),
+            });
+          }
+        }
+      }
+
+      res.json({ data: duplicateGroups, total: duplicateGroups.length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.post('/compare', (req, res, next) => {
     try {
       const { ids } = req.body as { ids?: string[] };
