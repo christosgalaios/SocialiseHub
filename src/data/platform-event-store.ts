@@ -165,18 +165,28 @@ export class PlatformEventStore {
    * After a successful pull, remove platform_events that weren't in the fresh pull.
    * Called with the set of external_ids that were just pulled.
    * Does NOT delete events — just unlinks stale platform_events.
+   *
+   * Safety: skips cleanup if the fresh pull returned zero events (likely a failed fetch)
+   * or would remove more than 50% of existing events (likely a partial/paginated fetch).
    */
   cleanStale(platform: PlatformName, freshExternalIds: Set<string>): number {
+    if (freshExternalIds.size === 0) return 0;
+
     const existing = this.db.prepare(
       'SELECT id, external_id FROM platform_events WHERE platform = ?'
     ).all(platform) as Array<{ id: string; external_id: string }>;
 
+    if (existing.length === 0) return 0;
+
+    const staleRows = existing.filter(row => !freshExternalIds.has(row.external_id));
+
+    // If we'd remove more than half the existing events, the pull was likely partial — skip cleanup
+    if (staleRows.length > existing.length * 0.5 && existing.length > 2) return 0;
+
     let removed = 0;
-    for (const row of existing) {
-      if (!freshExternalIds.has(row.external_id)) {
-        this.db.prepare('DELETE FROM platform_events WHERE id = ?').run(row.id);
-        removed++;
-      }
+    for (const row of staleRows) {
+      this.db.prepare('DELETE FROM platform_events WHERE id = ?').run(row.id);
+      removed++;
     }
     return removed;
   }

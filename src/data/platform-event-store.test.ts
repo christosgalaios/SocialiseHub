@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createDatabase, type Database } from './database.js';
 import { PlatformEventStore } from './platform-event-store.js';
 
-// Skipped: better-sqlite3 native module only works in Electron context
-describe.skip('PlatformEventStore', () => {
+describe('PlatformEventStore', () => {
   let db: Database;
   let store: PlatformEventStore;
 

@@ -119,8 +119,11 @@ export class SqliteEventStore {
       const candidateTitle = normalize(row.title);
       // Exact match after normalization
       if (candidateTitle === normalizedTitle) return this.rowToEvent(row);
-      // One title contains the other (handles slight differences like "Bristol" suffix)
-      if (candidateTitle.includes(normalizedTitle) || normalizedTitle.includes(candidateTitle)) {
+      // Substring match only when the shorter string is at least 60% of the longer string.
+      // This prevents false matches like "social" matching "antisocial networking night".
+      const shorter = candidateTitle.length <= normalizedTitle.length ? candidateTitle : normalizedTitle;
+      const longer = candidateTitle.length > normalizedTitle.length ? candidateTitle : normalizedTitle;
+      if (shorter.length >= longer.length * 0.6 && longer.includes(shorter)) {
         return this.rowToEvent(row);
       }
     }

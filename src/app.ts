@@ -86,7 +86,7 @@ export function createApp(deps?: AppDeps): express.Express {
 
   app.use(
     '/api/events',
-    createEventsRouter(eventStore, publishService, platformEventStore, syncLogStore),
+    createEventsRouter(eventStore, publishService, platformEventStore, syncLogStore, snapshotStore),
   );
   app.use('/api/services', createServicesRouter(serviceStore, db));
   app.use('/api/sync', createSyncRouter(syncLogStore, platformEventStore, publishService, eventStore, serviceStore, snapshotStore));

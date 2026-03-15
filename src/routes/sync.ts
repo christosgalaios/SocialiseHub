@@ -550,20 +550,19 @@ export function createSyncRouter(
 
   /**
    * GET /api/sync/dashboard/summary
-   * Returns aggregate stats from platform events.
+   * Returns aggregate stats using the events table as the primary source.
+   * - totalEvents, upcomingEvents, pastEvents, draftEvents, eventsThisWeek,
+   *   eventsThisMonth, monthlyTrend are all derived from eventStore (events table).
+   * - byPlatform counts unique event_ids linked on each platform (from platform_events).
    */
   router.get('/dashboard/summary', (_req, res, next) => {
     try {
-      const allEvents = platformEventStore.getAll();
+      const allEvents = eventStore.getAll();
       const now = new Date();
       const weekStart = new Date(now);
       weekStart.setDate(now.getDate() - now.getDay());
       weekStart.setHours(0, 0, 0, 0);
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-
-      const byPlatform = Object.fromEntries(
-        VALID_PLATFORMS.map((p) => [p, 0]),
-      ) as Record<PlatformName, number>;
 
       let eventsThisWeek = 0;
       let eventsThisMonth = 0;
@@ -580,23 +579,30 @@ export function createSyncRouter(
       }
 
       for (const evt of allEvents) {
-        byPlatform[evt.platform] = (byPlatform[evt.platform] ?? 0) + 1;
-
         if (evt.status === 'draft') draftEvents++;
 
-        const date = evt.date ? new Date(evt.date) : null;
-        if (date) {
-          if (date >= weekStart) eventsThisWeek++;
-          if (date >= monthStart) eventsThisMonth++;
-          if (date >= now) upcomingEvents++;
-          else pastEvents++;
+        const date = new Date(evt.start_time);
+        if (date >= weekStart) eventsThisWeek++;
+        if (date >= monthStart) eventsThisMonth++;
+        if (date >= now) upcomingEvents++;
+        else pastEvents++;
 
-          const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-          if (monthlyMap.has(monthKey)) {
-            monthlyMap.set(monthKey, monthlyMap.get(monthKey)! + 1);
-          }
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+        if (monthlyMap.has(monthKey)) {
+          monthlyMap.set(monthKey, monthlyMap.get(monthKey)! + 1);
         }
       }
+
+      // byPlatform: count unique event_ids per platform from platform_events
+      const byPlatform = Object.fromEntries(
+        VALID_PLATFORMS.map((p) => {
+          const platformEvents = platformEventStore.getByPlatform(p);
+          const uniqueEventIds = new Set(
+            platformEvents.map((pe) => pe.eventId).filter((id): id is string => id != null),
+          );
+          return [p, uniqueEventIds.size];
+        }),
+      ) as Record<PlatformName, number>;
 
       const monthlyTrend = Array.from(monthlyMap.entries()).map(([month, count]) => ({
         month,

@@ -8,8 +8,7 @@ function createTestApp() {
   return createApp({ db });
 }
 
-// Skipped: better-sqlite3 native module only works in Electron context
-describe.skip('App', () => {
+describe('App', () => {
   it('GET /health returns ok', async () => {
     const app = createTestApp();
     const res = await request(app).get('/health');

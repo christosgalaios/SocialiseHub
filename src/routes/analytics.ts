@@ -10,7 +10,7 @@ export function createAnalyticsRouter(db: Database): Router {
    */
   router.get('/summary', (_req, res, next) => {
     try {
-      const totalEvents = (db.prepare('SELECT COUNT(*) as cnt FROM platform_events').get() as { cnt: number }).cnt;
+      const totalEvents = (db.prepare('SELECT COUNT(*) as cnt FROM events').get() as { cnt: number }).cnt;
       const totalAttendeesRow = db
         .prepare('SELECT SUM(attendance) as total FROM platform_events WHERE attendance IS NOT NULL')
         .get() as { total: number | null };
@@ -46,9 +46,18 @@ export function createAnalyticsRouter(db: Database): Router {
     try {
       const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
 
-      const dateFilter = startDate || endDate
-        ? `WHERE date IS NOT NULL${startDate ? ` AND date >= '${startDate}'` : ''}${endDate ? ` AND date <= '${endDate}'` : ''}`
-        : 'WHERE date IS NOT NULL';
+      // Build WHERE clause with parameterized placeholders to prevent SQL injection
+      const whereParts: string[] = ['date IS NOT NULL'];
+      const dateParams: string[] = [];
+      if (startDate) {
+        whereParts.push('date >= ?');
+        dateParams.push(startDate);
+      }
+      if (endDate) {
+        whereParts.push('date <= ?');
+        dateParams.push(endDate);
+      }
+      const dateFilter = `WHERE ${whereParts.join(' AND ')}`;
 
       // Attendance by month (line chart)
       const attendanceByMonthRows = db
@@ -62,7 +71,7 @@ export function createAnalyticsRouter(db: Database): Router {
            ORDER BY month ASC
            LIMIT 24`,
         )
-        .all() as { month: string; attendees: number; events_with_data: number }[];
+        .all(...dateParams) as { month: string; attendees: number; events_with_data: number }[];
 
       // Revenue by month (bar chart)
       const revenueByMonthRows = db
@@ -75,7 +84,7 @@ export function createAnalyticsRouter(db: Database): Router {
            ORDER BY month ASC
            LIMIT 24`,
         )
-        .all() as { month: string; revenue: number }[];
+        .all(...dateParams) as { month: string; revenue: number }[];
 
       // Fill rate by event type/status (use platform as category proxy)
       const fillByTypeRows = db
@@ -103,7 +112,7 @@ export function createAnalyticsRouter(db: Database): Router {
            GROUP BY day_of_week, hour
            ORDER BY day_of_week, hour`,
         )
-        .all() as { day_of_week: number; hour: number; event_count: number; avg_attendance: number }[];
+        .all(...dateParams) as { day_of_week: number; hour: number; event_count: number; avg_attendance: number }[];
 
       res.json({
         data: {
