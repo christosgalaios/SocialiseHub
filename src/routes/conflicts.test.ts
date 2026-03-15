@@ -237,6 +237,165 @@ describe('GET /api/events/:id/conflicts', () => {
   });
 });
 
+describe('POST /api/events/:id/conflicts/resolve', () => {
+  it('updates hub event with provided field values and returns resolved fields', async () => {
+    const { app, db, eventStore } = createTestApp();
+    const event = eventStore.create({
+      title: 'Old Hub Title',
+      description: 'Description',
+      start_time: '2030-06-01T19:00:00Z',
+      venue: 'Venue',
+      price: 10,
+      capacity: 50,
+      duration_minutes: 120,
+    });
+
+    insertPlatformEvent(db, {
+      event_id: event.id,
+      platform: 'meetup',
+      external_id: 'ext-1',
+      title: 'Platform Title',
+    });
+
+    const res = await request(app)
+      .post(`/api/events/${event.id}/conflicts/resolve`)
+      .send({ updates: { title: 'Platform Title' } });
+
+    expect(res.status).toBe(200);
+    expect(res.body.resolved).toContain('title');
+    expect(res.body.success).toBe(true);
+    expect(res.body.errors).toEqual([]);
+  });
+
+  it('returns 404 for nonexistent event', async () => {
+    const { app } = createTestApp();
+    const res = await request(app)
+      .post('/api/events/nonexistent-id/conflicts/resolve')
+      .send({ updates: { title: 'New Title' } });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe('Event not found');
+  });
+
+  it('returns 400 when updates is empty', async () => {
+    const { app, eventStore } = createTestApp();
+    const event = eventStore.create({
+      title: 'Event',
+      description: 'D',
+      start_time: '2030-06-01T19:00:00Z',
+      venue: 'V',
+      price: 5,
+      capacity: 20,
+      duration_minutes: 60,
+    });
+
+    const res = await request(app)
+      .post(`/api/events/${event.id}/conflicts/resolve`)
+      .send({ updates: {} });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/non-empty/);
+  });
+
+  it('returns 400 when updates is missing', async () => {
+    const { app, eventStore } = createTestApp();
+    const event = eventStore.create({
+      title: 'Event',
+      description: 'D',
+      start_time: '2030-06-01T19:00:00Z',
+      venue: 'V',
+      price: 5,
+      capacity: 20,
+      duration_minutes: 60,
+    });
+
+    const res = await request(app)
+      .post(`/api/events/${event.id}/conflicts/resolve`)
+      .send({});
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/non-empty/);
+  });
+
+  it('reports remaining conflicts for fields not yet resolved', async () => {
+    const { app, db, eventStore } = createTestApp();
+    const event = eventStore.create({
+      title: 'Hub Title',
+      description: 'Hub Description',
+      start_time: '2030-06-01T19:00:00Z',
+      venue: 'Hub Venue',
+      price: 10,
+      capacity: 50,
+      duration_minutes: 120,
+    });
+
+    insertPlatformEvent(db, {
+      event_id: event.id,
+      platform: 'meetup',
+      external_id: 'ext-1',
+      title: 'Platform Title',
+      venue: 'Platform Venue',
+    });
+
+    // Only resolve the title, not the venue
+    const res = await request(app)
+      .post(`/api/events/${event.id}/conflicts/resolve`)
+      .send({ updates: { title: 'Platform Title' } });
+
+    expect(res.status).toBe(200);
+    expect(res.body.resolved).toContain('title');
+    const venueRemaining = res.body.remaining.find(
+      (c: { field: string }) => c.field === 'venue',
+    );
+    expect(venueRemaining).toBeDefined();
+    expect(res.body.success).toBe(false);
+  });
+
+  it('sets needsSync when platform events exist', async () => {
+    const { app, db, eventStore } = createTestApp();
+    const event = eventStore.create({
+      title: 'Hub Title',
+      description: 'D',
+      start_time: '2030-06-01T19:00:00Z',
+      venue: 'V',
+      price: 5,
+      capacity: 20,
+      duration_minutes: 60,
+    });
+
+    insertPlatformEvent(db, {
+      event_id: event.id,
+      platform: 'meetup',
+      external_id: 'ext-1',
+      title: 'Platform Title',
+    });
+
+    const res = await request(app)
+      .post(`/api/events/${event.id}/conflicts/resolve`)
+      .send({ updates: { title: 'Platform Title' } });
+
+    expect(res.status).toBe(200);
+    expect(res.body.needsSync).toBe(true);
+  });
+
+  it('needsSync is false when no platform events linked', async () => {
+    const { app, eventStore } = createTestApp();
+    const event = eventStore.create({
+      title: 'Hub Title',
+      description: 'D',
+      start_time: '2030-06-01T19:00:00Z',
+      venue: 'V',
+      price: 5,
+      capacity: 20,
+      duration_minutes: 60,
+    });
+
+    const res = await request(app)
+      .post(`/api/events/${event.id}/conflicts/resolve`)
+      .send({ updates: { title: 'New Title' } });
+
+    expect(res.status).toBe(200);
+    expect(res.body.needsSync).toBe(false);
+  });
+});
+
 describe('GET /api/dashboard/conflicts', () => {
   it('returns empty when no events', async () => {
     const { app } = createTestApp();
