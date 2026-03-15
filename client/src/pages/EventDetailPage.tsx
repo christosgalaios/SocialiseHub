@@ -83,6 +83,18 @@ export function EventDetailPage() {
   const [actualRevenue, setActualRevenue] = useState<number | undefined>(undefined);
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformName[]>([]);
 
+  // Extended platform fields
+  const [shortDescription, setShortDescription] = useState('');
+  const [doorsOpenTime, setDoorsOpenTime] = useState('');
+  const [ageRestriction, setAgeRestriction] = useState('');
+  const [eventType, setEventType] = useState<'in_person' | 'online' | 'hybrid'>('in_person');
+  const [onlineUrl, setOnlineUrl] = useState('');
+  const [parkingInfo, setParkingInfo] = useState('');
+  const [refundPolicy, setRefundPolicy] = useState('');
+  const [allowGuests, setAllowGuests] = useState(0);
+  const [rsvpOpen, setRsvpOpen] = useState('');
+  const [rsvpClose, setRsvpClose] = useState('');
+
   // Pre-fill date from query param (calendar day click)
   const prefillDate = searchParams.get('date');
   const [defaultsApplied, setDefaultsApplied] = useState(false);
@@ -141,6 +153,16 @@ export function EventDetailPage() {
         setActualAttendance(ev.actual_attendance);
         setActualRevenue(ev.actual_revenue);
         setSelectedPlatforms(ev.platforms.map((p) => p.platform));
+        setShortDescription((ev as any).short_description ?? '');
+        setDoorsOpenTime(toDatetimeLocal((ev as any).doors_open_time));
+        setAgeRestriction((ev as any).age_restriction ?? '');
+        setEventType((ev as any).event_type ?? 'in_person');
+        setOnlineUrl((ev as any).online_url ?? '');
+        setParkingInfo((ev as any).parking_info ?? '');
+        setRefundPolicy((ev as any).refund_policy ?? '');
+        setAllowGuests((ev as any).allow_guests ?? 0);
+        setRsvpOpen(toDatetimeLocal((ev as any).rsvp_open));
+        setRsvpClose(toDatetimeLocal((ev as any).rsvp_close));
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Load failed');
@@ -284,7 +306,17 @@ export function EventDetailPage() {
     capacity,
     category: category || undefined,
     platforms: selectedPlatforms,
-  });
+    short_description: shortDescription || undefined,
+    doors_open_time: doorsOpenTime ? new Date(doorsOpenTime).toISOString() : undefined,
+    age_restriction: ageRestriction || undefined,
+    event_type: eventType,
+    online_url: onlineUrl || undefined,
+    parking_info: parkingInfo || undefined,
+    refund_policy: refundPolicy || undefined,
+    allow_guests: allowGuests,
+    rsvp_open: rsvpOpen ? new Date(rsvpOpen).toISOString() : undefined,
+    rsvp_close: rsvpClose ? new Date(rsvpClose).toISOString() : undefined,
+  } as CreateEventInput);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -492,6 +524,16 @@ export function EventDetailPage() {
     setActualAttendance(ev.actual_attendance);
     setActualRevenue(ev.actual_revenue);
     setSelectedPlatforms(ev.platforms.map((p) => p.platform));
+    setShortDescription((ev as any).short_description ?? '');
+    setDoorsOpenTime(toDatetimeLocal((ev as any).doors_open_time));
+    setAgeRestriction((ev as any).age_restriction ?? '');
+    setEventType((ev as any).event_type ?? 'in_person');
+    setOnlineUrl((ev as any).online_url ?? '');
+    setParkingInfo((ev as any).parking_info ?? '');
+    setRefundPolicy((ev as any).refund_policy ?? '');
+    setAllowGuests((ev as any).allow_guests ?? 0);
+    setRsvpOpen(toDatetimeLocal((ev as any).rsvp_open));
+    setRsvpClose(toDatetimeLocal((ev as any).rsvp_close));
   };
 
   const handlePushPlatform = async (platform: string) => {
@@ -780,6 +822,138 @@ export function EventDetailPage() {
             services={services}
           />
         )}
+
+        {/* Platform Details */}
+        <div style={styles.sectionDivider}>
+          <span style={styles.sectionLabel}>Platform Details</span>
+        </div>
+
+        {/* Summary */}
+        <label style={styles.field}>
+          <span style={styles.label}>Short Description</span>
+          <textarea
+            style={{ ...styles.input, minHeight: 72, resize: 'vertical' as const }}
+            value={shortDescription}
+            onChange={(e) => setShortDescription(e.target.value.slice(0, 300))}
+            placeholder="Brief summary for platforms like Eventbrite (max 300 chars)"
+          />
+          <span style={{
+            fontSize: 11,
+            color: shortDescription.length > 280 ? '#E2725B' : '#999',
+            textAlign: 'right',
+            marginTop: 2,
+          }}>
+            {shortDescription.length}/300
+          </span>
+        </label>
+
+        {/* Timing */}
+        <div style={styles.row}>
+          <label style={styles.field}>
+            <span style={styles.label}>Doors Open Time (optional)</span>
+            <input
+              style={styles.input}
+              type="datetime-local"
+              value={doorsOpenTime}
+              onChange={(e) => setDoorsOpenTime(e.target.value)}
+            />
+          </label>
+        </div>
+
+        {/* Access */}
+        <div style={styles.grid}>
+          <label style={styles.field}>
+            <span style={styles.label}>Age Restriction</span>
+            <input
+              style={styles.input}
+              value={ageRestriction}
+              onChange={(e) => setAgeRestriction(e.target.value.slice(0, 50))}
+              placeholder="e.g. 18+, All ages, 16+"
+            />
+          </label>
+
+          <label style={styles.field}>
+            <span style={styles.label}>Event Format</span>
+            <select
+              style={{ ...styles.input, cursor: 'pointer' }}
+              value={eventType}
+              onChange={(e) => setEventType(e.target.value as 'in_person' | 'online' | 'hybrid')}
+            >
+              <option value="in_person">In Person</option>
+              <option value="online">Online</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </label>
+        </div>
+
+        {(eventType === 'online' || eventType === 'hybrid') && (
+          <label style={styles.field}>
+            <span style={styles.label}>Online URL</span>
+            <input
+              style={styles.input}
+              type="url"
+              value={onlineUrl}
+              onChange={(e) => setOnlineUrl(e.target.value.slice(0, 500))}
+              placeholder="https://..."
+            />
+          </label>
+        )}
+
+        {/* Policies */}
+        <label style={styles.field}>
+          <span style={styles.label}>Parking Info</span>
+          <textarea
+            style={{ ...styles.input, minHeight: 72, resize: 'vertical' as const }}
+            value={parkingInfo}
+            onChange={(e) => setParkingInfo(e.target.value.slice(0, 1000))}
+            placeholder="Parking instructions for attendees"
+          />
+        </label>
+
+        <label style={styles.field}>
+          <span style={styles.label}>Refund Policy</span>
+          <textarea
+            style={{ ...styles.input, minHeight: 72, resize: 'vertical' as const }}
+            value={refundPolicy}
+            onChange={(e) => setRefundPolicy(e.target.value.slice(0, 1000))}
+            placeholder="Describe your refund policy"
+          />
+        </label>
+
+        <label style={styles.field}>
+          <span style={styles.label}>Max Guests Per Attendee (0 = no guests)</span>
+          <input
+            style={styles.input}
+            type="number"
+            min="0"
+            max="5"
+            value={allowGuests}
+            onChange={(e) => setAllowGuests(Math.min(5, Math.max(0, Number(e.target.value))))}
+          />
+        </label>
+
+        {/* Registration */}
+        <div style={styles.grid}>
+          <label style={styles.field}>
+            <span style={styles.label}>RSVP Opens</span>
+            <input
+              style={styles.input}
+              type="datetime-local"
+              value={rsvpOpen}
+              onChange={(e) => setRsvpOpen(e.target.value)}
+            />
+          </label>
+
+          <label style={styles.field}>
+            <span style={styles.label}>RSVP Closes</span>
+            <input
+              style={styles.input}
+              type="datetime-local"
+              value={rsvpClose}
+              onChange={(e) => setRsvpClose(e.target.value)}
+            />
+          </label>
+        </div>
 
         <div style={styles.formActions}>
           <button type="submit" disabled={saving} style={{
@@ -1097,6 +1271,23 @@ const styles: Record<string, React.CSSProperties> = {
     outline: 'none',
     transition: 'border-color 0.2s',
     background: '#fff',
+  },
+  sectionDivider: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    marginTop: 4,
+  },
+  sectionLabel: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#2D5F5D',
+    fontFamily: "'Outfit', sans-serif",
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.06em',
+    background: '#e6f4f1',
+    padding: '4px 12px',
+    borderRadius: 8,
   },
   formActions: {
     display: 'flex',
