@@ -240,4 +240,57 @@ describe('SqliteEventStore', () => {
     expect(event.status).toBe('draft');
     expect(event.sync_status).toBe('local_only');
   });
+
+  it('getAll batch-loads platform events correctly', () => {
+    const e1 = store.create(validInput);
+    const e2 = store.create({ ...validInput, title: 'Event 2', start_time: '2026-05-01T19:00:00+01:00' });
+    // Insert platform events directly
+    db.prepare(
+      `INSERT INTO platform_events (id, event_id, platform, external_id, synced_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run('pe1', e1.id, 'meetup', 'ext-1', new Date().toISOString());
+    db.prepare(
+      `INSERT INTO platform_events (id, event_id, platform, external_id, synced_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run('pe2', e1.id, 'eventbrite', 'ext-2', new Date().toISOString());
+
+    const all = store.getAll();
+    expect(all).toHaveLength(2);
+    // e2 is first (later start_time)
+    const found1 = all.find(e => e.id === e1.id)!;
+    const found2 = all.find(e => e.id === e2.id)!;
+    expect(found1.platforms).toHaveLength(2);
+    expect(found1.platforms.map(p => p.platform).sort()).toEqual(['eventbrite', 'meetup']);
+    expect(found2.platforms).toHaveLength(0);
+  });
+
+  it('getAll batch-loads cover photos correctly', () => {
+    const e1 = store.create(validInput);
+    // Insert a cover photo
+    db.prepare(
+      `INSERT INTO event_photos (event_id, photo_path, source, position, is_cover)
+       VALUES (?, ?, ?, 0, 1)`,
+    ).run(e1.id, '/photos/cover.jpg', 'manual');
+
+    const all = store.getAll();
+    expect(all).toHaveLength(1);
+    expect(all[0].imageUrl).toBe('/photos/cover.jpg');
+  });
+
+  it('delete cascades to sync_log entries', () => {
+    const e1 = store.create(validInput);
+    // Insert a sync log entry
+    db.prepare(
+      `INSERT INTO sync_log (platform, action, event_id, status, created_at)
+       VALUES (?, ?, ?, ?, ?)`,
+    ).run('meetup', 'pull', e1.id, 'success', new Date().toISOString());
+    // Verify it exists
+    const before = db.prepare('SELECT COUNT(*) as cnt FROM sync_log WHERE event_id = ?').get(e1.id) as { cnt: number };
+    expect(before.cnt).toBe(1);
+    // Delete
+    store.delete(e1.id);
+    // Verify sync_log cleaned up
+    const after = db.prepare('SELECT COUNT(*) as cnt FROM sync_log WHERE event_id = ?').get(e1.id) as { cnt: number };
+    expect(after.cnt).toBe(0);
+  });
 });
