@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SocialiseEvent, Template, QueuedIdea } from '@shared/types';
-import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushAllEvents, getNextIdea, generateIdeasPrompt, storeIdeas, acceptIdea, getAllTags, getEventsCsvExportUrl, batchUpdateStatus, batchUpdateCategory, batchDeleteEvents } from '../api/events';
+import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushAllEvents, getNextIdea, generateIdeasPrompt, storeIdeas, acceptIdea, getAllTags, getEventsCsvExportUrl, batchUpdateStatus, batchUpdateCategory, batchDeleteEvents, importEventsFromJson } from '../api/events';
 import { EventCard } from '../components/EventCard';
 import { GridSkeleton } from '../components/Skeleton';
 import { useToast } from '../context/ToastContext';
@@ -38,6 +38,10 @@ export function EventsPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [batchStatus, setBatchStatus] = useState<string>('draft');
   const [batchCategory, setBatchCategory] = useState<string>('');
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<{ imported: number; total: number; errors: string[] } | null>(null);
   const nav = useNavigate();
   const { showToast } = useToast();
 
@@ -252,6 +256,57 @@ export function EventsPage() {
     }
   };
 
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setImportText((ev.target?.result as string) ?? '');
+    };
+    reader.readAsText(file);
+    // Reset input so same file can be re-selected
+    e.target.value = '';
+  };
+
+  const handleImport = async () => {
+    setImporting(true);
+    setImportResult(null);
+    try {
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(importText.trim());
+      } catch {
+        showToast('Invalid JSON — please check the format and try again', 'error');
+        setImporting(false);
+        return;
+      }
+      if (!Array.isArray(parsed)) {
+        showToast('JSON must be an array of event objects', 'error');
+        setImporting(false);
+        return;
+      }
+      const result = await importEventsFromJson(parsed as Array<{ title: string; description?: string; start_time: string; venue?: string; price?: number; capacity?: number; category?: string }>);
+      const errors = result.data
+        .filter((r) => !r.success)
+        .map((r) => `Event ${r.index + 1}: ${r.error ?? 'Unknown error'}`);
+      setImportResult({ imported: result.imported, total: result.total, errors });
+      if (result.imported > 0) {
+        load();
+      }
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Import failed', 'error');
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const handleCloseImportModal = () => {
+    setShowImportModal(false);
+    setImportText('');
+    setImportResult(null);
+    setImporting(false);
+  };
+
   const counts = {
     all: events.length,
     draft: events.filter((e) => e.status === 'draft').length,
@@ -302,6 +357,12 @@ export function EventsPage() {
           >
             Export CSV
           </a>
+          <button
+            style={styles.exportBtn as React.CSSProperties}
+            onClick={() => { setShowImportModal(true); setImportResult(null); setImportText(''); }}
+          >
+            Import JSON
+          </button>
           {templates.length > 0 && (
             <div style={{ position: 'relative' }}>
               <button
@@ -536,6 +597,102 @@ export function EventsPage() {
           onSubmit={aiModal.onSubmit}
           onClose={() => setAiModal(null)}
         />
+      )}
+
+      {showImportModal && (
+        <div style={styles.modalOverlay} onClick={handleCloseImportModal}>
+          <div style={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+            <h2 style={styles.modalTitle}>Import Events from JSON</h2>
+            <p style={styles.modalDesc}>
+              Paste a JSON array of event objects, or upload a <code>.json</code> file. Each event must have a <code>title</code> and <code>start_time</code>.
+            </p>
+
+            {!importResult ? (
+              <>
+                <textarea
+                  style={styles.importTextarea}
+                  placeholder={'[\n  {\n    "title": "My Event",\n    "start_time": "2026-06-01T19:00:00",\n    "venue": "Bristol",\n    "description": "..."\n  }\n]'}
+                  value={importText}
+                  onChange={(e) => setImportText(e.target.value)}
+                  disabled={importing}
+                  spellCheck={false}
+                />
+                <div style={styles.importFileRow}>
+                  <label style={styles.fileLabel}>
+                    <input
+                      type="file"
+                      accept=".json,application/json"
+                      style={{ display: 'none' }}
+                      onChange={handleImportFile}
+                      disabled={importing}
+                    />
+                    Choose file
+                  </label>
+                  <span style={styles.fileHint}>or paste JSON above</span>
+                </div>
+                <div style={styles.modalActions}>
+                  <button
+                    style={styles.modalCancelBtn}
+                    onClick={handleCloseImportModal}
+                    disabled={importing}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    style={{
+                      ...styles.modalImportBtn,
+                      opacity: importing || !importText.trim() ? 0.6 : 1,
+                      cursor: importing || !importText.trim() ? 'not-allowed' : 'pointer',
+                    }}
+                    onClick={handleImport}
+                    disabled={importing || !importText.trim()}
+                  >
+                    {importing ? 'Importing…' : 'Import'}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <div style={styles.importResults}>
+                <div style={styles.importResultsSummary}>
+                  <span style={{ color: '#2D5F5D', fontWeight: 700 }}>
+                    {importResult.imported} imported
+                  </span>
+                  {importResult.errors.length > 0 && (
+                    <span style={{ color: '#E2725B', fontWeight: 700 }}>
+                      {importResult.errors.length} failed
+                    </span>
+                  )}
+                  <span style={{ color: '#7a7a7a' }}>
+                    of {importResult.total} total
+                  </span>
+                </div>
+                {importResult.errors.length > 0 && (
+                  <div style={styles.importErrorList}>
+                    {importResult.errors.map((err, i) => (
+                      <div key={i} style={styles.importErrorItem}>{err}</div>
+                    ))}
+                  </div>
+                )}
+                <div style={styles.modalActions}>
+                  <button
+                    style={styles.modalCancelBtn}
+                    onClick={handleCloseImportModal}
+                  >
+                    {importResult.imported > 0 ? 'Done' : 'Close'}
+                  </button>
+                  {importResult.errors.length > 0 && (
+                    <button
+                      style={styles.modalImportBtn}
+                      onClick={() => setImportResult(null)}
+                    >
+                      Try again
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
