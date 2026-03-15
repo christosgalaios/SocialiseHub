@@ -325,7 +325,7 @@ export class SqliteEventStore {
     return this.getById(id);
   }
 
-  updateSyncStatus(id: string, syncStatus: 'synced' | 'modified' | 'local_only'): SocialiseEvent | undefined {
+  updateSyncStatus(id: string, syncStatus: 'synced' | 'modified' | 'local_only' | 'platform_changed'): SocialiseEvent | undefined {
     const existing = this.getById(id);
     if (!existing) return undefined;
 

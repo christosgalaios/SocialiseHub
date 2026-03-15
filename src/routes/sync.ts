@@ -227,19 +227,12 @@ export function createSyncRouter(
                       eventStore.updateSyncStatus(linked.eventId, 'synced');
                       totalUpdated++;
                     } else {
-                      // Both local and platform changed — conflict, platform wins
-                      eventStore.update(linked.eventId, {
-                        title: pe.title,
-                        description: pe.description,
-                        start_time: pe.date ?? localEvent.start_time,
-                        venue: pe.venue ?? localEvent.venue,
-                        price: pe.ticketPrice ?? localEvent.price,
-                        capacity: pe.capacity ?? localEvent.capacity,
-                      });
-                      eventStore.updateSyncStatus(linked.eventId, 'synced');
+                      // Both local and platform changed — DON'T overwrite local edits.
+                      // Flag as platform_changed so user can resolve via conflict page.
+                      eventStore.updateSyncStatus(linked.eventId, 'platform_changed');
                       conflicts.push({
                         eventId: linked.eventId,
-                        eventTitle: pe.title,
+                        eventTitle: localEvent.title,
                         platform: svc.platform,
                       });
                     }
