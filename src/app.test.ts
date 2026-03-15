@@ -2871,6 +2871,89 @@ describe('App', () => {
     expect(res.body.error).toBe('Not found');
   });
 
+  // ── Compare ──────────────────────────────────────────
+
+  it('POST /api/events/compare returns side-by-side data for 2 events', async () => {
+    const app = createTestApp();
+    const e1 = await request(app).post('/api/events').send({
+      title: 'Event A', description: 'Desc A', start_time: '2030-01-01T19:00:00Z',
+      venue: 'Venue A', price: 10, capacity: 50, category: 'social',
+    });
+    const e2 = await request(app).post('/api/events').send({
+      title: 'Event B', description: 'Desc B', start_time: '2030-02-01T19:00:00Z',
+      venue: 'Venue B', price: 20, capacity: 100, category: 'networking',
+    });
+    const res = await request(app)
+      .post('/api/events/compare')
+      .send({ ids: [e1.body.data.id, e2.body.data.id] });
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.data[0].found).toBe(true);
+    expect(res.body.data[0].title).toBe('Event A');
+    expect(res.body.data[0].venue).toBe('Venue A');
+    expect(res.body.data[0].price).toBe(10);
+    expect(res.body.data[0].capacity).toBe(50);
+    expect(res.body.data[0].category).toBe('social');
+    expect(res.body.data[1].found).toBe(true);
+    expect(res.body.data[1].title).toBe('Event B');
+    expect(res.body.data[1].venue).toBe('Venue B');
+    expect(res.body.data[1].price).toBe(20);
+  });
+
+  it('POST /api/events/compare handles missing events gracefully', async () => {
+    const app = createTestApp();
+    const e1 = await request(app).post('/api/events').send({
+      title: 'Real Event', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app)
+      .post('/api/events/compare')
+      .send({ ids: [e1.body.data.id, 'nonexistent-id'] });
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.data[0].found).toBe(true);
+    expect(res.body.data[1].found).toBe(false);
+    expect(res.body.data[1].id).toBe('nonexistent-id');
+  });
+
+  it('POST /api/events/compare returns 400 for fewer than 2 ids', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/compare').send({ ids: ['one'] });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/events/compare returns 400 for more than 10 ids', async () => {
+    const app = createTestApp();
+    const ids = Array.from({ length: 11 }, (_, i) => `id-${i}`);
+    const res = await request(app).post('/api/events/compare').send({ ids });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/events/compare returns 400 for missing ids', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/compare').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/events/compare truncates long descriptions', async () => {
+    const app = createTestApp();
+    const longDesc = 'A'.repeat(500);
+    const e1 = await request(app).post('/api/events').send({
+      title: 'Long Desc', description: longDesc, start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const e2 = await request(app).post('/api/events').send({
+      title: 'Short', description: 'Short', start_time: '2030-01-02T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app)
+      .post('/api/events/compare')
+      .send({ ids: [e1.body.data.id, e2.body.data.id] });
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].description.length).toBeLessThanOrEqual(200);
+    expect(res.body.data[1].description).toBe('Short');
+  });
+
   it('CORS headers are set', async () => {
     const app = createTestApp();
     const res = await request(app).get('/health');

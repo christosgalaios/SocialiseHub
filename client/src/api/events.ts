@@ -262,6 +262,30 @@ export async function quickCreateEvent(
   return body.data;
 }
 
+export interface CompareEventResult {
+  id: string;
+  found: boolean;
+  title?: string;
+  description?: string;
+  startTime?: string;
+  venue?: string;
+  price?: number;
+  capacity?: number;
+  category?: string;
+  status?: string;
+  platformCount?: number;
+}
+
+export async function compareEvents(ids: string[]): Promise<CompareEventResult[]> {
+  const res = await fetch(`${BASE}/events/compare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  const body = await json<{ data: CompareEventResult[] }>(res);
+  return body.data;
+}
+
 export function getEventsJsonExportUrl(params?: { status?: string; upcoming?: boolean }): string {
   const qs = new URLSearchParams();
   if (params?.status) qs.set('status', params.status);

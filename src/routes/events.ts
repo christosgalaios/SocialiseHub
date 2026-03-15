@@ -417,6 +417,41 @@ export function createEventsRouter(
     }
   });
 
+  router.post('/compare', (req, res, next) => {
+    try {
+      const { ids } = req.body as { ids?: string[] };
+      if (!Array.isArray(ids) || ids.length < 2) {
+        return res.status(400).json({ error: 'ids must be an array with at least 2 event IDs' });
+      }
+      if (ids.length > 10) {
+        return res.status(400).json({ error: 'Maximum 10 events per comparison' });
+      }
+
+      const events = ids.map(id => {
+        const event = store.getById(id);
+        if (!event) return { id, found: false };
+
+        return {
+          id,
+          found: true,
+          title: event.title,
+          description: event.description?.slice(0, 200) ?? '',
+          startTime: event.start_time,
+          venue: event.venue,
+          price: event.price,
+          capacity: event.capacity,
+          category: event.category,
+          status: event.status,
+          platformCount: event.platforms.length,
+        };
+      });
+
+      res.json({ data: events });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.post('/quick-create', (req, res, next) => {
     try {
       const { title, date, category } = req.body as {
