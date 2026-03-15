@@ -117,5 +117,17 @@ export function validateUpdateEventInput(
     }
   }
 
+  if ('actual_attendance' in input && input.actual_attendance != null) {
+    if (typeof input.actual_attendance !== 'number' || input.actual_attendance < 0 || !Number.isInteger(input.actual_attendance)) {
+      errors.push('actual_attendance must be a non-negative integer');
+    }
+  }
+
+  if ('actual_revenue' in input && input.actual_revenue != null) {
+    if (typeof input.actual_revenue !== 'number' || input.actual_revenue < 0) {
+      errors.push('actual_revenue must be 0 or greater');
+    }
+  }
+
   return { valid: errors.length === 0, errors };
 }

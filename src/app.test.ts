@@ -3863,6 +3863,32 @@ describe('App', () => {
     expect(get.body.data.actual_revenue).toBe(90);
   });
 
+  it('PUT /api/events/:id rejects negative actual_attendance', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Bad Attendance', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).put(`/api/events/${e.body.data.id}`).send({
+      actual_attendance: -5,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('actual_attendance');
+  });
+
+  it('PUT /api/events/:id rejects negative actual_revenue', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Bad Revenue', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).put(`/api/events/${e.body.data.id}`).send({
+      actual_revenue: -100,
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('actual_revenue');
+  });
+
   it('GET /api/events/export/csv includes attendance and revenue columns', async () => {
     const app = createTestApp();
     const e = await request(app).post('/api/events').send({
