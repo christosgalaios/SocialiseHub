@@ -44,6 +44,13 @@ export function createEventsRouter(
         events = events.filter(e => e.venue?.toLowerCase().includes(v));
       }
 
+      // Filter by category
+      const category = req.query.category as string | undefined;
+      if (category) {
+        const c = category.toLowerCase();
+        events = events.filter(e => e.category?.toLowerCase() === c);
+      }
+
       // Filter upcoming only
       if (req.query.upcoming === 'true') {
         const now = new Date().toISOString();
@@ -239,7 +246,7 @@ export function createEventsRouter(
           ? `"${s.replace(/"/g, '""')}"` : s;
       };
 
-      const headers = ['id', 'title', 'description', 'start_time', 'end_time', 'duration_minutes', 'venue', 'price', 'capacity', 'status', 'sync_status', 'createdAt', 'updatedAt'];
+      const headers = ['id', 'title', 'description', 'start_time', 'end_time', 'duration_minutes', 'venue', 'price', 'capacity', 'category', 'status', 'sync_status', 'createdAt', 'updatedAt'];
       const rows = events.map(e =>
         headers.map(h => escCsv((e as unknown as Record<string, unknown>)[h] as string)).join(',')
       );
@@ -338,6 +345,7 @@ export function createEventsRouter(
         venue: original.venue,
         price: original.price,
         capacity: original.capacity,
+        category: original.category,
       });
 
       res.status(201).json({ data: copy });
@@ -387,6 +395,7 @@ export function createEventsRouter(
           venue: original.venue,
           price: original.price,
           capacity: original.capacity,
+          category: original.category,
         });
         created.push(event);
       }

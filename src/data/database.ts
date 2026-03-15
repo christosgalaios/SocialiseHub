@@ -152,6 +152,10 @@ function runMigrations(db: Database): void {
     )`);
     db.pragma('user_version = 8');
   }
+  if (currentVersion < 9) {
+    try { db.exec('ALTER TABLE events ADD COLUMN category TEXT'); } catch { /* exists */ }
+    db.pragma('user_version = 9');
+  }
 }
 
 function createSchema(db: Database): void {
@@ -167,6 +171,7 @@ function createSchema(db: Database): void {
       price REAL DEFAULT 0,
       capacity INTEGER,
       image_url TEXT,
+      category TEXT,
       status TEXT DEFAULT 'draft',
       sync_status TEXT DEFAULT 'local_only',
       created_at TEXT NOT NULL,

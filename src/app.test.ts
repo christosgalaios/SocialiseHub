@@ -393,6 +393,49 @@ describe('App', () => {
     expect(res.body.data[0].title).toBe('Mid');
   });
 
+  it('GET /api/events?category=social filters by category', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Social Event', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10, category: 'Social',
+    });
+    await request(app).post('/api/events').send({
+      title: 'Tech Meetup', description: 'D', start_time: '2030-01-02T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10, category: 'Tech',
+    });
+    await request(app).post('/api/events').send({
+      title: 'No Category', description: 'D', start_time: '2030-01-03T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get('/api/events?category=social');
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].title).toBe('Social Event');
+    expect(res.body.data[0].category).toBe('Social');
+  });
+
+  it('POST /api/events creates event with category', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events').send({
+      title: 'Categorized', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10, category: 'Food & Drink',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data.category).toBe('Food & Drink');
+  });
+
+  it('PUT /api/events/:id updates category', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Update Cat', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app)
+      .put(`/api/events/${created.body.data.id}`)
+      .send({ category: 'Wellness' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.category).toBe('Wellness');
+  });
+
   it('GET /api/events?start_after=... filters events after date', async () => {
     const app = createTestApp();
     await request(app).post('/api/events').send({
@@ -634,7 +677,7 @@ describe('App', () => {
     expect(res.headers['content-type']).toContain('text/csv');
     expect(res.headers['content-disposition']).toContain('events.csv');
     const lines = res.text.split('\n');
-    expect(lines[0]).toBe('id,title,description,start_time,end_time,duration_minutes,venue,price,capacity,status,sync_status,createdAt,updatedAt');
+    expect(lines[0]).toBe('id,title,description,start_time,end_time,duration_minutes,venue,price,capacity,category,status,sync_status,createdAt,updatedAt');
     expect(lines).toHaveLength(2); // header + 1 event
     expect(lines[1]).toContain('CSV Event');
   });

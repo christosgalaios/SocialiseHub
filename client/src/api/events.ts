@@ -30,6 +30,7 @@ export interface EventFilters {
   sync_status?: string;
   search?: string;
   venue?: string;
+  category?: string;
   upcoming?: boolean;
   start_after?: string;
   start_before?: string;

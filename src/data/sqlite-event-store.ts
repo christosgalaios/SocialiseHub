@@ -12,7 +12,7 @@ import type {
 /** Fields the public API is allowed to update via update(). */
 const UPDATABLE_FIELDS = new Set([
   'title', 'description', 'start_time', 'end_time', 'duration_minutes',
-  'venue', 'price', 'capacity', 'image_url',
+  'venue', 'price', 'capacity', 'image_url', 'category',
 ]);
 
 interface EventRow {
@@ -26,6 +26,7 @@ interface EventRow {
   price: number;
   capacity: number | null;
   image_url: string | null;
+  category: string | null;
   status: string;
   sync_status: string | null;
   created_at: string;
@@ -77,6 +78,7 @@ export class SqliteEventStore {
       price: row.price,
       capacity: row.capacity ?? 0,
       imageUrl: coverPhoto?.photo_path ?? (row.image_url || undefined),
+      category: row.category ?? undefined,
       status: row.status as EventStatus,
       sync_status: (row.sync_status ?? 'local_only') as 'synced' | 'modified' | 'local_only',
       platforms,
@@ -147,9 +149,9 @@ export class SqliteEventStore {
       .prepare(
         `INSERT INTO events
            (id, title, description, start_time, end_time, duration_minutes,
-            venue, price, capacity, status, sync_status, created_at, updated_at)
+            venue, price, capacity, category, status, sync_status, created_at, updated_at)
          VALUES
-           (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'local_only', ?, ?)`,
+           (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'local_only', ?, ?)`,
       )
       .run(
         id,
@@ -161,6 +163,7 @@ export class SqliteEventStore {
         input.venue ?? null,
         input.price ?? 0,
         input.capacity ?? null,
+        input.category ?? null,
         now,
         now,
       );
