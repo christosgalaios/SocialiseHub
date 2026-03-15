@@ -16,6 +16,7 @@ export interface AttentionItem {
   urgency: 'high' | 'medium' | 'low';
   platforms: string[];
   date: string | null;
+  problems?: Array<{ problem: string; label: string; urgency: string }>;
 }
 
 export interface UpcomingEvent {

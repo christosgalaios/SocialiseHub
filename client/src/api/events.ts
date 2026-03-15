@@ -421,6 +421,18 @@ export async function getWeeklyDigestPrompt(): Promise<{ prompt: string }> {
   return json(res);
 }
 
+export interface TimelineEntry {
+  type: 'created' | 'note' | 'sync' | 'score' | 'platform_link';
+  timestamp: string;
+  summary: string;
+  details?: Record<string, unknown>;
+}
+
+export async function getEventTimeline(eventId: string): Promise<{ data: TimelineEntry[]; total: number }> {
+  const res = await fetch(`${BASE}/events/${eventId}/timeline`);
+  return json(res);
+}
+
 export async function getActionPlanPrompt(): Promise<{ prompt: string }> {
   const res = await fetch(`${BASE}/dashboard/action-plan`, { method: 'POST' });
   return json(res);

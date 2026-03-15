@@ -60,8 +60,8 @@ export function AttentionSection({ items, totalCount }: { items: AttentionItem[]
                 {item.urgency}
               </span>
               <span style={styles.problemLabel}>
-                {(item as any).problems
-                  ? (item as any).problems.map((p: any) => p.label).join(' · ')
+                {item.problems && item.problems.length > 0
+                  ? item.problems.map(p => p.label).join(' · ')
                   : item.problemLabel}
               </span>
               <div style={styles.platforms}>
