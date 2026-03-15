@@ -346,6 +346,57 @@ export function createEventsRouter(
     }
   });
 
+  router.post('/:id/recur', (req, res, next) => {
+    try {
+      const original = store.getById(req.params.id);
+      if (!original) return res.status(404).json({ error: 'Event not found' });
+
+      const { frequency, count } = req.body as { frequency?: string; count?: number };
+      const validFrequencies = ['weekly', 'biweekly', 'monthly'];
+      if (!frequency || !validFrequencies.includes(frequency)) {
+        return res.status(400).json({ error: `frequency must be one of: ${validFrequencies.join(', ')}` });
+      }
+      if (!count || !Number.isInteger(count) || count < 1 || count > 52) {
+        return res.status(400).json({ error: 'count must be an integer between 1 and 52' });
+      }
+
+      const daysMap: Record<string, number> = { weekly: 7, biweekly: 14, monthly: 0 };
+      const created: typeof original[] = [];
+
+      for (let i = 1; i <= count; i++) {
+        const baseDate = new Date(original.start_time);
+        if (frequency === 'monthly') {
+          baseDate.setMonth(baseDate.getMonth() + i);
+        } else {
+          baseDate.setDate(baseDate.getDate() + daysMap[frequency] * i);
+        }
+
+        let endDate: string | undefined;
+        if (original.end_time) {
+          const end = new Date(original.end_time);
+          const diff = end.getTime() - new Date(original.start_time).getTime();
+          endDate = new Date(baseDate.getTime() + diff).toISOString();
+        }
+
+        const event = store.create({
+          title: original.title,
+          description: original.description,
+          start_time: baseDate.toISOString(),
+          end_time: endDate,
+          duration_minutes: original.duration_minutes,
+          venue: original.venue,
+          price: original.price,
+          capacity: original.capacity,
+        });
+        created.push(event);
+      }
+
+      res.status(201).json({ data: created, count: created.length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.post('/:id/publish', async (req, res, next) => {
     try {
       const platforms = req.body.platforms as PlatformName[] | undefined;

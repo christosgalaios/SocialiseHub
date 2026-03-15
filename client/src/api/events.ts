@@ -109,6 +109,19 @@ export async function duplicateEvent(id: string): Promise<SocialiseEvent> {
   return body.data;
 }
 
+export async function recurEvent(
+  id: string,
+  frequency: 'weekly' | 'biweekly' | 'monthly',
+  count: number,
+): Promise<{ data: SocialiseEvent[]; count: number }> {
+  const res = await fetch(`${BASE}/events/${id}/recur`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ frequency, count }),
+  });
+  return json<{ data: SocialiseEvent[]; count: number }>(res);
+}
+
 export async function batchUpdateStatus(
   ids: string[],
   status: 'draft' | 'published' | 'cancelled',

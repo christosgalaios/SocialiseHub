@@ -895,6 +895,82 @@ describe('App', () => {
     expect(res.body.prompt).toContain('Bristol');
   });
 
+  // ── Event Recurrence ─────────────────────────────────
+
+  it('POST /api/events/:id/recur creates weekly recurring events', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Weekly Quiz', description: 'Fun quiz', start_time: '2030-03-01T19:00:00Z',
+      venue: 'The Lanes', price: 5, capacity: 40,
+    });
+    const res = await request(app)
+      .post(`/api/events/${created.body.data.id}/recur`)
+      .send({ frequency: 'weekly', count: 3 });
+    expect(res.status).toBe(201);
+    expect(res.body.data).toHaveLength(3);
+    expect(res.body.count).toBe(3);
+    // All should have the same title and venue
+    for (const ev of res.body.data) {
+      expect(ev.title).toBe('Weekly Quiz');
+      expect(ev.venue).toBe('The Lanes');
+      expect(ev.price).toBe(5);
+    }
+    // Dates should be 1, 2, 3 weeks after original
+    const d1 = new Date(res.body.data[0].start_time);
+    const d2 = new Date(res.body.data[1].start_time);
+    expect(d2.getTime() - d1.getTime()).toBe(7 * 24 * 60 * 60 * 1000);
+  });
+
+  it('POST /api/events/:id/recur creates monthly recurring events', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Monthly Social', description: 'D', start_time: '2030-01-15T19:00:00Z',
+      venue: 'V', price: 0, capacity: 30,
+    });
+    const res = await request(app)
+      .post(`/api/events/${created.body.data.id}/recur`)
+      .send({ frequency: 'monthly', count: 2 });
+    expect(res.status).toBe(201);
+    expect(res.body.data).toHaveLength(2);
+    // First recurrence should be Feb 15, second March 15
+    expect(res.body.data[0].start_time).toContain('2030-02-15');
+    expect(res.body.data[1].start_time).toContain('2030-03-15');
+  });
+
+  it('POST /api/events/:id/recur returns 400 for invalid frequency', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Bad Recur', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app)
+      .post(`/api/events/${created.body.data.id}/recur`)
+      .send({ frequency: 'daily', count: 3 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('frequency');
+  });
+
+  it('POST /api/events/:id/recur returns 400 for invalid count', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Bad Count', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app)
+      .post(`/api/events/${created.body.data.id}/recur`)
+      .send({ frequency: 'weekly', count: 0 });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('count');
+  });
+
+  it('POST /api/events/:id/recur returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app)
+      .post('/api/events/nonexistent/recur')
+      .send({ frequency: 'weekly', count: 2 });
+    expect(res.status).toBe(404);
+  });
+
   // ── Event Platforms ────────────────────────────────────
 
   it('GET /api/events/:id/platforms returns empty for new event', async () => {
