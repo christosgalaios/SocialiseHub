@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SocialiseEvent, Template, QueuedIdea } from '@shared/types';
-import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushAllEvents, getNextIdea, generateIdeasPrompt, storeIdeas, acceptIdea, getAllTags, getEventsCsvExportUrl } from '../api/events';
+import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushAllEvents, getNextIdea, generateIdeasPrompt, storeIdeas, acceptIdea, getAllTags, getEventsCsvExportUrl, batchUpdateStatus, batchUpdateCategory, batchDeleteEvents } from '../api/events';
 import { EventCard } from '../components/EventCard';
 import { GridSkeleton } from '../components/Skeleton';
 import { useToast } from '../context/ToastContext';
@@ -35,6 +35,9 @@ export function EventsPage() {
     responseFormat: 'json' | 'text';
     onSubmit: (r: string) => void;
   } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [batchStatus, setBatchStatus] = useState<string>('draft');
+  const [batchCategory, setBatchCategory] = useState<string>('');
   const nav = useNavigate();
   const { showToast } = useToast();
 
@@ -62,6 +65,10 @@ export function EventsPage() {
     load(signal);
     return () => { signal.cancelled = true; };
   }, [tagFilter, sortBy, sortOrder]);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+  }, [activeTab, tagFilter, categoryFilter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -191,6 +198,60 @@ export function EventsPage() {
     }
   };
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === filtered.length && filtered.length > 0) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(filtered.map((e) => e.id)));
+    }
+  };
+
+  const handleBatchStatus = async () => {
+    if (selectedIds.size === 0) return;
+    try {
+      const result = await batchUpdateStatus(Array.from(selectedIds), batchStatus);
+      showToast(`Updated status for ${result.updated} event${result.updated !== 1 ? 's' : ''}`, 'success');
+      setSelectedIds(new Set());
+      load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Batch status update failed', 'error');
+    }
+  };
+
+  const handleBatchCategory = async () => {
+    if (selectedIds.size === 0 || !batchCategory.trim()) return;
+    try {
+      const result = await batchUpdateCategory(Array.from(selectedIds), batchCategory.trim());
+      showToast(`Updated category for ${result.updated} event${result.updated !== 1 ? 's' : ''}`, 'success');
+      setBatchCategory('');
+      setSelectedIds(new Set());
+      load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Batch category update failed', 'error');
+    }
+  };
+
+  const handleBatchDelete = async () => {
+    if (selectedIds.size === 0) return;
+    if (!confirm(`Delete ${selectedIds.size} event${selectedIds.size !== 1 ? 's' : ''}? This cannot be undone.`)) return;
+    try {
+      const result = await batchDeleteEvents(Array.from(selectedIds));
+      showToast(`Deleted ${result.deleted} event${result.deleted !== 1 ? 's' : ''}`, 'success');
+      setSelectedIds(new Set());
+      load();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Batch delete failed', 'error');
+    }
+  };
+
   const counts = {
     all: events.length,
     draft: events.filter((e) => e.status === 'draft').length,
@@ -296,6 +357,18 @@ export function EventsPage() {
       </div>
 
       <div style={styles.searchRow}>
+        <label style={styles.selectAllLabel}>
+          <input
+            type="checkbox"
+            checked={filtered.length > 0 && selectedIds.size === filtered.length}
+            ref={(el) => { if (el) el.indeterminate = selectedIds.size > 0 && selectedIds.size < filtered.length; }}
+            onChange={toggleSelectAll}
+            style={{ cursor: 'pointer', width: 16, height: 16 }}
+          />
+          {selectedIds.size > 0 && (
+            <span style={styles.selectedCount}>{selectedIds.size} selected</span>
+          )}
+        </label>
         <input
           style={styles.searchInput}
           type="text"
@@ -370,15 +443,79 @@ export function EventsPage() {
       ) : (
         <div style={styles.grid}>
           {filtered.map((event) => (
-            <EventCard
-              key={event.id}
-              event={event}
-              onDelete={handleDelete}
-              onDuplicate={handleDuplicate}
-              onPush={handlePush}
-              onOptimize={handleOptimize}
-            />
+            <div key={event.id} style={{ position: 'relative' }}>
+              <div
+                style={{
+                  ...styles.cardCheckboxWrap,
+                  ...(selectedIds.has(event.id) ? styles.cardCheckboxWrapSelected : {}),
+                }}
+                onClick={(e) => { e.stopPropagation(); toggleSelect(event.id); }}
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedIds.has(event.id)}
+                  onChange={() => toggleSelect(event.id)}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{ cursor: 'pointer', width: 16, height: 16, accentColor: '#E2725B' }}
+                />
+              </div>
+              <div style={selectedIds.has(event.id) ? styles.cardSelectedOutline : undefined}>
+                <EventCard
+                  event={event}
+                  onDelete={handleDelete}
+                  onDuplicate={handleDuplicate}
+                  onPush={handlePush}
+                  onOptimize={handleOptimize}
+                />
+              </div>
+            </div>
           ))}
+        </div>
+      )}
+
+      {selectedIds.size > 0 && (
+        <div style={styles.batchToolbar}>
+          <span style={styles.batchCount}>{selectedIds.size} selected</span>
+          <div style={styles.batchSeparator} />
+          <div style={styles.batchGroup}>
+            <select
+              value={batchStatus}
+              onChange={(e) => setBatchStatus(e.target.value)}
+              style={styles.batchSelect}
+            >
+              <option value="draft">Draft</option>
+              <option value="published">Published</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+            <button style={styles.batchActionBtn} onClick={handleBatchStatus}>
+              Set Status
+            </button>
+          </div>
+          <div style={styles.batchSeparator} />
+          <div style={styles.batchGroup}>
+            <input
+              type="text"
+              placeholder="Category name..."
+              value={batchCategory}
+              onChange={(e) => setBatchCategory(e.target.value)}
+              style={styles.batchInput}
+              maxLength={100}
+            />
+            <button
+              style={{ ...styles.batchActionBtn, opacity: batchCategory.trim() ? 1 : 0.5 }}
+              onClick={handleBatchCategory}
+              disabled={!batchCategory.trim()}
+            >
+              Set Category
+            </button>
+          </div>
+          <div style={styles.batchSeparator} />
+          <button style={styles.batchDeleteBtn} onClick={handleBatchDelete}>
+            Delete
+          </button>
+          <button style={styles.batchClearBtn} onClick={() => setSelectedIds(new Set())}>
+            Clear
+          </button>
         </div>
       )}
 
@@ -608,5 +745,133 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))',
     gap: 16,
+    paddingBottom: 80,
+  },
+  selectAllLabel: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    cursor: 'pointer',
+    flexShrink: 0,
+  },
+  selectedCount: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#E2725B',
+    whiteSpace: 'nowrap' as const,
+  },
+  cardCheckboxWrap: {
+    position: 'absolute' as const,
+    top: 12,
+    left: 12,
+    zIndex: 10,
+    background: 'rgba(255,255,255,0.92)',
+    borderRadius: 6,
+    padding: '4px 5px',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+    cursor: 'pointer',
+  },
+  cardCheckboxWrapSelected: {
+    background: '#fdf3f1',
+    boxShadow: '0 1px 4px rgba(226,114,91,0.25)',
+  },
+  cardSelectedOutline: {
+    borderRadius: 16,
+    outline: '2px solid #E2725B',
+    outlineOffset: 2,
+  },
+  batchToolbar: {
+    position: 'fixed' as const,
+    bottom: 24,
+    left: '50%',
+    transform: 'translateX(-50%)',
+    background: '#080810',
+    color: '#fff',
+    borderRadius: 16,
+    padding: '12px 20px',
+    display: 'flex',
+    alignItems: 'center',
+    gap: 12,
+    boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+    zIndex: 1000,
+    flexWrap: 'wrap' as const,
+    maxWidth: 'calc(100vw - 48px)',
+  },
+  batchCount: {
+    fontSize: 13,
+    fontWeight: 700,
+    color: '#E2725B',
+    whiteSpace: 'nowrap' as const,
+  },
+  batchSeparator: {
+    width: 1,
+    height: 24,
+    background: 'rgba(255,255,255,0.15)',
+    flexShrink: 0,
+  },
+  batchGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+  },
+  batchSelect: {
+    background: '#1a1a2e',
+    border: '1px solid rgba(255,255,255,0.2)',
+    borderRadius: 8,
+    color: '#fff',
+    fontSize: 13,
+    padding: '6px 10px',
+    fontFamily: 'inherit',
+    cursor: 'pointer',
+  },
+  batchInput: {
+    background: '#1a1a2e',
+    border: '1px solid rgba(255,255,255,0.2)',
+    borderRadius: 8,
+    color: '#fff',
+    fontSize: 13,
+    padding: '6px 10px',
+    fontFamily: 'inherit',
+    width: 150,
+    outline: 'none',
+  },
+  batchActionBtn: {
+    background: '#2D5F5D',
+    border: 'none',
+    borderRadius: 8,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 600,
+    padding: '6px 14px',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    whiteSpace: 'nowrap' as const,
+  },
+  batchDeleteBtn: {
+    background: '#E2725B',
+    border: 'none',
+    borderRadius: 8,
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: 600,
+    padding: '6px 14px',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    whiteSpace: 'nowrap' as const,
+  },
+  batchClearBtn: {
+    background: 'transparent',
+    border: '1px solid rgba(255,255,255,0.25)',
+    borderRadius: 8,
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 13,
+    fontWeight: 600,
+    padding: '6px 14px',
+    cursor: 'pointer',
+    fontFamily: 'inherit',
+    whiteSpace: 'nowrap' as const,
   },
 };
