@@ -743,21 +743,29 @@ Respond with ONLY the analysis text. No preamble, no introductory text.`;
    */
   router.get('/pricing-effectiveness', (_req, res, next) => {
     try {
+      // Deduplicate by event_id per price bucket
       const rows = db.prepare(`
-        SELECT
-          CASE
-            WHEN ticket_price IS NULL OR ticket_price = 0 THEN 'Free'
-            WHEN ticket_price <= 5 THEN '£1-5'
-            WHEN ticket_price <= 10 THEN '£6-10'
-            WHEN ticket_price <= 20 THEN '£11-20'
-            ELSE '£20+'
-          END as price_bucket,
+        SELECT price_bucket,
           COUNT(*) as event_count,
-          AVG(CASE WHEN attendance IS NOT NULL AND attendance > 0 THEN attendance END) as avg_attendance,
-          AVG(CASE WHEN capacity > 0 THEN CAST(attendance AS REAL) / CAST(capacity AS REAL) ELSE NULL END) as avg_fill_rate,
-          SUM(COALESCE(revenue, 0)) as total_revenue
-        FROM platform_events
-        WHERE date IS NOT NULL
+          AVG(CASE WHEN max_att > 0 THEN max_att END) as avg_attendance,
+          AVG(CASE WHEN max_cap > 0 THEN CAST(max_att AS REAL) / CAST(max_cap AS REAL) ELSE NULL END) as avg_fill_rate,
+          SUM(max_rev) as total_revenue
+        FROM (
+          SELECT
+            CASE
+              WHEN MAX(ticket_price) IS NULL OR MAX(ticket_price) = 0 THEN 'Free'
+              WHEN MAX(ticket_price) <= 5 THEN '£1-5'
+              WHEN MAX(ticket_price) <= 10 THEN '£6-10'
+              WHEN MAX(ticket_price) <= 20 THEN '£11-20'
+              ELSE '£20+'
+            END as price_bucket,
+            MAX(COALESCE(attendance, 0)) as max_att,
+            MAX(COALESCE(capacity, 0)) as max_cap,
+            MAX(COALESCE(revenue, 0)) as max_rev
+          FROM platform_events
+          WHERE date IS NOT NULL AND event_id IS NOT NULL
+          GROUP BY event_id
+        )
         GROUP BY price_bucket
         ORDER BY CASE price_bucket
           WHEN 'Free' THEN 0
