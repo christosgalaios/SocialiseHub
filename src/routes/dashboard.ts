@@ -3,6 +3,7 @@ import type { Database } from '../data/database.js';
 import type { SqliteEventStore } from '../data/sqlite-event-store.js';
 import type { PlatformEventStore } from '../data/platform-event-store.js';
 import { COMPARABLE_FIELDS, valuesMatch } from './conflict-utils.js';
+import { checkEventText } from './text-check.js';
 
 export function createDashboardRouter(
   db: Database,
@@ -193,6 +194,20 @@ export function createDashboardRouter(
             problem: 'unsaved_changes',
             problemLabel: 'Has unsaved changes',
             urgency: 'medium',
+            platforms,
+            date: ev.start_time,
+          });
+        }
+
+        // Text quality issues (UK English spelling/grammar)
+        const textIssue = checkEventText(ev.title, ev.description);
+        if (textIssue) {
+          items.push({
+            eventId: ev.id,
+            eventTitle: ev.title,
+            problem: 'text_quality',
+            problemLabel: `Text issues: ${textIssue}`,
+            urgency: 'low',
             platforms,
             date: ev.start_time,
           });
