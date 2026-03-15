@@ -2568,6 +2568,51 @@ describe('App', () => {
     expect(count.cnt).toBe(0);
   });
 
+  // ── Timeline ────────────────────────────────────────────
+
+  it('GET /api/events/:id/timeline returns event activity history', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Timeline Event', description: 'D', start_time: '2030-06-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+
+    // Add a note
+    await request(app).post(`/api/events/${id}/notes`).send({ content: 'Test note' });
+
+    const res = await request(app).get(`/api/events/${id}/timeline`);
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBeGreaterThanOrEqual(2); // creation + note
+    expect(res.body.data[0].type).toBe('created');
+    const noteEntry = res.body.data.find((e: { type: string }) => e.type === 'note');
+    expect(noteEntry).toBeDefined();
+    expect(noteEntry.summary).toContain('Test note');
+  });
+
+  it('GET /api/events/:id/timeline returns 404 for unknown event', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/events/nonexistent/timeline');
+    expect(res.status).toBe(404);
+  });
+
+  it('GET /api/events/:id/timeline entries are sorted chronologically', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Sorted Timeline', description: 'D', start_time: '2030-06-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    await request(app).post(`/api/events/${id}/notes`).send({ content: 'Note A' });
+    await request(app).post(`/api/events/${id}/notes`).send({ content: 'Note B' });
+
+    const res = await request(app).get(`/api/events/${id}/timeline`);
+    expect(res.status).toBe(200);
+    const timestamps = res.body.data.map((e: { timestamp: string }) => e.timestamp);
+    const sorted = [...timestamps].sort();
+    expect(timestamps).toEqual(sorted);
+  });
+
   // ── Batch Readiness ─────────────────────────────────────
 
   it('POST /api/events/batch/readiness checks multiple events', async () => {
