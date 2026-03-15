@@ -13,7 +13,7 @@ describe('EventbriteAutomationClient', () => {
   let client: EventbriteAutomationClient;
 
   beforeEach(() => {
-    client = new EventbriteAutomationClient();
+    client = new EventbriteAutomationClient({ getExtra: () => ({ organizationId: 'org-123' }) });
     mockRequest.mockReset();
   });
 

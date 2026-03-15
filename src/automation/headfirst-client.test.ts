@@ -13,7 +13,7 @@ describe('HeadfirstAutomationClient', () => {
   let client: HeadfirstAutomationClient;
 
   beforeEach(() => {
-    client = new HeadfirstAutomationClient();
+    client = new HeadfirstAutomationClient({ getExtra: () => ({ organizationId: 'org-456' }) });
     mockRequest.mockReset();
   });
 

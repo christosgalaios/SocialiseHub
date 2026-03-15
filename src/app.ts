@@ -52,8 +52,8 @@ export function createApp(deps?: AppDeps): express.Express {
 
   const publishService = new PublishService({
     meetup: new MeetupAutomationClient(serviceLookup),
-    eventbrite: new EventbriteAutomationClient(),
-    headfirst: new HeadfirstAutomationClient(),
+    eventbrite: new EventbriteAutomationClient(serviceLookup),
+    headfirst: new HeadfirstAutomationClient(serviceLookup),
   });
 
   const app = express();

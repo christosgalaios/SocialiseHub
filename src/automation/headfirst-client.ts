@@ -3,8 +3,17 @@ import type { PlatformClient } from '../tools/platform-client.js';
 import type { SocialiseEvent, PlatformEvent, PlatformPublishResult } from '../shared/types.js';
 import { requestAutomation } from './bridge.js';
 
+interface ServiceExtraLookup {
+  getExtra(platform: string): Record<string, unknown> | undefined;
+}
+
 export class HeadfirstAutomationClient implements PlatformClient {
   readonly platform = 'headfirst' as const;
+  private serviceLookup?: ServiceExtraLookup;
+
+  constructor(serviceLookup?: ServiceExtraLookup) {
+    this.serviceLookup = serviceLookup;
+  }
 
   async validateConnection(): Promise<boolean> {
     const result = await requestAutomation({ platform: 'headfirst', action: 'connect' });
@@ -15,8 +24,9 @@ export class HeadfirstAutomationClient implements PlatformClient {
   }
 
   async createEvent(event: SocialiseEvent): Promise<PlatformPublishResult> {
-    if (!event.title) {
-      return { platform: 'headfirst', success: false, error: 'Event title is required for publishing' };
+    const extra = this.serviceLookup?.getExtra('headfirst');
+    if (!extra?.organizationId) {
+      return { platform: 'headfirst', success: false, error: 'Not connected — missing Headfirst organization. Reconnect from Services page.' };
     }
     const result = await requestAutomation({ platform: 'headfirst', action: 'publish', data: event });
     if (!result.success) {

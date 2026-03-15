@@ -44,6 +44,20 @@ describe('MeetupAutomationClient', () => {
     expect(result.externalId).toBe('12345');
   });
 
+  it('createEvent returns error when groupUrlname missing', async () => {
+    const noConfigClient = new MeetupAutomationClient({ getExtra: () => undefined });
+    const result = await noConfigClient.createEvent({ id: '1', title: 'Test' } as never);
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('groupUrlname');
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
+  it('fetchEvents throws when groupUrlname missing', async () => {
+    const noConfigClient = new MeetupAutomationClient({ getExtra: () => undefined });
+    await expect(noConfigClient.fetchEvents()).rejects.toThrow('groupUrlname');
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
   it('fetchEvents returns parsed events', async () => {
     mockRequest.mockResolvedValue({
       success: true,

@@ -83,7 +83,7 @@ export function meetupConnectSteps(): AutomationStep[] {
  */
 export function meetupPublishSteps(event: SocialiseEvent, groupUrlname: string, draft = false): AutomationStep[] {
   // Compute duration in ISO 8601 format (PT2H, PT1H30M, etc.)
-  const durationMin = event.duration_minutes ?? 120;
+  const durationMin = Math.max(event.duration_minutes ?? 120, 30);
   const hours = Math.floor(durationMin / 60);
   const mins = durationMin % 60;
   const isoDuration = `PT${hours > 0 ? hours + 'H' : ''}${mins > 0 ? mins + 'M' : ''}`;
@@ -137,7 +137,7 @@ export function meetupPublishSteps(event: SocialiseEvent, groupUrlname: string, 
           return JSON.stringify({
             externalId: ev.id,
             externalUrl: ev.eventUrl,
-            draft: ${draft},
+            draft: ${JSON.stringify(draft)},
           });
         } catch (err) {
           return JSON.stringify({ error: String(err) });
