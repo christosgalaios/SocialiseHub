@@ -26,6 +26,7 @@ import {
   pushAllEvents,
   pullEvent,
   undoOptimize,
+  getMarketStatus,
 } from '../api/events';
 import { AiPromptModal } from '../components/AiPromptModal';
 import { PlatformSelector } from '../components/PlatformSelector';
@@ -246,6 +247,7 @@ export function EventDetailPage() {
   /** Score — check cache first, compose prompt if miss, open modal, save result on submit */
   const handleScore = async () => {
     if (!id) return;
+    if (!(await requireMarketData())) return;
     setScoring(true);
     setError(null);
     try {
@@ -411,8 +413,23 @@ export function EventDetailPage() {
     }
   };
 
+  const requireMarketData = async (): Promise<boolean> => {
+    try {
+      const { hasData } = await getMarketStatus();
+      if (!hasData) {
+        showToast('Run Market Analysis first (Market page) to enable AI features', 'error');
+        return false;
+      }
+      return true;
+    } catch {
+      showToast('Could not verify market data — run Market Analysis first', 'error');
+      return false;
+    }
+  };
+
   const handleOptimize = async () => {
     if (!id) return;
+    if (!(await requireMarketData())) return;
     setOptimizing(true);
     setError(null);
     try {
@@ -449,6 +466,7 @@ export function EventDetailPage() {
   /** Magic fill — open modal with magic-fill prompt, apply JSON response */
   const handleMagicFill = async () => {
     if (!id) return;
+    if (!(await requireMarketData())) return;
     try {
       const { prompt } = await magicFill(id);
       setAiModal({

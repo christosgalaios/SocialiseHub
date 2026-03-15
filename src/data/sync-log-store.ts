@@ -7,6 +7,7 @@ interface SyncLogRow {
   action: string;
   event_id: string | null;
   external_id: string | null;
+  event_title: string | null;
   status: string;
   message: string | null;
   created_at: string;
@@ -19,6 +20,7 @@ function rowToEntry(row: SyncLogRow): SyncLogEntry {
     action: row.action as SyncAction,
     eventId: row.event_id ?? undefined,
     externalId: row.external_id ?? undefined,
+    eventTitle: row.event_title ?? undefined,
     status: row.status as SyncLogEntry['status'],
     message: row.message ?? undefined,
     createdAt: row.created_at,
@@ -49,7 +51,10 @@ export class SyncLogStore {
   getRecent(limit = 50): SyncLogEntry[] {
     const rows = this.db
       .prepare<[number], SyncLogRow>(
-        'SELECT * FROM sync_log ORDER BY id DESC LIMIT ?',
+        `SELECT sl.*, e.title as event_title
+         FROM sync_log sl
+         LEFT JOIN events e ON sl.event_id = e.id
+         ORDER BY sl.id DESC LIMIT ?`,
       )
       .all(limit);
     return rows.map(rowToEntry);
@@ -58,7 +63,10 @@ export class SyncLogStore {
   getByEventId(eventId: string, limit = 50): SyncLogEntry[] {
     const rows = this.db
       .prepare<[string, number], SyncLogRow>(
-        'SELECT * FROM sync_log WHERE event_id = ? ORDER BY id DESC LIMIT ?',
+        `SELECT sl.*, e.title as event_title
+         FROM sync_log sl
+         LEFT JOIN events e ON sl.event_id = e.id
+         WHERE sl.event_id = ? ORDER BY sl.id DESC LIMIT ?`,
       )
       .all(eventId, limit);
     return rows.map(rowToEntry);

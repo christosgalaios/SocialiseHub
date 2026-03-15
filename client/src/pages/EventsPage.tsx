@@ -423,7 +423,6 @@ export function EventsPage() {
               onDelete={handleDelete}
               onDuplicate={handleDuplicate}
               onPush={handlePush}
-              onOptimize={handleOptimize}
             />
           ))}
         </div>

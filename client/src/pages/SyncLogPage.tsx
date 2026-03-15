@@ -113,8 +113,8 @@ export function SyncLogPage() {
               <span style={{ ...styles.cell, flex: 1, fontWeight: 600, color: '#333' }}>
                 {ACTION_LABELS[entry.action] ?? entry.action}
               </span>
-              <span style={{ ...styles.cell, flex: 2, color: '#555', fontFamily: 'monospace', fontSize: 12 }}>
-                {entry.eventId ?? entry.externalId ?? '—'}
+              <span style={{ ...styles.cell, flex: 2, color: '#555', fontSize: 12 }}>
+                {entry.eventTitle ?? entry.eventId ?? entry.externalId ?? '—'}
               </span>
               <span style={{ ...styles.cell, flex: 1 }}>
                 <span
