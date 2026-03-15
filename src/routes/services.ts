@@ -59,8 +59,15 @@ export function createServicesRouter(serviceStore: SqliteServiceStore, db?: Data
 
         // Delete linked events (only those created by sync, not manually created ones)
         for (const { event_id } of linkedEvents) {
-          // Only delete if event has sync_status 'synced' (not locally modified)
-          db.prepare("DELETE FROM events WHERE id = ? AND sync_status = 'synced'").run(event_id);
+          // Check if this event is linked to other platforms
+          const otherLinks = db.prepare(
+            'SELECT COUNT(*) as cnt FROM platform_events WHERE event_id = ? AND platform != ?'
+          ).get(event_id, platform) as { cnt: number };
+
+          // Only delete if no other platform links remain and event is sync-created
+          if (otherLinks.cnt === 0) {
+            db.prepare("DELETE FROM events WHERE id = ? AND sync_status = 'synced'").run(event_id);
+          }
         }
       }
 

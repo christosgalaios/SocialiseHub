@@ -77,7 +77,8 @@ export function createEventsRouter(
       const copy = store.create({
         title: `Copy of ${original.title}`,
         description: original.description,
-        start_time: new Date().toISOString(),
+        start_time: original.start_time,
+        end_time: original.end_time,
         duration_minutes: original.duration_minutes,
         venue: original.venue,
         price: original.price,

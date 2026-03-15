@@ -136,103 +136,46 @@ export function createSyncRouter(
           // Track which external IDs we pulled for stale cleanup after
           const pulledExternalIds = new Set<string>();
           for (const pe of events) {
-            pulledExternalIds.add(pe.externalId);
-            const upserted = platformEventStore.upsert({
-              platform: pe.platform,
-              externalId: pe.externalId,
-              externalUrl: pe.externalUrl,
-              title: pe.title,
-              date: pe.date,
-              venue: pe.venue,
-              status: pe.status,
-              rawData: pe.rawData,
-              attendance: pe.attendance,
-              capacity: pe.capacity,
-              revenue: pe.revenue,
-              ticketPrice: pe.ticketPrice,
-              description: pe.description,
-              imageUrls: pe.imageUrls,
-            });
-            await linkPlatformEventToEvent(upserted, eventStore, platformEventStore);
-
-            // Re-fetch to get the final event_id after linking
-            const linked = platformEventStore.getByPlatform(svc.platform).find(
-              (p) => p.externalId === pe.externalId,
-            ) ?? upserted;
-
-            if (linked.eventId) {
-              const incomingHash = computeSyncHash({
+            try {
+              pulledExternalIds.add(pe.externalId);
+              const upserted = platformEventStore.upsert({
+                platform: pe.platform,
+                externalId: pe.externalId,
+                externalUrl: pe.externalUrl,
                 title: pe.title,
-                description: pe.description ?? '',
-                startTime: pe.date ?? '',
-                venue: pe.venue ?? '',
-                price: pe.ticketPrice ?? 0,
-                capacity: pe.capacity ?? 0,
-                photos: pe.imageUrls ?? [],
+                date: pe.date,
+                venue: pe.venue,
+                status: pe.status,
+                rawData: pe.rawData,
+                attendance: pe.attendance,
+                capacity: pe.capacity,
+                revenue: pe.revenue,
+                ticketPrice: pe.ticketPrice,
+                description: pe.description,
+                imageUrls: pe.imageUrls,
               });
+              await linkPlatformEventToEvent(upserted, eventStore, platformEventStore);
 
-              const existingSnapshot = snapshotStore.get(linked.eventId, svc.platform);
+              // Re-fetch to get the final event_id after linking
+              const linked = platformEventStore.getByPlatform(svc.platform).find(
+                (p) => p.externalId === pe.externalId,
+              ) ?? upserted;
 
-              if (!existingSnapshot) {
-                // First sync — store snapshot
-                snapshotStore.upsert({
-                  eventId: linked.eventId,
-                  platform: svc.platform,
+              if (linked.eventId) {
+                const incomingHash = computeSyncHash({
                   title: pe.title,
                   description: pe.description ?? '',
                   startTime: pe.date ?? '',
                   venue: pe.venue ?? '',
                   price: pe.ticketPrice ?? 0,
                   capacity: pe.capacity ?? 0,
-                  photosJson: JSON.stringify(pe.imageUrls ?? []),
-                  snapshotHash: incomingHash,
+                  photos: pe.imageUrls ?? [],
                 });
-              } else if (incomingHash !== existingSnapshot.snapshotHash) {
-                // Platform changed since last snapshot — check if local also changed
-                const localEvent = eventStore.getById(linked.eventId);
-                if (localEvent) {
-                  const localPhotos = JSON.parse(existingSnapshot.photosJson || '[]') as string[];
-                  const localHash = computeSyncHash({
-                    title: localEvent.title,
-                    description: localEvent.description ?? '',
-                    startTime: localEvent.start_time,
-                    venue: localEvent.venue ?? '',
-                    price: localEvent.price,
-                    capacity: localEvent.capacity ?? 0,
-                    photos: localPhotos,
-                  });
 
-                  if (localHash === existingSnapshot.snapshotHash) {
-                    // Local unchanged — auto-update from platform
-                    eventStore.update(linked.eventId, {
-                      title: pe.title,
-                      description: pe.description,
-                      start_time: pe.date ?? localEvent.start_time,
-                      venue: pe.venue ?? localEvent.venue,
-                      price: pe.ticketPrice ?? localEvent.price,
-                      capacity: pe.capacity ?? localEvent.capacity,
-                    });
-                    eventStore.updateSyncStatus(linked.eventId, 'synced');
-                    totalUpdated++;
-                  } else {
-                    // Both local and platform changed — conflict, platform wins
-                    eventStore.update(linked.eventId, {
-                      title: pe.title,
-                      description: pe.description,
-                      start_time: pe.date ?? localEvent.start_time,
-                      venue: pe.venue ?? localEvent.venue,
-                      price: pe.ticketPrice ?? localEvent.price,
-                      capacity: pe.capacity ?? localEvent.capacity,
-                    });
-                    eventStore.updateSyncStatus(linked.eventId, 'synced');
-                    conflicts.push({
-                      eventId: linked.eventId,
-                      eventTitle: pe.title,
-                      platform: svc.platform,
-                    });
-                  }
+                const existingSnapshot = snapshotStore.get(linked.eventId, svc.platform);
 
-                  // Update snapshot to reflect new platform state
+                if (!existingSnapshot) {
+                  // First sync — store snapshot
                   snapshotStore.upsert({
                     eventId: linked.eventId,
                     platform: svc.platform,
@@ -245,9 +188,76 @@ export function createSyncRouter(
                     photosJson: JSON.stringify(pe.imageUrls ?? []),
                     snapshotHash: incomingHash,
                   });
+                } else if (incomingHash !== existingSnapshot.snapshotHash) {
+                  // Platform changed since last snapshot — check if local also changed
+                  const localEvent = eventStore.getById(linked.eventId);
+                  if (localEvent) {
+                    const localPhotos = JSON.parse(existingSnapshot.photosJson || '[]') as string[];
+                    const localHash = computeSyncHash({
+                      title: localEvent.title,
+                      description: localEvent.description ?? '',
+                      startTime: localEvent.start_time,
+                      venue: localEvent.venue ?? '',
+                      price: localEvent.price,
+                      capacity: localEvent.capacity ?? 0,
+                      photos: localPhotos,
+                    });
+
+                    if (localHash === existingSnapshot.snapshotHash) {
+                      // Local unchanged — auto-update from platform
+                      eventStore.update(linked.eventId, {
+                        title: pe.title,
+                        description: pe.description,
+                        start_time: pe.date ?? localEvent.start_time,
+                        venue: pe.venue ?? localEvent.venue,
+                        price: pe.ticketPrice ?? localEvent.price,
+                        capacity: pe.capacity ?? localEvent.capacity,
+                      });
+                      eventStore.updateSyncStatus(linked.eventId, 'synced');
+                      totalUpdated++;
+                    } else {
+                      // Both local and platform changed — conflict, platform wins
+                      eventStore.update(linked.eventId, {
+                        title: pe.title,
+                        description: pe.description,
+                        start_time: pe.date ?? localEvent.start_time,
+                        venue: pe.venue ?? localEvent.venue,
+                        price: pe.ticketPrice ?? localEvent.price,
+                        capacity: pe.capacity ?? localEvent.capacity,
+                      });
+                      eventStore.updateSyncStatus(linked.eventId, 'synced');
+                      conflicts.push({
+                        eventId: linked.eventId,
+                        eventTitle: pe.title,
+                        platform: svc.platform,
+                      });
+                    }
+
+                    // Update snapshot to reflect new platform state
+                    snapshotStore.upsert({
+                      eventId: linked.eventId,
+                      platform: svc.platform,
+                      title: pe.title,
+                      description: pe.description ?? '',
+                      startTime: pe.date ?? '',
+                      venue: pe.venue ?? '',
+                      price: pe.ticketPrice ?? 0,
+                      capacity: pe.capacity ?? 0,
+                      photosJson: JSON.stringify(pe.imageUrls ?? []),
+                      snapshotHash: incomingHash,
+                    });
+                  }
                 }
+                // If incoming hash matches snapshot — platform unchanged, no action needed
               }
-              // If incoming hash matches snapshot — platform unchanged, no action needed
+            } catch (eventErr) {
+              // Log the error but continue processing other events
+              syncLogStore.log({
+                platform: svc.platform,
+                action: 'pull',
+                status: 'error',
+                message: `Failed to process event "${pe.title}": ${String(eventErr)}`,
+              });
             }
           }
           // Clean up platform_events that weren't in this pull (deleted on platform)
