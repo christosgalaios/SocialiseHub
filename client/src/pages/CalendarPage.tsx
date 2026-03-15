@@ -37,13 +37,15 @@ export function CalendarPage() {
   const [month, setMonth] = useState(today.getMonth());
   const [events, setEvents] = useState<SocialiseEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [popoverDay, setPopoverDay] = useState<number | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
     getEvents()
       .then(r => setEvents(r.data))
-      .catch(() => {})
+      .catch(err => setError(err instanceof Error ? err.message : 'Failed to load events'))
       .finally(() => setLoading(false));
   }, []);
 
@@ -103,6 +105,8 @@ export function CalendarPage() {
 
       {loading ? (
         <p style={{ color: '#7a7a7a' }}>Loading...</p>
+      ) : error ? (
+        <p style={{ color: '#ef4444' }}>{error}</p>
       ) : (
         <div style={styles.calendar}>
           {DAY_HEADERS.map((d) => (

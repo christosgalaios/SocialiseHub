@@ -436,8 +436,8 @@ export function EventDetailPage() {
       await pushEvent(id, platform);
       showToast(`Pushed to ${platform}`, 'success');
       await reloadEvent();
-    } catch (err: any) {
-      showToast(err.message, 'error');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Operation failed', 'error');
     } finally {
       setPushingPlatform(null);
     }
@@ -450,8 +450,8 @@ export function EventDetailPage() {
       await pullEvent(id, platform);
       showToast(`Reverted to ${platform} version`, 'success');
       await reloadEvent();
-    } catch (err: any) {
-      showToast(err.message, 'error');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Operation failed', 'error');
     } finally {
       setPullingPlatform(null);
     }
@@ -463,8 +463,8 @@ export function EventDetailPage() {
       await pushAllEvents(id);
       showToast('Pushed to all platforms', 'success');
       await reloadEvent();
-    } catch (err: any) {
-      showToast(err.message, 'error');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Operation failed', 'error');
     }
   };
 
