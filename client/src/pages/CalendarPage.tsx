@@ -41,15 +41,19 @@ export function CalendarPage() {
   const [error, setError] = useState<string | null>(null);
   const [popoverDay, setPopoverDay] = useState<number | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
+  const load = (signal?: { cancelled: boolean }) => {
     setLoading(true);
     setError(null);
     getEvents()
-      .then(r => { if (!cancelled) setEvents(r.data); })
-      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load events'); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .then(r => { if (!signal?.cancelled) setEvents(r.data); })
+      .catch(err => { if (!signal?.cancelled) setError(err instanceof Error ? err.message : 'Failed to load events'); })
+      .finally(() => { if (!signal?.cancelled) setLoading(false); });
+  };
+
+  useEffect(() => {
+    const signal = { cancelled: false };
+    load(signal);
+    return () => { signal.cancelled = true; };
   }, []);
 
   const goToday = () => { setYear(today.getFullYear()); setMonth(today.getMonth()); };
@@ -122,15 +126,7 @@ export function CalendarPage() {
       ) : error ? (
         <div style={styles.errorBanner}>
           {error}
-          <button style={styles.retryBtn} onClick={() => {
-            const cancelled = false;
-            setLoading(true);
-            setError(null);
-            getEvents()
-              .then(r => { if (!cancelled) setEvents(r.data); })
-              .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load events'); })
-              .finally(() => { if (!cancelled) setLoading(false); });
-          }}>Retry</button>
+          <button style={styles.retryBtn} onClick={() => load()}>Retry</button>
         </div>
       ) : (
         <div style={styles.calendar}>

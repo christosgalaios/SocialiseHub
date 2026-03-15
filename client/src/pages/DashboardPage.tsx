@@ -8,6 +8,8 @@ import { PerformanceSection } from '../components/dashboard/PerformanceSection';
 import { SuggestionsSection } from '../components/dashboard/SuggestionsSection';
 import { WeekSection } from '../components/dashboard/WeekSection';
 import { ConflictsSection } from '../components/dashboard/ConflictsSection';
+import { HealthSection } from '../components/dashboard/HealthSection';
+import { PortfolioSection } from '../components/dashboard/PortfolioSection';
 import { useToast } from '../context/ToastContext';
 import { ListSkeleton } from '../components/Skeleton';
 
@@ -126,6 +128,8 @@ export function DashboardPage() {
           <AttentionSection items={data.attentionItems} totalCount={data.attentionTotalCount} />
           <UpcomingSection events={data.upcomingEvents} />
           <PerformanceSection stats={data.performance} />
+          <PortfolioSection />
+          <HealthSection />
           <SuggestionsSection />
         </div>
       )}
