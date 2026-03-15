@@ -93,13 +93,13 @@ npm run build:all          # Build server + electron + client
 ## Testing
 
 - **Framework:** Vitest
-- **Test count:** 263+ tests across 24 files
+- **Test count:** 320+ tests across 24 files
 - **Database:** Tests use in-memory SQLite (`:memory:`)
 - **HTTP:** Route tests use supertest
 
 ### Test Coverage
 - All data stores (events, platform events, services, templates, sync log, ideas)
-- All API routes (events, sync, dashboard, analytics, generator, templates)
+- All API routes (events CRUD/batch/sort/paginate/export/stats/log/photos/optimize/score, sync, dashboard, analytics, generator, templates, services)
 - Core libraries (validation, event readiness)
 - Automation clients and engine
 
@@ -128,3 +128,6 @@ npx vitest --watch         # Watch mode
 - Sync dedup uses normalized title matching with 60% length ratio requirement
 - `cleanStale` skips cleanup if fresh pull returned 0 events or would remove >50% of existing events
 - Platform image URLs are surfaced to event `image_url` during sync
+- Events API supports sorting (sort_by + order), pagination (page + per_page), batch operations, CSV export, and per-event sync log/platform history
+- Batch operations validate individual ids are non-empty strings
+- Platform event store uses safe JSON.parse to prevent corrupt image_urls from crashing sync

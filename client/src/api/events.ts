@@ -112,6 +112,12 @@ export async function batchDeleteEvents(
   return json(res);
 }
 
+export async function getEventPlatforms(id: string): Promise<import('@shared/types').PlatformEvent[]> {
+  const res = await fetch(`${BASE}/events/${id}/platforms`);
+  const body = await json<{ data: import('@shared/types').PlatformEvent[] }>(res);
+  return body.data;
+}
+
 export async function getEventLog(id: string, limit = 50): Promise<SyncLogEntry[]> {
   const res = await fetch(`${BASE}/events/${id}/log?limit=${limit}`);
   const body = await json<{ data: SyncLogEntry[] }>(res);

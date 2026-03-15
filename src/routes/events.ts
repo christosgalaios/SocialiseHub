@@ -213,6 +213,17 @@ export function createEventsRouter(
     }
   });
 
+  router.get('/:id/platforms', (req, res, next) => {
+    try {
+      const event = store.getById(req.params.id);
+      if (!event) return res.status(404).json({ error: 'Event not found' });
+      const platformEvents = platformEventStore.getByEventId(req.params.id);
+      res.json({ data: platformEvents });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.get('/:id/log', (req, res, next) => {
     try {
       const event = store.getById(req.params.id);

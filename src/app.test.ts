@@ -766,6 +766,25 @@ describe('App', () => {
     expect(res.body.prompt).toContain('Bristol');
   });
 
+  // ── Event Platforms ────────────────────────────────────
+
+  it('GET /api/events/:id/platforms returns empty for new event', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Platforms Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get(`/api/events/${created.body.data.id}/platforms`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+  });
+
+  it('GET /api/events/:id/platforms returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/events/nonexistent/platforms');
+    expect(res.status).toBe(404);
+  });
+
   // ── Event Log ──────────────────────────────────────────
 
   it('GET /api/events/:id/log returns empty log for new event', async () => {
