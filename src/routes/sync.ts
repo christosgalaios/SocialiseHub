@@ -297,8 +297,12 @@ export function createSyncRouter(
     try {
       const { eventId, platform } = req.body as { eventId?: string; platform?: string };
 
-      if (!eventId || !platform) {
-        res.status(400).json({ error: 'eventId and platform are required' });
+      if (typeof eventId !== 'string' || !eventId.trim()) {
+        res.status(400).json({ error: 'eventId is required' });
+        return;
+      }
+      if (typeof platform !== 'string' || !platform.trim()) {
+        res.status(400).json({ error: 'platform is required' });
         return;
       }
 
@@ -393,7 +397,7 @@ export function createSyncRouter(
     try {
       const { eventId } = req.body as { eventId?: string };
 
-      if (!eventId) {
+      if (typeof eventId !== 'string' || !eventId.trim()) {
         res.status(400).json({ error: 'eventId is required' });
         return;
       }
@@ -492,8 +496,12 @@ export function createSyncRouter(
     try {
       const { eventId, platform } = req.body as { eventId?: string; platform?: string };
 
-      if (!eventId || !platform) {
-        res.status(400).json({ error: 'eventId and platform are required' });
+      if (typeof eventId !== 'string' || !eventId.trim()) {
+        res.status(400).json({ error: 'eventId is required' });
+        return;
+      }
+      if (typeof platform !== 'string' || !platform.trim()) {
+        res.status(400).json({ error: 'platform is required' });
         return;
       }
 
