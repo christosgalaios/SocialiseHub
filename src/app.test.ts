@@ -5454,4 +5454,57 @@ describe('App', () => {
       expect(res.body.error).toContain('Invalid platform');
     });
   });
+
+  // ── Cascade delete ──────────────────────────────────────
+
+  it('DELETE /api/events/:id cascades to notes, tags, checklist, scores', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Cascade Test', description: 'D',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    // Add related data
+    await request(app).post(`/api/events/${id}/notes`).send({ content: 'A note' });
+    await request(app).post(`/api/events/${id}/tags`).send({ tags: ['fun', 'social'] });
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'Book venue' });
+    // Delete the event
+    const del = await request(app).delete(`/api/events/${id}`);
+    expect(del.status).toBe(204);
+    // Verify related data is gone
+    const notes = await request(app).get(`/api/events/${id}/notes`);
+    expect(notes.body.data || []).toHaveLength(0);
+    const tags = await request(app).get(`/api/events/${id}/tags`);
+    expect(tags.body.data || tags.body.tags || []).toHaveLength(0);
+    const checklist = await request(app).get(`/api/events/${id}/checklist`);
+    expect(checklist.body.data || checklist.body.items || []).toHaveLength(0);
+  });
+
+  it('DELETE /api/events/batch/delete handles duplicate IDs gracefully', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Dup Test', description: 'D',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    const res = await request(app).post('/api/events/batch/delete').send({ ids: [id, id] });
+    expect(res.status).toBe(200);
+    // First succeeds, second fails (already deleted)
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.deleted).toBe(1);
+    expect(res.body.total).toBe(2);
+    const deleted = res.body.data.filter((r: { deleted: boolean }) => r.deleted);
+    const notDeleted = res.body.data.filter((r: { deleted: boolean }) => !r.deleted);
+    expect(deleted).toHaveLength(1);
+    expect(notDeleted).toHaveLength(1);
+  });
+
+  it('POST /api/events rejects title over 200 characters', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events').send({
+      title: 'A'.repeat(201), description: 'D',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    expect(res.status).toBe(400);
+  });
 });

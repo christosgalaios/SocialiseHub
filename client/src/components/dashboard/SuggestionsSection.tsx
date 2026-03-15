@@ -35,8 +35,8 @@ export function SuggestionsSection() {
       const result = await getSuggestions();
       setSuggestions(result.suggestions);
       setGeneratedAt(result.generatedAt);
-    } catch {
-      // silently ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load suggestions');
     }
   }, []);
 
@@ -66,8 +66,8 @@ export function SuggestionsSection() {
           }
         },
       });
-    } catch {
-      // silently ignore network errors
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate suggestions');
     } finally {
       setLoading(false);
     }

@@ -28,13 +28,17 @@ export function WeekSection() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    let cancelled = false;
     getWeekView()
       .then((res) => {
-        setDays(res.data);
-        setTotalEvents(res.totalEvents);
+        if (!cancelled) {
+          setDays(res.data);
+          setTotalEvents(res.totalEvents);
+        }
       })
-      .catch(() => setError(true))
-      .finally(() => setLoading(false));
+      .catch(() => { if (!cancelled) setError(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   if (loading) {
