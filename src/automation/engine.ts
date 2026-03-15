@@ -84,6 +84,11 @@ export class AutomationEngine {
       case 'navigate':
         if (!step.url) throw new Error('Navigate step requires url');
         await this.wc.loadURL(step.url);
+        // Wait for the URL to actually change — loadURL resolves on navigation
+        // commit, but the old page's DOM may still be present. Poll until the
+        // webContents URL matches the target, then allow the page to settle.
+        await this.waitForUrlChange(step.url, step.timeout ?? DEFAULT_TIMEOUT);
+        await this.sleep(500);
         break;
 
       case 'waitForSelector':
@@ -152,6 +157,17 @@ export class AutomationEngine {
       await this.sleep(POLL_INTERVAL);
     }
     throw new Error(`Timeout waiting for selector: ${selector}`);
+  }
+
+  private async waitForUrlChange(targetUrl: string, timeout: number): Promise<void> {
+    const start = Date.now();
+    while (Date.now() - start < timeout) {
+      const currentUrl = this.wc.getURL();
+      // Match on origin+pathname (ignore hash for hash-routed apps)
+      if (currentUrl.startsWith(new URL(targetUrl).origin)) return;
+      await this.sleep(POLL_INTERVAL);
+    }
+    // Don't throw — the page may have redirected legitimately
   }
 
   private async waitForNavChange(timeout: number): Promise<void> {
