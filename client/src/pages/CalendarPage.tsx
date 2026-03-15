@@ -41,12 +41,14 @@ export function CalendarPage() {
   const [popoverDay, setPopoverDay] = useState<number | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     setError(null);
     getEvents()
-      .then(r => setEvents(r.data))
-      .catch(err => setError(err instanceof Error ? err.message : 'Failed to load events'))
-      .finally(() => setLoading(false));
+      .then(r => { if (!cancelled) setEvents(r.data); })
+      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load events'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const goToday = () => { setYear(today.getFullYear()); setMonth(today.getMonth()); };

@@ -38,6 +38,7 @@ import { PLATFORM_COLORS } from '../lib/platforms';
 import { EventTags } from '../components/EventTags';
 import { EventChecklist } from '../components/EventChecklist';
 import { useToast } from '../context/ToastContext';
+import { ListSkeleton } from '../components/Skeleton';
 import { loadSettings } from '../lib/settings';
 import { checkEventReadiness, isReadyToPublish } from '../../../src/lib/event-readiness';
 
@@ -512,7 +513,7 @@ export function EventDetailPage() {
   const readinessChecks = checkEventReadiness(currentFormEvent);
   const canPublish = isReadyToPublish(readinessChecks);
 
-  if (loading) return <p style={{ color: '#7a7a7a' }}>Loading...</p>;
+  if (loading) return <ListSkeleton rows={6} />;
 
   // Full-page error when event failed to load (not new, no event data)
   if (!isNew && !event && error) {

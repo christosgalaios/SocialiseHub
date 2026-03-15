@@ -30,7 +30,12 @@ export function EventTags({ eventId }: { eventId: string }) {
     } catch { setError('Failed to remove tag'); }
   };
 
-  if (loading) return null;
+  if (loading) return (
+    <div style={styles.container}>
+      <label style={styles.label}>Tags</label>
+      <span style={{ fontSize: 12, color: '#999' }}>Loading...</span>
+    </div>
+  );
 
   return (
     <div style={styles.container}>

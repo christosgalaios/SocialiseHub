@@ -60,8 +60,10 @@ export function EventsPage() {
   }, [tagFilter, sortBy, sortOrder]);
 
   useEffect(() => {
-    getTemplates().then(setTemplates).catch(() => {});
-    getAllTags().then(setAvailableTags).catch(() => {});
+    let cancelled = false;
+    getTemplates().then(data => { if (!cancelled) setTemplates(data); }).catch(() => {});
+    getAllTags().then(data => { if (!cancelled) setAvailableTags(data); }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const handleDelete = async (id: string) => {

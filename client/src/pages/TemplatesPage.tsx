@@ -10,11 +10,13 @@ export function TemplatesPage() {
   const nav = useNavigate();
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     getTemplates()
-      .then(setTemplates)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
-      .finally(() => setLoading(false));
+      .then(data => { if (!cancelled) setTemplates(data); })
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const handleDelete = async (id: string) => {

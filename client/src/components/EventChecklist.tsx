@@ -59,7 +59,12 @@ export function EventChecklist({ eventId }: { eventId: string }) {
     } catch { setError('Action failed — please try again'); }
   };
 
-  if (loading) return null;
+  if (loading) return (
+    <div style={styles.container}>
+      <label style={styles.label}>Checklist</label>
+      <span style={{ fontSize: 12, color: '#999' }}>Loading...</span>
+    </div>
+  );
 
   const progress = total > 0 ? Math.round((done / total) * 100) : 0;
 

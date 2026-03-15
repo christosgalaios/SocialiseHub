@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { updateEvent } from '../api/events';
 
 export interface ScoreSuggestion {
@@ -196,12 +197,17 @@ export function ScorePanel({
   onApply,
   onRescore,
 }: ScorePanelProps) {
+  const [applying, setApplying] = useState<string | null>(null);
+
   const handleApply = async (field: string, suggestedValue: string) => {
+    setApplying(field);
     try {
       await updateEvent(eventId, { [field]: suggestedValue });
       onApply(field, suggestedValue);
     } catch (err) {
       console.error('Failed to apply suggestion', err);
+    } finally {
+      setApplying(null);
     }
   };
 
@@ -250,10 +256,15 @@ export function ScorePanel({
                       <span style={panelStyles.valueLabel}>Suggested:</span>
                       <span style={panelStyles.valueText}>{s.suggested_value}</span>
                       <button
-                        style={panelStyles.applyBtn}
+                        style={{
+                          ...panelStyles.applyBtn,
+                          opacity: applying === s.field ? 0.6 : 1,
+                          cursor: applying === s.field ? 'wait' : 'pointer',
+                        }}
+                        disabled={applying === s.field}
                         onClick={() => handleApply(s.field, s.suggested_value!)}
                       >
-                        Apply
+                        {applying === s.field ? 'Applying...' : 'Apply'}
                       </button>
                     </div>
                   )}
