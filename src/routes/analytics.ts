@@ -524,15 +524,23 @@ Respond with ONLY the analysis text. No preamble, no introductory text.`;
    */
   router.get('/organizers', (_req, res, next) => {
     try {
+      // Deduplicate by event_id per organizer to avoid inflating multi-platform events
       const rows = db.prepare(`
         SELECT organizer_name,
           COUNT(*) as event_count,
-          SUM(COALESCE(attendance, 0)) as total_attendance,
-          AVG(CASE WHEN capacity > 0 THEN CAST(attendance AS REAL) / CAST(capacity AS REAL) ELSE NULL END) as avg_fill_rate,
-          SUM(COALESCE(revenue, 0)) as total_revenue,
-          AVG(CASE WHEN attendance IS NOT NULL AND attendance > 0 THEN attendance END) as avg_attendance
-        FROM platform_events
-        WHERE organizer_name IS NOT NULL AND organizer_name != ''
+          SUM(max_att) as total_attendance,
+          AVG(CASE WHEN max_cap > 0 THEN CAST(max_att AS REAL) / CAST(max_cap AS REAL) ELSE NULL END) as avg_fill_rate,
+          SUM(max_rev) as total_revenue,
+          AVG(CASE WHEN max_att > 0 THEN max_att END) as avg_attendance
+        FROM (
+          SELECT organizer_name, event_id,
+            MAX(COALESCE(attendance, 0)) as max_att,
+            MAX(COALESCE(capacity, 0)) as max_cap,
+            MAX(COALESCE(revenue, 0)) as max_rev
+          FROM platform_events
+          WHERE organizer_name IS NOT NULL AND organizer_name != '' AND event_id IS NOT NULL
+          GROUP BY organizer_name, event_id
+        )
         GROUP BY organizer_name
         ORDER BY total_attendance DESC
       `).all() as Array<{
@@ -565,17 +573,26 @@ Respond with ONLY the analysis text. No preamble, no introductory text.`;
    */
   router.get('/categories', (_req, res, next) => {
     try {
+      // Deduplicate by event_id per category to avoid inflating multi-platform events
       const rows = db.prepare(`
-        SELECT e.category,
-          COUNT(DISTINCT pe.id) as event_count,
-          SUM(COALESCE(pe.attendance, 0)) as total_attendance,
-          AVG(CASE WHEN pe.capacity > 0 THEN CAST(pe.attendance AS REAL) / CAST(pe.capacity AS REAL) ELSE NULL END) as avg_fill_rate,
-          SUM(COALESCE(pe.revenue, 0)) as total_revenue,
-          AVG(COALESCE(pe.ticket_price, 0)) as avg_price
-        FROM platform_events pe
-        JOIN events e ON pe.event_id = e.id
-        WHERE e.category IS NOT NULL AND e.category != ''
-        GROUP BY e.category
+        SELECT category,
+          COUNT(*) as event_count,
+          SUM(max_att) as total_attendance,
+          AVG(CASE WHEN max_cap > 0 THEN CAST(max_att AS REAL) / CAST(max_cap AS REAL) ELSE NULL END) as avg_fill_rate,
+          SUM(max_rev) as total_revenue,
+          AVG(CASE WHEN max_price > 0 THEN max_price ELSE 0 END) as avg_price
+        FROM (
+          SELECT e.category, pe.event_id,
+            MAX(COALESCE(pe.attendance, 0)) as max_att,
+            MAX(COALESCE(pe.capacity, 0)) as max_cap,
+            MAX(COALESCE(pe.revenue, 0)) as max_rev,
+            MAX(COALESCE(pe.ticket_price, 0)) as max_price
+          FROM platform_events pe
+          JOIN events e ON pe.event_id = e.id
+          WHERE e.category IS NOT NULL AND e.category != ''
+          GROUP BY e.category, pe.event_id
+        )
+        GROUP BY category
         ORDER BY total_attendance DESC
       `).all() as Array<{
         category: string;
