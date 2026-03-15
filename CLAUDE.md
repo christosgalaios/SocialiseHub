@@ -93,7 +93,7 @@ npm run build:all          # Build server + electron + client
 ## Testing
 
 - **Framework:** Vitest
-- **Test count:** 724+ tests across 25 files
+- **Test count:** 730+ tests across 25 files
 - **Database:** Tests use in-memory SQLite (`:memory:`)
 - **HTTP:** Route tests use supertest
 
@@ -161,3 +161,9 @@ npx vitest --watch         # Watch mode
 - Import/json sanitizes numeric fields (price, capacity, duration) to valid ranges and truncates strings
 - Notes author truncated to 100 chars, score suggestions validated as array
 - Quick-create and generator/save enforce title (200) and description (5000) length limits
+- ActivityTimeline component on event detail page shows event history (creation, notes, sync, scores, platform links)
+- Clone operation uses db.transaction() for atomic tag/checklist copy
+- Batch reschedule validates date arithmetic (end_time > start_time, duration 1-1440)
+- Per-event photo limit enforced at 50 photos (photo/auto endpoint, batch operations)
+- Generator ideas field sanitizes length to prevent excessively long values
+- Consistent ID type validation across all batch endpoints (readiness, archive now match status/category/venue pattern)
