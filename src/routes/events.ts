@@ -35,13 +35,14 @@ export function createEventsRouter(
       const syncStatus = req.query.sync_status as string | undefined;
       if (syncStatus) events = events.filter(e => e.sync_status === syncStatus);
 
-      // Search by title and description (case-insensitive substring match)
+      // Search by title, description, and venue (case-insensitive substring match)
       const search = req.query.search as string | undefined;
       if (search) {
         const q = search.toLowerCase();
         events = events.filter(e =>
           e.title.toLowerCase().includes(q) ||
-          e.description?.toLowerCase().includes(q)
+          e.description?.toLowerCase().includes(q) ||
+          e.venue?.toLowerCase().includes(q)
         );
       }
 

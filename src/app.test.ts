@@ -371,6 +371,21 @@ describe('App', () => {
     expect(res.body.data[0].title).toBe('Evening Walk');
   });
 
+  it('GET /api/events?search=crown also searches venues', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Quiz Night', description: 'Fun quiz',
+      start_time: '2030-01-01T19:00:00Z', venue: 'The Crown', price: 5, capacity: 30,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Yoga Class', description: 'Relaxing',
+      start_time: '2030-01-02T19:00:00Z', venue: 'Yoga Studio', price: 10, capacity: 20,
+    });
+    const res = await request(app).get('/api/events?search=crown');
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].title).toBe('Quiz Night');
+  });
+
   it('GET /api/events?upcoming=true filters to future events', async () => {
     const app = createTestApp();
     await request(app).post('/api/events').send({
