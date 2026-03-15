@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SocialiseEvent, Template, QueuedIdea } from '@shared/types';
-import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushAllEvents, getNextIdea, generateIdeasPrompt, storeIdeas, acceptIdea } from '../api/events';
+import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushAllEvents, getNextIdea, generateIdeasPrompt, storeIdeas, acceptIdea, getAllTags } from '../api/events';
 import { EventCard } from '../components/EventCard';
 import { GridSkeleton } from '../components/Skeleton';
 import { useToast } from '../context/ToastContext';
@@ -20,6 +20,8 @@ export function EventsPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
+  const [availableTags, setAvailableTags] = useState<Array<{ tag: string; count: number }>>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showIdeaModal, setShowIdeaModal] = useState(false);
@@ -37,7 +39,8 @@ export function EventsPage() {
     try {
       setLoading(true);
       setError(null);
-      const { data } = await getEvents();
+      const filters = tagFilter ? { tag: tagFilter } : undefined;
+      const { data } = await getEvents(filters);
       setEvents(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load events');
@@ -48,7 +51,11 @@ export function EventsPage() {
 
   useEffect(() => {
     load();
+  }, [tagFilter]);
+
+  useEffect(() => {
     getTemplates().then(setTemplates).catch(() => {});
+    getAllTags().then(setAvailableTags).catch(() => {});
   }, []);
 
   const handleDelete = async (id: string) => {
@@ -273,8 +280,20 @@ export function EventsPage() {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
-        {searchQuery && (
-          <button style={styles.clearBtn} onClick={() => setSearchQuery('')}>Clear</button>
+        {availableTags.length > 0 && (
+          <select
+            style={styles.tagSelect}
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+          >
+            <option value="">All tags</option>
+            {availableTags.map((t) => (
+              <option key={t.tag} value={t.tag}>{t.tag} ({t.count})</option>
+            ))}
+          </select>
+        )}
+        {(searchQuery || tagFilter) && (
+          <button style={styles.clearBtn} onClick={() => { setSearchQuery(''); setTagFilter(''); }}>Clear</button>
         )}
       </div>
 
@@ -344,6 +363,16 @@ const styles: Record<string, React.CSSProperties> = {
     outline: 'none',
     background: '#fff',
     fontFamily: 'inherit',
+  },
+  tagSelect: {
+    border: '1px solid #e8e6e1',
+    borderRadius: 12,
+    padding: '10px 14px',
+    fontSize: 14,
+    background: '#fff',
+    fontFamily: 'inherit',
+    color: '#080810',
+    minWidth: 130,
   },
   clearBtn: {
     background: '#f0f0f0',

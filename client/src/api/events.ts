@@ -31,6 +31,7 @@ export interface EventFilters {
   search?: string;
   venue?: string;
   category?: string;
+  tag?: string;
   upcoming?: boolean;
   start_after?: string;
   start_before?: string;

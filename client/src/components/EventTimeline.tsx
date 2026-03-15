@@ -26,6 +26,7 @@ const STATUS_OPTIONS: { value: string; label: string }[] = [
   { value: 'draft', label: 'Draft' },
   { value: 'published', label: 'Published' },
   { value: 'cancelled', label: 'Cancelled' },
+  { value: 'archived', label: 'Archived' },
 ];
 
 function formatDate(dateStr: string): string {
