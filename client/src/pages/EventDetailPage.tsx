@@ -42,6 +42,7 @@ import { useToast } from '../context/ToastContext';
 import { ListSkeleton } from '../components/Skeleton';
 import { loadSettings } from '../lib/settings';
 import { checkEventReadiness, isReadyToPublish } from '../../../src/lib/event-readiness';
+import { getEventConflicts } from '../api/conflicts';
 
 function toDatetimeLocal(isoStr?: string): string {
   if (!isoStr) return '';
@@ -68,6 +69,8 @@ export function EventDetailPage() {
   const [publishing, setPublishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [publishResults, setPublishResults] = useState<PublishResult[] | null>(null);
+  const [conflictCount, setConflictCount] = useState(0);
+  const [conflictPlatforms, setConflictPlatforms] = useState<string[]>([]);
 
   // Form state
   const [title, setTitle] = useState('');
@@ -168,6 +171,17 @@ export function EventDetailPage() {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Load failed');
       })
       .finally(() => { if (!cancelled) setLoading(false); });
+    if (id) {
+      getEventConflicts(id)
+        .then(res => {
+          if (!cancelled) {
+            setConflictCount(res.conflicts.length);
+            const platforms = [...new Set(res.conflicts.flatMap(c => c.platformValues.map(p => p.platform)))];
+            setConflictPlatforms(platforms);
+          }
+        })
+        .catch(() => {}); // silent — conflict check is non-critical
+    }
     return () => { cancelled = true; };
   }, [id]);
 
@@ -650,6 +664,15 @@ export function EventDetailPage() {
       </div>
 
       {error && <div style={styles.error}>{error}</div>}
+
+      {conflictCount > 0 && !isNew && (
+        <div style={styles.conflictBanner}>
+          <span>{conflictCount} field conflict{conflictCount !== 1 ? 's' : ''} across {conflictPlatforms.join(', ')}</span>
+          <button onClick={() => nav(`/conflicts/${id}`)} style={styles.conflictResolveBtn}>
+            Resolve
+          </button>
+        </div>
+      )}
 
       <div style={styles.twoCol}>
       <form onSubmit={handleSubmit} style={styles.form}>
@@ -1559,5 +1582,27 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     objectFit: 'cover' as const,
     border: '1px solid #e8e6e1',
+  },
+  conflictBanner: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: '12px 16px',
+    background: '#fef3c7',
+    border: '1px solid #f59e0b',
+    borderRadius: 12,
+    marginBottom: 16,
+    fontSize: 14,
+    color: '#92400e',
+  },
+  conflictResolveBtn: {
+    padding: '6px 16px',
+    background: '#f59e0b',
+    color: '#fff',
+    border: 'none',
+    borderRadius: 8,
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
   },
 };
