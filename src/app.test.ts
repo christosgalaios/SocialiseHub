@@ -2336,6 +2336,49 @@ describe('App', () => {
     expect(res.body.data).toHaveLength(0);
   });
 
+  // ── CSV Export ──────────────────────────────────────────
+
+  it('GET /api/events/export/csv returns CSV with headers', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'CSV Event', description: 'A test event', start_time: '2030-01-01T19:00:00Z',
+      venue: 'Bristol Pub', price: 10, capacity: 30,
+    });
+    const res = await request(app).get('/api/events/export/csv');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.headers['content-disposition']).toContain('events.csv');
+    const lines = res.text.split('\n');
+    expect(lines[0]).toBe('id,title,description,start_time,end_time,duration_minutes,venue,price,capacity,category,status,sync_status,createdAt,updatedAt');
+    expect(lines).toHaveLength(2); // header + 1 event
+    expect(lines[1]).toContain('CSV Event');
+    expect(lines[1]).toContain('Bristol Pub');
+  });
+
+  it('GET /api/events/export/csv escapes commas and quotes', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Event, with "quotes"', description: 'Line1\nLine2', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).get('/api/events/export/csv');
+    const lines = res.text.split('\n');
+    // Title with commas and quotes should be properly escaped
+    expect(lines[1]).toContain('"Event, with ""quotes"""');
+  });
+
+  it('GET /api/events/export/csv excludes archived by default', async () => {
+    const { app, db } = createTestAppWithDb();
+    const e = await request(app).post('/api/events').send({
+      title: 'Archived CSV', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    db.prepare("UPDATE events SET status = 'archived' WHERE id = ?").run(e.body.data.id);
+    const res = await request(app).get('/api/events/export/csv');
+    const lines = res.text.split('\n').filter(l => l.trim());
+    expect(lines).toHaveLength(1); // header only
+  });
+
   // ── JSON Import ─────────────────────────────────────────
 
   it('POST /api/events/import/json imports multiple events', async () => {

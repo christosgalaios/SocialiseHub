@@ -337,6 +337,13 @@ export function getEventsJsonExportUrl(params?: { status?: string; upcoming?: bo
   return `${BASE}/events/export/json${qs.toString() ? '?' + qs.toString() : ''}`;
 }
 
+export function getEventsCsvExportUrl(params?: { status?: string; upcoming?: boolean }): string {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.upcoming) qs.set('upcoming', 'true');
+  return `${BASE}/events/export/csv${qs.toString() ? '?' + qs.toString() : ''}`;
+}
+
 // ── Services ────────────────────────────────────────────
 
 export async function getServices(): Promise<ServiceConnection[]> {

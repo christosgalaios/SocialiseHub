@@ -524,6 +524,45 @@ export function createEventsRouter(
     }
   });
 
+  router.get('/export/csv', (req, res, next) => {
+    try {
+      let events = store.getAll();
+
+      if (req.query.include_archived !== 'true') {
+        events = events.filter(e => e.status !== 'archived');
+      }
+      const status = req.query.status as string | undefined;
+      if (status) events = events.filter(e => e.status === status);
+      if (req.query.upcoming === 'true') {
+        const now = new Date().toISOString();
+        events = events.filter(e => e.start_time > now);
+      }
+
+      const headers = ['id', 'title', 'description', 'start_time', 'end_time', 'duration_minutes', 'venue', 'price', 'capacity', 'category', 'status', 'sync_status', 'createdAt', 'updatedAt'];
+
+      const escapeCsv = (val: unknown): string => {
+        if (val == null) return '';
+        const str = String(val);
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+          return `"${str.replace(/"/g, '""')}"`;
+        }
+        return str;
+      };
+
+      const rows = events.map(e =>
+        headers.map(h => escapeCsv((e as unknown as Record<string, unknown>)[h])).join(',')
+      );
+
+      const csv = [headers.join(','), ...rows].join('\n');
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="events.csv"');
+      res.send(csv);
+    } catch (err) {
+      next(err);
+    }
+  });
+
   /**
    * GET /api/events/duplicates
    * Scans all non-archived events for potential duplicates based on normalized title + same date.
