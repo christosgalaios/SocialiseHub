@@ -4376,4 +4376,188 @@ describe('App', () => {
     expect(res.status).toBe(200);
     expect(res.body.prompt).toContain('action plan');
   });
+
+  // ── Edge Cases: Notes ─────────────────────────────────
+
+  it('POST /api/events/:id/notes rejects empty content', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Note Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${e.body.data.id}/notes`).send({ content: '' });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/events/:id/notes rejects content over 5000 chars', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Long Note', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${e.body.data.id}/notes`).send({ content: 'x'.repeat(5001) });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/events/:id/notes defaults author to manager', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Author Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${e.body.data.id}/notes`).send({ content: 'Hello' });
+    expect(res.status).toBe(201);
+    expect(res.body.data.author).toBe('manager');
+  });
+
+  it('DELETE /api/events/:id/notes/:noteId returns 400 for NaN id', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Bad Note ID', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).delete(`/api/events/${e.body.data.id}/notes/abc`);
+    expect(res.status).toBe(400);
+  });
+
+  // ── Edge Cases: Recurrence ─────────────────────────────
+
+  it('POST /api/events/:id/recur rejects invalid frequency', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Recur Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${e.body.data.id}/recur`).send({ frequency: 'daily', count: 3 });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/events/:id/recur rejects count above 52', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Recur Limit', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${e.body.data.id}/recur`).send({ frequency: 'weekly', count: 53 });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/events/:id/recur creates recurring events with correct dates', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Weekly Event', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${e.body.data.id}/recur`).send({ frequency: 'weekly', count: 3 });
+    expect(res.status).toBe(201);
+    expect(res.body.data).toHaveLength(3);
+    // First recurrence should be Jan 8
+    expect(res.body.data[0].start_time).toContain('2030-01-08');
+  });
+
+  it('POST /api/events/:id/recur returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/nonexistent/recur').send({ frequency: 'weekly', count: 2 });
+    expect(res.status).toBe(404);
+  });
+
+  // ── Edge Cases: Clone ─────────────────────────────────
+
+  it('POST /api/events/:id/clone with title suffix', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Original Event', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${e.body.data.id}/clone`).send({ titleSuffix: '(Copy)' });
+    expect(res.status).toBe(201);
+    expect(res.body.data.title).toBe('Original Event (Copy)');
+  });
+
+  it('POST /api/events/:id/clone with new date', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Dated Clone', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${e.body.data.id}/clone`).send({ newDate: '2030-06-15T18:00:00Z' });
+    expect(res.status).toBe(201);
+    expect(res.body.data.start_time).toContain('2030-06-15');
+  });
+
+  // ── Edge Cases: Batch Operations ────────────────────────
+
+  it('PATCH /api/events/batch/reschedule rejects 0 offset', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Reschedule Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).patch('/api/events/batch/reschedule').send({
+      ids: [e.body.data.id], offsetDays: 0,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH /api/events/batch/reschedule moves dates forward', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Move Event', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).patch('/api/events/batch/reschedule').send({
+      ids: [e.body.data.id], offsetDays: 7,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].success).toBe(true);
+  });
+
+  it('PATCH /api/events/batch/venue updates venue for multiple events', async () => {
+    const app = createTestApp();
+    const e1 = await request(app).post('/api/events').send({
+      title: 'Venue A', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'Old', price: 5, capacity: 20,
+    });
+    const e2 = await request(app).post('/api/events').send({
+      title: 'Venue B', description: 'D', start_time: '2030-02-01T19:00:00Z',
+      venue: 'Old', price: 5, capacity: 20,
+    });
+    const res = await request(app).patch('/api/events/batch/venue').send({
+      ids: [e1.body.data.id, e2.body.data.id], venue: 'New Venue',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.updated).toBe(2);
+  });
+
+  // ── Edge Cases: Pagination ───────────────────────────────
+
+  it('GET /api/events with per_page and page returns correct subset', async () => {
+    const app = createTestApp();
+    for (let i = 0; i < 5; i++) {
+      await request(app).post('/api/events').send({
+        title: `Event ${i}`, description: 'D', start_time: `2030-0${i + 1}-01T19:00:00Z`,
+        venue: 'V', price: 5, capacity: 20,
+      });
+    }
+    const page1 = await request(app).get('/api/events?per_page=2&page=1&sort_by=start_time&order=asc');
+    expect(page1.body.data).toHaveLength(2);
+    expect(page1.body.total).toBe(5);
+    const page3 = await request(app).get('/api/events?per_page=2&page=3&sort_by=start_time&order=asc');
+    expect(page3.body.data).toHaveLength(1); // Last page with 1 item
+  });
+
+  // ── Edge Cases: Services ───────────────────────────────
+
+  it('POST /api/services/invalid/connect returns 400', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/services/invalid/connect').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/services/meetup/disconnect succeeds even when not connected', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/services/meetup/disconnect');
+    expect(res.status).toBe(200);
+    expect(res.body.data.connected).toBe(false);
+  });
 });
