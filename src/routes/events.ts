@@ -441,6 +441,15 @@ export function createEventsRouter(
       const createdLast30 = events.filter(e => e.createdAt > thirtyDaysAgo).length;
       const modifiedLast7 = events.filter(e => e.updatedAt > sevenDaysAgo && e.updatedAt !== e.createdAt).length;
 
+      // Performance stats from events with actual data
+      const eventsWithAttendance = events.filter(e => e.actual_attendance != null && e.capacity > 0);
+      const totalAttendance = eventsWithAttendance.reduce((sum, e) => sum + (e.actual_attendance ?? 0), 0);
+      const totalCapacity = eventsWithAttendance.reduce((sum, e) => sum + e.capacity, 0);
+      const avgFillRate = totalCapacity > 0 ? Math.round((totalAttendance / totalCapacity) * 100) : null;
+
+      const eventsWithRevenue = events.filter(e => e.actual_revenue != null);
+      const totalRevenue = eventsWithRevenue.reduce((sum, e) => sum + (e.actual_revenue ?? 0), 0);
+
       res.json({
         data: {
           total: events.length,
@@ -454,6 +463,12 @@ export function createEventsRouter(
             createdLast7,
             createdLast30,
             modifiedLast7,
+          },
+          performance: {
+            eventsWithData: eventsWithAttendance.length,
+            avgFillRate,
+            totalRevenue,
+            totalAttendance,
           },
         },
       });

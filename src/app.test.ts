@@ -972,6 +972,23 @@ describe('App', () => {
     expect(res.body.data.activity.modifiedLast7).toBe(0); // Just created, not modified
   });
 
+  it('GET /api/events/stats includes performance data', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Performance Event', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 10, capacity: 50,
+    });
+    await request(app).put(`/api/events/${e.body.data.id}`).send({
+      actual_attendance: 40, actual_revenue: 400,
+    });
+    const res = await request(app).get('/api/events/stats');
+    expect(res.body.data.performance).toBeDefined();
+    expect(res.body.data.performance.eventsWithData).toBe(1);
+    expect(res.body.data.performance.avgFillRate).toBe(80); // 40/50 = 80%
+    expect(res.body.data.performance.totalRevenue).toBe(400);
+    expect(res.body.data.performance.totalAttendance).toBe(40);
+  });
+
   // ── Photos ────────────────────────────────────────────
 
   it('GET /api/events/:id/photos returns empty array for new event', async () => {
