@@ -24,6 +24,7 @@ import {
   pushEvent,
   pushAllEvents,
   pullEvent,
+  undoOptimize,
 } from '../api/events';
 import { AiPromptModal } from '../components/AiPromptModal';
 import { PlatformSelector } from '../components/PlatformSelector';
@@ -334,6 +335,19 @@ export function EventDetailPage() {
     }
   };
 
+  const handleUndoOptimize = async () => {
+    if (!id) return;
+    try {
+      const restored = await undoOptimize(id);
+      setEvent(restored);
+      setTitle(restored.title);
+      setDescription(restored.description);
+      showToast('Optimization undone', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Undo failed', 'error');
+    }
+  };
+
   /** Magic fill — open modal with magic-fill prompt, apply JSON response */
   const handleMagicFill = async () => {
     if (!id) return;
@@ -499,6 +513,46 @@ export function EventDetailPage() {
   const canPublish = isReadyToPublish(readinessChecks);
 
   if (loading) return <p style={{ color: '#7a7a7a' }}>Loading...</p>;
+
+  // Full-page error when event failed to load (not new, no event data)
+  if (!isNew && !event && error) {
+    return (
+      <div>
+        <button onClick={() => nav('/')} style={styles.back}>
+          ← Back to Dashboard
+        </button>
+        <div style={styles.loadError}>
+          <p style={styles.loadErrorTitle}>Failed to load event</p>
+          <p style={styles.loadErrorMsg}>{error}</p>
+          <button style={styles.retryBtn} onClick={() => {
+            setError(null);
+            setLoading(true);
+            getEvent(id!)
+              .then((ev) => {
+                setEvent(ev);
+                setTitle(ev.title);
+                setDescription(ev.description);
+                setStartTime(toDatetimeLocal(ev.start_time));
+                setEndTime(toDatetimeLocal(ev.end_time));
+                setDurationMinutes(ev.duration_minutes);
+                setVenue(ev.venue);
+                setPrice(ev.price);
+                setCapacity(ev.capacity);
+                setActualAttendance(ev.actual_attendance);
+                setActualRevenue(ev.actual_revenue);
+                setSelectedPlatforms(ev.platforms.map((p) => p.platform));
+              })
+              .catch((err: unknown) =>
+                setError(err instanceof Error ? err.message : 'Load failed'),
+              )
+              .finally(() => setLoading(false));
+          }}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -681,6 +735,15 @@ export function EventDetailPage() {
               >
                 {optimizing ? 'Analyzing...' : 'SEO Optimize'}
               </button>
+              {!isNew && (
+                <button
+                  type="button"
+                  style={styles.undoBtn}
+                  onClick={handleUndoOptimize}
+                >
+                  Undo Optimize
+                </button>
+              )}
               <button
                 type="button"
                 disabled={scoring}
@@ -889,6 +952,33 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 20,
     fontWeight: 500,
   },
+  loadError: {
+    textAlign: 'center' as const,
+    padding: '60px 24px',
+  },
+  loadErrorTitle: {
+    fontFamily: "'Outfit', sans-serif",
+    fontSize: 20,
+    fontWeight: 700,
+    color: '#080810',
+    marginBottom: 8,
+  },
+  loadErrorMsg: {
+    fontSize: 14,
+    color: '#E2725B',
+    marginBottom: 20,
+  },
+  retryBtn: {
+    padding: '10px 24px',
+    borderRadius: 12,
+    border: 'none',
+    background: '#E2725B',
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
+  },
   twoCol: {
     display: 'flex',
     gap: 32,
@@ -972,6 +1062,17 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontFamily: "'Outfit', sans-serif",
     transition: 'opacity 0.2s',
+  },
+  undoBtn: {
+    padding: '12px 20px',
+    borderRadius: 12,
+    border: '1.5px solid #e8e6e1',
+    background: '#fff',
+    color: '#7a7a7a',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
   },
   scoreBtn: {
     padding: '12px 20px',
