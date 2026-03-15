@@ -86,6 +86,7 @@ export class HeadfirstAutomationClient implements PlatformClient {
       venue: String(e.venue ?? ''),
       status: (e.status === 'past' ? 'past' : e.status === 'draft' ? 'draft' : e.status === 'cancelled' ? 'cancelled' : 'active') as 'active' | 'draft' | 'cancelled' | 'past',
       syncedAt: new Date().toISOString(),
+      organizerName: 'Ben',
     };
     });
   }

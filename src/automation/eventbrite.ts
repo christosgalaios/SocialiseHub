@@ -316,7 +316,7 @@ export function eventbriteScrapeSteps(): AutomationStep[] {
         let hasMore = true;
         while (hasMore && page <= 20) {
           const eventsResp = await fetch(
-            '/api/v3/organizations/' + orgId + '/events/?status=draft,live,started,ended,completed&order_by=start_desc&page_size=50&page=' + page + '&expand=venue,ticket_classes',
+            '/api/v3/organizations/' + orgId + '/events/?status=draft,live,started,ended,completed&order_by=start_desc&page_size=50&page=' + page + '&expand=venue,ticket_classes,organizer',
             { credentials: 'include', headers }
           );
           if (!eventsResp.ok) {
@@ -341,17 +341,22 @@ export function eventbriteScrapeSteps(): AutomationStep[] {
               attendance = sold || null;
               revenue = (ticketPrice && attendance) ? ticketPrice * attendance : null;
             }
+            // Extract image URL from logo
+            const imageUrl = e.logo?.url ?? e.logo?.original?.url ?? null;
             allEvents.push({
               externalId: e.id,
               title: e.name?.text ?? '',
               date: e.start?.utc ?? '',
               venue: e.venue ? (e.venue.name + (e.venue.address?.city ? ', ' + e.venue.address.city : '')) : (e.is_online_event ? 'Online' : ''),
               url: e.url ?? '',
-              status: isPast ? 'past' : 'active',
+              status: e.status === 'draft' ? 'draft' : (isPast ? 'past' : 'active'),
               attendance,
               capacity,
               revenue,
               ticketPrice,
+              description: e.description?.text ?? e.summary ?? '',
+              imageUrls: imageUrl ? [imageUrl] : [],
+              organizerName: e.organizer?.name ?? 'Ben',
             });
           }
           hasMore = eventsJson?.pagination?.has_more_items === true;
