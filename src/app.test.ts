@@ -4560,4 +4560,215 @@ describe('App', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.connected).toBe(false);
   });
+
+  // ── Stability: Photos Route Edge Cases ──────────────────
+
+  describe('Photos route edge cases', () => {
+    it('GET /api/events/:id/photos returns empty array for event with no photos', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'No Photos Event', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 5, capacity: 20,
+      });
+      const res = await request(app).get(`/api/events/${created.body.data.id}/photos`);
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual([]);
+    });
+
+    it('PATCH /api/events/:id/photos/reorder with empty order array returns 400', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Empty Order', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 5, capacity: 20,
+      });
+      const res = await request(app)
+        .patch(`/api/events/${created.body.data.id}/photos/reorder`)
+        .send({ order: [] });
+      expect(res.status).toBe(400);
+    });
+
+    it('PATCH /api/events/:id/photos/reorder with duplicate IDs returns 400', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Dup Order', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 5, capacity: 20,
+      });
+      const res = await request(app)
+        .patch(`/api/events/${created.body.data.id}/photos/reorder`)
+        .send({ order: [5, 5, 6] });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('duplicate');
+    });
+
+    it('DELETE /api/events/:id/photos/:photoId with non-numeric ID returns 400', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Photo ID Test', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 5, capacity: 20,
+      });
+      const res = await request(app).delete(`/api/events/${created.body.data.id}/photos/notanumber`);
+      expect(res.status).toBe(400);
+    });
+
+    it('DELETE /api/events/:id/photos/999 returns 404 for non-existent photo', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Missing Photo', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 5, capacity: 20,
+      });
+      const res = await request(app).delete(`/api/events/${created.body.data.id}/photos/999`);
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ── Stability: Optimize Route Edge Cases ────────────────
+
+  describe('Optimize route edge cases', () => {
+    it('POST /api/events/:id/optimize for non-existent event returns 404', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/events/does-not-exist/optimize');
+      expect(res.status).toBe(404);
+    });
+
+    it('POST /api/events/:id/optimize/undo with no snapshot returns 404', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Undo No Snap', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 5, capacity: 20,
+      });
+      const res = await request(app).post(`/api/events/${created.body.data.id}/optimize/undo`);
+      expect(res.status).toBe(404);
+    });
+
+    it('POST /api/events/:id/magic-fill for non-existent event returns 404', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/events/does-not-exist/magic-fill');
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ── Stability: Score Route Edge Cases ───────────────────
+
+  describe('Score route edge cases', () => {
+    it('GET /api/events/:id/score returns { score: null } for unscored event', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'No Score Yet', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 5, capacity: 20,
+      });
+      const res = await request(app).get(`/api/events/${created.body.data.id}/score`);
+      expect(res.status).toBe(200);
+      expect(res.body.score).toBeNull();
+    });
+
+    it('POST /api/events/:id/score/save with missing overall returns 400', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'No Overall', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 5, capacity: 20,
+      });
+      const res = await request(app)
+        .post(`/api/events/${created.body.data.id}/score/save`)
+        .send({ breakdown: {}, suggestions: [] });
+      expect(res.status).toBe(400);
+    });
+
+    it('POST /api/events/:id/score/save for non-existent event returns 404', async () => {
+      const app = createTestApp();
+      const res = await request(app)
+        .post('/api/events/does-not-exist/score/save')
+        .send({ overall: 70, breakdown: {}, suggestions: [] });
+      expect(res.status).toBe(404);
+    });
+  });
+
+  // ── Stability: Analytics Route Edge Cases ───────────────
+
+  describe('Analytics route edge cases', () => {
+    it('GET /api/analytics/summary returns valid data structure', async () => {
+      const app = createTestApp();
+      const res = await request(app).get('/api/analytics/summary');
+      expect(res.status).toBe(200);
+      expect(res.body.data).toBeDefined();
+      expect(typeof res.body.data.total_events).toBe('number');
+      expect(typeof res.body.data.total_attendees).toBe('number');
+      expect(typeof res.body.data.total_revenue).toBe('number');
+      expect(typeof res.body.data.avg_fill_rate).toBe('number');
+    });
+
+    it('GET /api/analytics/trends with date filters works', async () => {
+      const app = createTestApp();
+      const res = await request(app).get('/api/analytics/trends?startDate=2030-01-01&endDate=2030-12-31');
+      expect(res.status).toBe(200);
+      expect(res.body.data).toBeDefined();
+      expect(Array.isArray(res.body.data.attendanceByMonth)).toBe(true);
+      expect(Array.isArray(res.body.data.revenueByMonth)).toBe(true);
+    });
+
+    it('GET /api/analytics/pricing returns valid data structure', async () => {
+      const app = createTestApp();
+      const res = await request(app).get('/api/analytics/pricing');
+      expect(res.status).toBe(200);
+      expect(res.body.data).toBeDefined();
+      expect(Array.isArray(res.body.data.priceRanges)).toBe(true);
+      expect(Array.isArray(res.body.data.revenuePerAttendee)).toBe(true);
+    });
+
+    it('GET /api/analytics/venues returns valid data structure', async () => {
+      const app = createTestApp();
+      const res = await request(app).get('/api/analytics/venues');
+      expect(res.status).toBe(200);
+      expect(res.body.data).toBeDefined();
+      expect(Array.isArray(res.body.data.venues)).toBe(true);
+      expect(Array.isArray(res.body.data.venuePerformance)).toBe(true);
+    });
+
+    it('GET /api/analytics/roi returns valid data structure', async () => {
+      const app = createTestApp();
+      const res = await request(app).get('/api/analytics/roi');
+      expect(res.status).toBe(200);
+      expect(res.body.data).toBeDefined();
+      expect(Array.isArray(res.body.data.topEvents)).toBe(true);
+      expect(Array.isArray(res.body.data.monthlyRevenue)).toBe(true);
+      expect(Array.isArray(res.body.data.platformEfficiency)).toBe(true);
+    });
+  });
+
+  // ── Stability: Templates Route Edge Cases ───────────────
+
+  describe('Templates route edge cases', () => {
+    it('POST /api/templates with missing name returns 400', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/templates').send({
+        title: 'Template Without Name',
+        durationMinutes: 60,
+        price: 5,
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBeDefined();
+    });
+
+    it('POST /api/templates with missing title returns 400', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/templates').send({
+        name: 'Template Without Title',
+        durationMinutes: 60,
+        price: 5,
+      });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBeDefined();
+    });
+
+    it('DELETE /api/templates/:id for non-existent template returns 404', async () => {
+      const app = createTestApp();
+      const res = await request(app).delete('/api/templates/does-not-exist');
+      expect(res.status).toBe(404);
+    });
+
+    it('POST /api/templates/:id/create-event for non-existent template returns 404', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/templates/does-not-exist/create-event');
+      expect(res.status).toBe(404);
+    });
+  });
 });
