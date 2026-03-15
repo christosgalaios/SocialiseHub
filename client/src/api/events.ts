@@ -379,15 +379,14 @@ export async function disconnectService(
 // ── Automation ──────────────────────────────────────────
 
 export async function startAutomation(platform: PlatformName, action: string, data?: unknown): Promise<void> {
-  const api = (window as unknown as { electronAPI?: Record<string, unknown> }).electronAPI;
-  if (api && typeof api.startAutomation === 'function') {
-    await (api.startAutomation as Function)({ platform, action, data });
+  if (window.electronAPI?.startAutomation) {
+    await window.electronAPI.startAutomation({ platform, action, data });
   }
 }
 
 export async function cancelAutomation(): Promise<void> {
-  if (window.electronAPI) {
-    await (window.electronAPI as unknown as Record<string, Function>).cancelAutomation();
+  if (window.electronAPI?.cancelAutomation) {
+    await window.electronAPI.cancelAutomation();
   }
 }
 
