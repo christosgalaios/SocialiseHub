@@ -69,6 +69,13 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
 
       const now = new Date();
 
+      // Batch-load checklist stats to avoid N+1 queries
+      const checklistStats = new Map<string, { total: number; done: number }>();
+      const checklistRows = db.prepare(
+        'SELECT event_id, COUNT(*) as total, SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as done FROM event_checklist GROUP BY event_id',
+      ).all() as Array<{ event_id: string; total: number; done: number }>;
+      for (const r of checklistRows) checklistStats.set(r.event_id, { total: r.total, done: r.done });
+
       for (const ev of events) {
         const platformInfo = platformsByEvent[ev.id] ?? { platforms: [], titles: new Set() };
         const platforms = [...new Set(platformInfo.platforms)];
@@ -156,11 +163,9 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
         if (isUpcoming) {
           const daysOut = (new Date(ev.start_time).getTime() - now.getTime()) / 86400000;
           if (daysOut <= 14) {
-            const checklistStats = db.prepare(
-              'SELECT COUNT(*) as total, SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as done FROM event_checklist WHERE event_id = ?'
-            ).get(ev.id) as { total: number; done: number };
-            if (checklistStats.total > 0 && checklistStats.done < checklistStats.total) {
-              const remaining = checklistStats.total - checklistStats.done;
+            const cs = checklistStats.get(ev.id);
+            if (cs && cs.total > 0 && cs.done < cs.total) {
+              const remaining = cs.total - cs.done;
               items.push({
                 eventId: ev.id,
                 eventTitle: ev.title,
@@ -824,6 +829,25 @@ Be direct. No preamble.`;
       const events = eventStore.getAll().filter(e => e.status !== 'archived');
       const now = new Date();
 
+      // Batch-load counts to avoid N+1 queries
+      const photoCounts = new Map<string, number>();
+      const photoRows = db.prepare(
+        'SELECT event_id, COUNT(*) as cnt FROM event_photos GROUP BY event_id',
+      ).all() as Array<{ event_id: string; cnt: number }>;
+      for (const r of photoRows) photoCounts.set(r.event_id, r.cnt);
+
+      const noteCounts = new Map<string, number>();
+      const noteRows = db.prepare(
+        'SELECT event_id, COUNT(*) as cnt FROM event_notes GROUP BY event_id',
+      ).all() as Array<{ event_id: string; cnt: number }>;
+      for (const r of noteRows) noteCounts.set(r.event_id, r.cnt);
+
+      const scoredEvents = new Set<string>();
+      const scoreRows = db.prepare(
+        'SELECT event_id FROM event_scores',
+      ).all() as Array<{ event_id: string }>;
+      for (const r of scoreRows) scoredEvents.add(r.event_id);
+
       const healthData = events.map(e => {
         let score = 0;
         const factors: string[] = [];
@@ -852,9 +876,7 @@ Be direct. No preamble.`;
         if (e.category) { score += 5; factors.push('has_category'); }
 
         // Photo count (0-15)
-        const photoCount = (db.prepare(
-          'SELECT COUNT(*) as cnt FROM event_photos WHERE event_id = ?'
-        ).get(e.id) as { cnt: number }).cnt;
+        const photoCount = photoCounts.get(e.id) ?? 0;
         if (photoCount >= 1) score += 5;
         if (photoCount >= 3) score += 5;
         if (photoCount >= 5) { score += 5; factors.push('rich_photos'); }
@@ -866,16 +888,12 @@ Be direct. No preamble.`;
         if (platformCount >= 3) { score += 5; factors.push('full_coverage'); }
 
         // Notes present (0-5)
-        const noteCount = (db.prepare(
-          'SELECT COUNT(*) as cnt FROM event_notes WHERE event_id = ?'
-        ).get(e.id) as { cnt: number }).cnt;
+        const noteCount = noteCounts.get(e.id) ?? 0;
         if (noteCount >= 1) { score += 5; factors.push('has_notes'); }
 
         // Event score exists (0-5)
-        const eventScore = db.prepare(
-          'SELECT overall FROM event_scores WHERE event_id = ?'
-        ).get(e.id) as { overall: number } | undefined;
-        if (eventScore) { score += 5; factors.push('scored'); }
+        const hasScore = scoredEvents.has(e.id);
+        if (hasScore) { score += 5; factors.push('scored'); }
 
         return {
           id: e.id,
@@ -887,7 +905,7 @@ Be direct. No preamble.`;
           photoCount,
           platformCount,
           noteCount,
-          hasScore: !!eventScore,
+          hasScore,
         };
       });
 
@@ -933,10 +951,12 @@ Be direct. No preamble.`;
         status: string; capacity: number | null; price: number;
       }>;
 
-      // Get checklist progress for each event
-      const checklistStmt = db.prepare(
-        'SELECT COUNT(*) as total, SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as done FROM event_checklist WHERE event_id = ?'
-      );
+      // Batch-load checklist stats to avoid N+1 queries
+      const weekChecklistStats = new Map<string, { total: number; done: number }>();
+      const weekChecklistRows = db.prepare(
+        'SELECT event_id, COUNT(*) as total, SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as done FROM event_checklist GROUP BY event_id',
+      ).all() as Array<{ event_id: string; total: number; done: number }>;
+      for (const r of weekChecklistRows) weekChecklistStats.set(r.event_id, { total: r.total, done: r.done });
 
       const days: Record<string, Array<{
         id: string; title: string; startTime: string; venue: string | null;
@@ -948,7 +968,7 @@ Be direct. No preamble.`;
         const dayKey = e.start_time.split('T')[0];
         if (!days[dayKey]) days[dayKey] = [];
 
-        const checklistRow = checklistStmt.get(e.id) as { total: number; done: number };
+        const cs = weekChecklistStats.get(e.id);
         days[dayKey].push({
           id: e.id,
           title: e.title,
@@ -957,7 +977,7 @@ Be direct. No preamble.`;
           status: e.status,
           capacity: e.capacity,
           price: e.price,
-          checklist: checklistRow.total > 0 ? { total: checklistRow.total, done: checklistRow.done } : null,
+          checklist: cs && cs.total > 0 ? { total: cs.total, done: cs.done } : null,
         });
       }
 

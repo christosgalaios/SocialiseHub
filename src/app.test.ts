@@ -4363,6 +4363,47 @@ describe('App', () => {
     expect(res.body.summary.averageHealth).toBeGreaterThan(0);
   });
 
+  it('GET /api/dashboard/health includes photo and note counts', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Health Photos Notes', description: 'A test event',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    // Add a note
+    await request(app).post(`/api/events/${id}/notes`).send({ content: 'Test note' });
+    const res = await request(app).get('/api/dashboard/health');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].noteCount).toBe(1);
+    expect(res.body.data[0].photoCount).toBe(0);
+    expect(res.body.data[0].factors).toContain('has_notes');
+  });
+
+  it('GET /api/dashboard/health batch counts work with multiple events', async () => {
+    const app = createTestApp();
+    // Create two events
+    const e1 = await request(app).post('/api/events').send({
+      title: 'Event One', description: 'D', start_time: '2030-06-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const e2 = await request(app).post('/api/events').send({
+      title: 'Event Two', description: 'D', start_time: '2030-07-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    // Add notes only to event 1
+    await request(app).post(`/api/events/${e1.body.data.id}/notes`).send({ content: 'Note A' });
+    await request(app).post(`/api/events/${e1.body.data.id}/notes`).send({ content: 'Note B' });
+    const res = await request(app).get('/api/dashboard/health');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+    // Find each event in sorted results
+    const d1 = res.body.data.find((e: { id: string }) => e.id === e1.body.data.id);
+    const d2 = res.body.data.find((e: { id: string }) => e.id === e2.body.data.id);
+    expect(d1.noteCount).toBe(2);
+    expect(d2.noteCount).toBe(0);
+  });
+
   it('POST /api/dashboard/digest returns a prompt', async () => {
     const app = createTestApp();
     const res = await request(app).post('/api/dashboard/digest');
