@@ -28,6 +28,7 @@ export interface SocialiseEvent {
   venue: string;
   price: number;
   capacity: number;
+  imageUrl?: string;
   status: EventStatus;
   sync_status?: 'synced' | 'modified' | 'local_only';
   platforms: PlatformPublishStatus[];

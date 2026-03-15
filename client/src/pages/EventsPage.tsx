@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SocialiseEvent, Template, QueuedIdea } from '@shared/types';
-import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushEvent, getNextIdea, generateIdeasPrompt, storeIdeas, acceptIdea } from '../api/events';
+import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushAllEvents, getNextIdea, generateIdeasPrompt, storeIdeas, acceptIdea } from '../api/events';
 import { EventCard } from '../components/EventCard';
 import { GridSkeleton } from '../components/Skeleton';
 import { useToast } from '../context/ToastContext';
@@ -72,9 +72,9 @@ export function EventsPage() {
     }
   };
 
-  const handlePush = async (id: string, platform: string) => {
+  const handlePush = async (id: string) => {
     try {
-      await pushEvent(id, platform);
+      await pushAllEvents(id);
       const data = await getEvents();
       setEvents(data);
       showToast('Event pushed successfully', 'success');

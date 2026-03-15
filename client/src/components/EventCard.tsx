@@ -13,7 +13,7 @@ export function EventCard({
   event: SocialiseEvent;
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
-  onPush?: (id: string, platform: string) => void;
+  onPush?: (id: string) => void;
   onOptimize?: (id: string) => void;
 }) {
   const nav = useNavigate();
@@ -94,7 +94,7 @@ export function EventCard({
                 style={styles.pushBtn}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onPush?.(event.id, event.platforms[0].platform);
+                  onPush?.(event.id);
                 }}
               >
                 Push ↑

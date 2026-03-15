@@ -12,7 +12,7 @@ import type {
 /** Fields the public API is allowed to update via update(). */
 const UPDATABLE_FIELDS = new Set([
   'title', 'description', 'start_time', 'end_time', 'duration_minutes',
-  'venue', 'price', 'capacity',
+  'venue', 'price', 'capacity', 'image_url',
 ]);
 
 interface EventRow {
@@ -25,6 +25,7 @@ interface EventRow {
   venue: string | null;
   price: number;
   capacity: number | null;
+  image_url: string | null;
   status: string;
   sync_status: string | null;
   created_at: string;
@@ -58,6 +59,13 @@ export class SqliteEventStore {
       publishedAt: pr.published_at ?? undefined,
     }));
 
+    // Get cover photo URL
+    const coverPhoto = this.db
+      .prepare<[string], { photo_path: string }>(
+        'SELECT photo_path FROM event_photos WHERE event_id = ? AND is_cover = 1 LIMIT 1'
+      )
+      .get(row.id);
+
     return {
       id: row.id,
       title: row.title,
@@ -68,6 +76,7 @@ export class SqliteEventStore {
       venue: row.venue ?? '',
       price: row.price,
       capacity: row.capacity ?? 0,
+      imageUrl: coverPhoto?.photo_path ?? (row.image_url || undefined),
       status: row.status as EventStatus,
       sync_status: (row.sync_status ?? 'local_only') as 'synced' | 'modified' | 'local_only',
       platforms,
