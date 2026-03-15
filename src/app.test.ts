@@ -3455,6 +3455,31 @@ describe('App', () => {
     expect(res.status).toBe(404);
   });
 
+  it('POST /api/events/:id/clone copies tags and checklist', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Clone Source', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+
+    await request(app).put(`/api/events/${id}/tags`).send({ tags: ['social', 'outdoor'] });
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'Book venue' });
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'Order supplies' });
+
+    const cloneRes = await request(app).post(`/api/events/${id}/clone`).send({});
+    expect(cloneRes.status).toBe(201);
+    const cloneId = cloneRes.body.data.id;
+
+    const tagsRes = await request(app).get(`/api/events/${cloneId}/tags`);
+    expect(tagsRes.body.data).toEqual(['outdoor', 'social']);
+
+    const checklistRes = await request(app).get(`/api/events/${cloneId}/checklist`);
+    expect(checklistRes.body.total).toBe(2);
+    expect(checklistRes.body.done).toBe(0);
+    expect(checklistRes.body.data[0].label).toBe('Book venue');
+  });
+
   // ── Batch Delete ───────────────────────────────────
 
   it('POST /api/events/batch/delete deletes multiple events', async () => {
