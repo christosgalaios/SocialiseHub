@@ -72,37 +72,46 @@ set "LOCAL_VER=0"
 if exist "%~dp0VERSION" (
   set /p LOCAL_VER=<"%~dp0VERSION"
 )
-:: Trim whitespace
 for /f "tokens=*" %%a in ("!LOCAL_VER!") do set "LOCAL_VER=%%a"
 
 echo  Local version: v!LOCAL_VER!
 
 :: Fetch remote VERSION from GitHub (raw file on main branch)
-set "REMOTE_VER="
-for /f "usebackq delims=" %%i in (`curl -s "https://raw.githubusercontent.com/christosgalaios/SocialiseHub/main/VERSION" 2^>nul`) do (
-  set "REMOTE_VER=%%i"
-)
-for /f "tokens=*" %%a in ("!REMOTE_VER!") do set "REMOTE_VER=%%a"
-
-if not defined REMOTE_VER (
-  echo  Could not check for updates (offline?)
+curl -sf "https://raw.githubusercontent.com/christosgalaios/SocialiseHub/main/VERSION" -o "%TEMP%\socialise-remote-ver.txt" 2>nul
+if errorlevel 1 (
+  echo  Could not check for updates (offline?^)
   echo.
   goto :skip_update
 )
 
-echo  Latest version: v!REMOTE_VER!
+set "REMOTE_VER="
+if exist "%TEMP%\socialise-remote-ver.txt" (
+  set /p REMOTE_VER=<"%TEMP%\socialise-remote-ver.txt"
+  del "%TEMP%\socialise-remote-ver.txt" 2>nul
+)
+for /f "tokens=*" %%a in ("!REMOTE_VER!") do set "REMOTE_VER=%%a"
+
+:: Validate remote version is a number
+echo !REMOTE_VER!| findstr /R "^[0-9][0-9]*$" >nul 2>&1
+if errorlevel 1 (
+  echo  Could not read remote version. Skipping update.
+  echo.
+  goto :skip_update
+)
+
+echo  Latest stable: v!REMOTE_VER!
 
 :: Compare versions (numeric)
 if !REMOTE_VER! LEQ !LOCAL_VER! (
-  echo  Already up to date.
+  echo  Up to date.
   echo.
   goto :skip_update
 )
 
 echo.
-echo  Update available! v!LOCAL_VER! → v!REMOTE_VER!
+echo  Update available: v!LOCAL_VER! -^> v!REMOTE_VER!
 
-:: Check if git is available — prefer git pull over zip download
+:: Check if git is available — prefer git pull
 where git >nul 2>&1
 if errorlevel 1 goto :curl_update
 
@@ -116,10 +125,8 @@ if errorlevel 1 (
   echo  Git merge failed — falling back to download...
   goto :curl_update
 )
-echo  Updated successfully!
+echo  Updated to v!REMOTE_VER!!
 echo.
-
-:: Reinstall deps if needed
 call npm install >nul 2>&1
 goto :skip_update
 
@@ -127,7 +134,7 @@ goto :skip_update
 :curl_update
 echo  Downloading update...
 
-curl -L -o "%TEMP%\socialise-update.zip" "https://github.com/christosgalaios/SocialiseHub/archive/refs/heads/main.zip" 2>nul
+curl -Lf -o "%TEMP%\socialise-update.zip" "https://github.com/christosgalaios/SocialiseHub/archive/refs/heads/main.zip" 2>nul
 if errorlevel 1 (
   echo  Download failed. Continuing with current version.
   echo.
@@ -152,7 +159,6 @@ if not defined UPDATE_SRC (
   goto :skip_update
 )
 
-:: Copy updated files (preserve node_modules, data/, .git/)
 echo  Applying update...
 for %%f in (package.json package-lock.json tsconfig.json vite.config.ts SocialiseHub.bat VERSION CLAUDE.md) do (
   if exist "!UPDATE_SRC!\%%f" copy /Y "!UPDATE_SRC!\%%f" "%~dp0%%f" >nul 2>&1
@@ -163,14 +169,12 @@ for %%d in (src client electron .githooks) do (
   )
 )
 
-:: Clean up
 rmdir /S /Q "%TEMP%\socialise-update" 2>nul
 del "%TEMP%\socialise-update.zip" 2>nul
 
 echo  Updated to v!REMOTE_VER!!
 echo.
 
-:: Reinstall deps
 if exist "node_modules" (
   echo  Updating dependencies...
   call npm install
@@ -181,18 +185,33 @@ if exist "node_modules" (
 
 :: ── Install dependencies if missing ────────────────────
 if not exist "node_modules" (
-  echo  Installing dependencies (first run — this may take a few minutes)...
+  echo  Installing dependencies (first run, may take a few minutes)...
   call npm install
+  if errorlevel 1 (
+    echo  ERROR: npm install failed.
+    pause
+    exit /b 1
+  )
   echo.
 )
 
 :: ── Build ──────────────────────────────────────────────
 echo  Building backend...
 call npx tsc
+if errorlevel 1 (
+  echo  ERROR: Backend build failed.
+  pause
+  exit /b 1
+)
 echo.
 
 echo  Building frontend...
 call npx vite build client
+if errorlevel 1 (
+  echo  ERROR: Frontend build failed.
+  pause
+  exit /b 1
+)
 echo.
 
 echo  Building Electron...
@@ -217,6 +236,11 @@ if "%REBUILD_NEEDED%"=="1" (
     rmdir /S /Q "node_modules\better-sqlite3\build" 2>nul
   )
   call npx @electron/rebuild -f -w better-sqlite3
+  if errorlevel 1 (
+    echo  ERROR: Native module rebuild failed.
+    pause
+    exit /b 1
+  )
   echo.
 ) else (
   echo  Native modules OK (ABI 143^)
@@ -229,4 +253,11 @@ echo  (Close the window to stop)
 echo.
 
 npx electron .
+
+:: If Electron exits with error, pause so user can see it
+if errorlevel 1 (
+  echo.
+  echo  SocialiseHub exited with an error.
+  pause
+)
 endlocal
