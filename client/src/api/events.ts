@@ -540,6 +540,17 @@ export async function getAnalyticsInsights(): Promise<{ prompt: string }> {
   return body.data;
 }
 
+export interface PricingAnalysis {
+  priceRanges: Array<{ range: string; eventCount: number; avgFillRate: number | null; avgAttendance: number | null; totalRevenue: number; avgPrice: number }>;
+  revenuePerAttendee: Array<{ platform: string; revenuePerAttendee: number; eventCount: number }>;
+}
+
+export async function getPricingAnalysis(): Promise<PricingAnalysis> {
+  const res = await fetch(`${BASE}/analytics/pricing`);
+  const body = await json<{ data: PricingAnalysis }>(res);
+  return body.data;
+}
+
 // ── Magic / Idea Queue ─────────────────────────────────
 
 export async function getNextIdea(): Promise<{ idea: QueuedIdea | null; remaining: number }> {

@@ -2671,4 +2671,33 @@ describe('App', () => {
     const finalList = await request(app).get('/api/events?include_archived=true');
     expect(finalList.body.data).toHaveLength(0);
   });
+
+  // ── Pricing Analytics ───────────────────────────────────
+
+  it('GET /api/analytics/pricing returns price range analysis', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/analytics/pricing');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toBeDefined();
+    expect(Array.isArray(res.body.data.priceRanges)).toBe(true);
+    expect(Array.isArray(res.body.data.revenuePerAttendee)).toBe(true);
+  });
+
+  it('GET /api/analytics/pricing reflects platform event data', async () => {
+    const { app, db } = createTestAppWithDb();
+    // Insert some platform events with pricing data
+    const now = new Date().toISOString();
+    db.prepare(`INSERT INTO platform_events (id, platform, external_id, title, date, status, synced_at, ticket_price, attendance, capacity, revenue)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      'pe-pricing-1', 'meetup', 'ext-p1', 'Free Event', now, 'active', now, 0, 20, 30, 0
+    );
+    db.prepare(`INSERT INTO platform_events (id, platform, external_id, title, date, status, synced_at, ticket_price, attendance, capacity, revenue)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      'pe-pricing-2', 'eventbrite', 'ext-p2', 'Paid Event', now, 'active', now, 15, 25, 40, 375
+    );
+
+    const res = await request(app).get('/api/analytics/pricing');
+    expect(res.status).toBe(200);
+    expect(res.body.data.priceRanges.length).toBeGreaterThanOrEqual(1);
+  });
 });

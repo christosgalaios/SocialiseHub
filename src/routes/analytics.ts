@@ -219,5 +219,74 @@ Respond with ONLY the analysis text. No preamble, no introductory text.`;
     }
   });
 
+  /**
+   * GET /api/analytics/pricing
+   * Pricing analysis — compares ticket prices vs fill rates and revenue.
+   */
+  router.get('/pricing', (_req, res, next) => {
+    try {
+      // Price vs fill rate correlation
+      const priceRanges = db.prepare(`
+        SELECT
+          CASE
+            WHEN ticket_price IS NULL OR ticket_price = 0 THEN 'free'
+            WHEN ticket_price < 10 THEN 'under_10'
+            WHEN ticket_price < 20 THEN '10_to_20'
+            ELSE 'over_20'
+          END as price_range,
+          COUNT(*) as event_count,
+          AVG(CASE WHEN capacity > 0 THEN CAST(attendance AS REAL) / capacity ELSE NULL END) as avg_fill,
+          AVG(attendance) as avg_attendance,
+          SUM(revenue) as total_revenue,
+          AVG(ticket_price) as avg_price
+        FROM platform_events
+        WHERE attendance IS NOT NULL AND capacity > 0
+        GROUP BY price_range
+        ORDER BY avg_price ASC
+      `).all() as Array<{
+        price_range: string;
+        event_count: number;
+        avg_fill: number | null;
+        avg_attendance: number | null;
+        total_revenue: number | null;
+        avg_price: number | null;
+      }>;
+
+      // Revenue per attendee by platform
+      const revenuePerAttendee = db.prepare(`
+        SELECT
+          platform,
+          CASE WHEN SUM(attendance) > 0
+            THEN CAST(SUM(revenue) AS REAL) / SUM(attendance)
+            ELSE 0
+          END as revenue_per_attendee,
+          COUNT(*) as event_count
+        FROM platform_events
+        WHERE attendance IS NOT NULL AND attendance > 0
+        GROUP BY platform
+      `).all() as Array<{ platform: string; revenue_per_attendee: number; event_count: number }>;
+
+      res.json({
+        data: {
+          priceRanges: priceRanges.map(r => ({
+            range: r.price_range,
+            eventCount: r.event_count,
+            avgFillRate: r.avg_fill != null ? Math.round(r.avg_fill * 100) : null,
+            avgAttendance: r.avg_attendance != null ? Math.round(r.avg_attendance) : null,
+            totalRevenue: r.total_revenue ?? 0,
+            avgPrice: r.avg_price != null ? Math.round(r.avg_price * 100) / 100 : 0,
+          })),
+          revenuePerAttendee: revenuePerAttendee.map(r => ({
+            platform: r.platform,
+            revenuePerAttendee: Math.round(r.revenue_per_attendee * 100) / 100,
+            eventCount: r.event_count,
+          })),
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }
