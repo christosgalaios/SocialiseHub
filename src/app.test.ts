@@ -5559,4 +5559,37 @@ describe('App', () => {
     expect(res.body.summary.needsWork).toBeGreaterThanOrEqual(0);
     expect(res.body.summary.healthy).toBeGreaterThanOrEqual(0);
   });
+
+  it('GET /api/events returns notesCount and checklistProgress', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Progress Test', description: 'D',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    // Add notes and checklist items
+    await request(app).post(`/api/events/${id}/notes`).send({ content: 'Note 1' });
+    await request(app).post(`/api/events/${id}/notes`).send({ content: 'Note 2' });
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'Task A' });
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'Task B' });
+    const res = await request(app).get('/api/events?include_archived=true');
+    expect(res.status).toBe(200);
+    const ev = res.body.data.find((x: { id: string }) => x.id === id);
+    expect(ev.notesCount).toBe(2);
+    expect(ev.checklistTotal).toBe(2);
+    expect(ev.checklistDone).toBe(0);
+  });
+
+  it('GET /api/events returns zero counts when no notes/checklist', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'No Progress', description: 'D',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).get('/api/events');
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].notesCount).toBe(0);
+    expect(res.body.data[0].checklistTotal).toBe(0);
+    expect(res.body.data[0].checklistDone).toBe(0);
+  });
 });

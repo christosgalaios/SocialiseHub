@@ -93,7 +93,7 @@ npm run build:all          # Build server + electron + client
 ## Testing
 
 - **Framework:** Vitest
-- **Test count:** 700+ tests across 25 files
+- **Test count:** 707+ tests across 25 files
 - **Database:** Tests use in-memory SQLite (`:memory:`)
 - **HTTP:** Route tests use supertest
 
@@ -149,3 +149,8 @@ npx vitest --watch         # Watch mode
 - All frontend pages use ListSkeleton loading states and cancelled-flag cleanup in useEffect hooks
 - Event duration and end_time auto-sync in EventDetailPage (changing one computes the other)
 - All pages use cancelled-flag cleanup pattern for unmount safety
+- EventDetailPage warns before navigating away with unsaved changes (beforeunload + dirty indicator on save button)
+- Event store getAll() uses batch loading for platforms, photos, notes, and checklist counts (eliminates N+1)
+- EventCard shows checklist progress badges and notes count when data is present
+- SyncLogPage and ServicesPage have consistent error banners with retry buttons
+- Sync error messages include platform context for easier debugging
