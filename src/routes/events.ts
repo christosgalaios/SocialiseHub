@@ -337,6 +337,30 @@ export function createEventsRouter(
     }
   });
 
+  router.get('/export/json', (req, res, next) => {
+    try {
+      let events = store.getAll();
+
+      // Exclude archived by default
+      if (req.query.include_archived !== 'true') {
+        events = events.filter(e => e.status !== 'archived');
+      }
+
+      const status = req.query.status as string | undefined;
+      if (status) events = events.filter(e => e.status === status);
+      if (req.query.upcoming === 'true') {
+        const now = new Date().toISOString();
+        events = events.filter(e => e.start_time > now);
+      }
+
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename="events.json"');
+      res.json({ data: events, exported_at: new Date().toISOString(), total: events.length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.get('/:id', (req, res, next) => {
     try {
       const event = store.getById(req.params.id);

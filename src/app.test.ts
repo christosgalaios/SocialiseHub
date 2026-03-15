@@ -2120,4 +2120,46 @@ describe('App', () => {
     const res = await request(app).post(`/api/events/${created.body.data.id}/photos/auto`);
     expect(res.status).toBe(503);
   });
+
+  // ── JSON Export ─────────────────────────────────────────
+
+  it('GET /api/events/export/json returns all events as JSON', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Export Event 1', description: 'First',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Export Event 2', description: 'Second',
+      start_time: '2030-01-02T19:00:00Z', venue: 'V', price: 10, capacity: 30,
+    });
+    const res = await request(app).get('/api/events/export/json');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.total).toBe(2);
+    expect(res.body.exported_at).toBeDefined();
+  });
+
+  it('GET /api/events/export/json?status=draft filters by status', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Draft Event', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).get('/api/events/export/json?status=draft');
+    expect(res.status).toBe(200);
+    expect(res.body.data.every((e: { status: string }) => e.status === 'draft')).toBe(true);
+  });
+
+  it('GET /api/events/export/json excludes archived by default', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Will Archive', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    await request(app).post('/api/events/batch/archive').send({ ids: [created.body.data.id] });
+
+    const res = await request(app).get('/api/events/export/json');
+    expect(res.body.data).toHaveLength(0);
+  });
 });
