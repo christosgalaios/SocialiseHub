@@ -68,8 +68,8 @@ export function createEventsRouter(
       const mappedField = sortBy ? sortFieldMap[sortBy] : undefined;
       if (mappedField) {
         events.sort((a, b) => {
-          const aVal = (a as Record<string, unknown>)[mappedField];
-          const bVal = (b as Record<string, unknown>)[mappedField];
+          const aVal = (a as unknown as Record<string, unknown>)[mappedField];
+          const bVal = (b as unknown as Record<string, unknown>)[mappedField];
           if (aVal == null && bVal == null) return 0;
           if (aVal == null) return 1;
           if (bVal == null) return -1;
@@ -241,7 +241,7 @@ export function createEventsRouter(
 
       const headers = ['id', 'title', 'description', 'start_time', 'end_time', 'duration_minutes', 'venue', 'price', 'capacity', 'status', 'sync_status', 'createdAt', 'updatedAt'];
       const rows = events.map(e =>
-        headers.map(h => escCsv((e as Record<string, unknown>)[h] as string)).join(',')
+        headers.map(h => escCsv((e as unknown as Record<string, unknown>)[h] as string)).join(',')
       );
 
       const csv = [headers.join(','), ...rows].join('\n');
