@@ -551,6 +551,15 @@ export async function getPricingAnalysis(): Promise<PricingAnalysis> {
   return body.data;
 }
 
+export async function getVenueAnalytics(): Promise<{
+  venues: Array<{ venue: string; eventCount: number; avgScore: number | null; platformCount: number }>;
+  venuePerformance: Array<{ venue: string; platform: string; eventCount: number; avgFillRate: number | null; avgAttendance: number | null; totalRevenue: number }>;
+}> {
+  const res = await fetch(`${BASE}/analytics/venues`);
+  const body = await json<{ data: Awaited<ReturnType<typeof getVenueAnalytics>> }>(res);
+  return body.data;
+}
+
 // ── Magic / Idea Queue ─────────────────────────────────
 
 export async function getNextIdea(): Promise<{ idea: QueuedIdea | null; remaining: number }> {

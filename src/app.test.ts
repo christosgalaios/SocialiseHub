@@ -2700,4 +2700,36 @@ describe('App', () => {
     expect(res.status).toBe(200);
     expect(res.body.data.priceRanges.length).toBeGreaterThanOrEqual(1);
   });
+
+  // ── Venue Analytics ─────────────────────────────────────
+
+  it('GET /api/analytics/venues returns venue data', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/analytics/venues');
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.data.venues)).toBe(true);
+    expect(Array.isArray(res.body.data.venuePerformance)).toBe(true);
+  });
+
+  it('GET /api/analytics/venues reflects event venues', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Venue Test 1', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'The Crown', price: 5, capacity: 20,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Venue Test 2', description: 'Test',
+      start_time: '2030-01-02T19:00:00Z', venue: 'The Crown', price: 10, capacity: 30,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Venue Test 3', description: 'Test',
+      start_time: '2030-01-03T19:00:00Z', venue: 'Watershed', price: 15, capacity: 40,
+    });
+
+    const res = await request(app).get('/api/analytics/venues');
+    expect(res.status).toBe(200);
+    const crown = res.body.data.venues.find((v: { venue: string }) => v.venue === 'The Crown');
+    expect(crown).toBeDefined();
+    expect(crown.eventCount).toBe(2);
+  });
 });

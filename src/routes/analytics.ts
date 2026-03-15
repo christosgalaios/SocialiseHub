@@ -288,5 +288,77 @@ Respond with ONLY the analysis text. No preamble, no introductory text.`;
     }
   });
 
+  /**
+   * GET /api/analytics/venues
+   * Venue performance analysis — which venues drive the best results.
+   */
+  router.get('/venues', (_req, res, next) => {
+    try {
+      const venueStats = db.prepare(`
+        SELECT
+          e.venue,
+          COUNT(*) as event_count,
+          AVG(es.overall) as avg_score,
+          COUNT(DISTINCT pe.platform) as platform_count
+        FROM events e
+        LEFT JOIN event_scores es ON es.event_id = e.id
+        LEFT JOIN platform_events pe ON pe.event_id = e.id
+        WHERE e.venue IS NOT NULL AND e.venue != '' AND e.status != 'archived'
+        GROUP BY e.venue
+        ORDER BY event_count DESC
+        LIMIT 20
+      `).all() as Array<{
+        venue: string;
+        event_count: number;
+        avg_score: number | null;
+        platform_count: number;
+      }>;
+
+      const platformVenueStats = db.prepare(`
+        SELECT
+          venue,
+          platform,
+          COUNT(*) as event_count,
+          AVG(CASE WHEN capacity > 0 THEN CAST(attendance AS REAL) / capacity ELSE NULL END) as avg_fill,
+          AVG(attendance) as avg_attendance,
+          SUM(revenue) as total_revenue
+        FROM platform_events
+        WHERE venue IS NOT NULL AND venue != ''
+          AND attendance IS NOT NULL AND capacity > 0
+        GROUP BY venue, platform
+        ORDER BY event_count DESC
+        LIMIT 30
+      `).all() as Array<{
+        venue: string;
+        platform: string;
+        event_count: number;
+        avg_fill: number | null;
+        avg_attendance: number | null;
+        total_revenue: number | null;
+      }>;
+
+      res.json({
+        data: {
+          venues: venueStats.map(v => ({
+            venue: v.venue,
+            eventCount: v.event_count,
+            avgScore: v.avg_score != null ? Math.round(v.avg_score) : null,
+            platformCount: v.platform_count,
+          })),
+          venuePerformance: platformVenueStats.map(v => ({
+            venue: v.venue,
+            platform: v.platform,
+            eventCount: v.event_count,
+            avgFillRate: v.avg_fill != null ? Math.round(v.avg_fill * 100) : null,
+            avgAttendance: v.avg_attendance != null ? Math.round(v.avg_attendance) : null,
+            totalRevenue: v.total_revenue ?? 0,
+          })),
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }
