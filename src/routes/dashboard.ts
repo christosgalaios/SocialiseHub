@@ -28,7 +28,8 @@ export function createDashboardRouter(
         date: string | null;
       }> = [];
 
-      // Base events query with LEFT JOINs for counts
+      // Base events query — only future events (actionable)
+      const nowIso = new Date().toISOString();
       const events = db.prepare(`
         SELECT
           e.id,
@@ -44,9 +45,9 @@ export function createDashboardRouter(
         LEFT JOIN event_photos ep ON ep.event_id = e.id
         LEFT JOIN event_scores es ON es.event_id = e.id
         WHERE e.status != 'cancelled'
-          AND e.start_time > datetime('now', '-7 days')
+          AND e.start_time > ?
         GROUP BY e.id
-      `).all() as Array<{
+      `).all(nowIso) as Array<{
         id: string;
         title: string;
         description: string | null;
@@ -255,6 +256,7 @@ export function createDashboardRouter(
   router.get('/upcoming', (req, res, next) => {
     try {
       const limit = Math.min(Math.max(parseInt(String(req.query.limit)) || 5, 1), 50);
+      const nowIso = new Date().toISOString();
       const events = db.prepare(`
         SELECT
           e.id,
@@ -267,12 +269,12 @@ export function createDashboardRouter(
           COUNT(DISTINCT ep.id) as photo_count
         FROM events e
         LEFT JOIN event_photos ep ON ep.event_id = e.id
-        WHERE e.start_time > datetime('now')
+        WHERE e.start_time > ?
           AND e.status != 'cancelled'
         GROUP BY e.id
         ORDER BY e.start_time ASC
         LIMIT ?
-      `).all(limit) as Array<{
+      `).all(nowIso, limit) as Array<{
         id: string;
         title: string;
         description: string | null;
@@ -305,7 +307,7 @@ export function createDashboardRouter(
           { label: 'Description', passed: Boolean(ev.description && ev.description.trim().length >= 100) },
           { label: 'Date', passed: Boolean(ev.start_time) },
           { label: 'Venue', passed: Boolean(ev.venue && ev.venue.trim().length > 0) },
-          { label: 'Price', passed: (ev.price ?? 0) > 0 },
+          { label: 'Price', passed: true },
           { label: 'Photos', passed: ev.photo_count > 0 },
           { label: 'Capacity', passed: (ev.capacity ?? 0) > 0 },
         ];
@@ -351,9 +353,10 @@ export function createDashboardRouter(
    */
   router.get('/performance', (_req, res, next) => {
     try {
+      const nowIso = new Date().toISOString();
       const upcomingCount = (db.prepare(`
-        SELECT COUNT(*) as cnt FROM events WHERE start_time > datetime('now') AND status != 'cancelled'
-      `).get() as { cnt: number }).cnt;
+        SELECT COUNT(*) as cnt FROM events WHERE start_time > ? AND status != 'cancelled'
+      `).get(nowIso) as { cnt: number }).cnt;
 
       const attendeesCurrent = (db.prepare(`
         SELECT COALESCE(SUM(attendance), 0) as total
@@ -420,14 +423,16 @@ export function createDashboardRouter(
    */
   router.post('/suggestions', (_req, res, next) => {
     try {
+      const nowIso = new Date().toISOString();
+      const in30Days = new Date(Date.now() + 30 * 86400000).toISOString();
       const upcomingEvents = db.prepare(`
         SELECT e.title, e.start_time, e.venue, e.description, e.capacity, e.price
         FROM events e
-        WHERE e.start_time > datetime('now')
-          AND e.start_time < datetime('now', '+30 days')
+        WHERE e.start_time > ?
+          AND e.start_time < ?
           AND e.status != 'cancelled'
         ORDER BY e.start_time ASC
-      `).all() as Array<{
+      `).all(nowIso, in30Days) as Array<{
         title: string;
         start_time: string;
         venue: string | null;
@@ -454,8 +459,8 @@ export function createDashboardRouter(
 
       const attentionCount = (db.prepare(`
         SELECT COUNT(*) as cnt FROM events
-        WHERE status != 'cancelled' AND start_time > datetime('now', '-7 days')
-      `).get() as { cnt: number }).cnt;
+        WHERE status != 'cancelled' AND start_time > ?
+      `).get(new Date().toISOString()) as { cnt: number }).cnt;
 
       const prompt = `You are an operations assistant for Socialise, a Bristol-based events company that organises social activities for young professionals.
 
