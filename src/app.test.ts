@@ -202,6 +202,48 @@ describe('App', () => {
     expect(res.status).toBe(400);
   });
 
+  it('POST /api/services/:platform/disconnect cleans up synced events', async () => {
+    const { app, db } = createTestAppWithDb();
+    // Connect meetup
+    await request(app).post('/api/services/meetup/connect').send({});
+    // Create an event and link it as a platform event
+    const created = await request(app).post('/api/events').send({
+      title: 'Synced Event', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const eventId = created.body.data.id;
+    // Simulate: set sync_status to synced and create a platform_event link
+    db.prepare("UPDATE events SET sync_status = 'synced' WHERE id = ?").run(eventId);
+    db.prepare("INSERT INTO platform_events (id, event_id, platform, external_id, status, synced_at) VALUES (?, ?, ?, ?, ?, ?)").run(
+      'pe-test', eventId, 'meetup', 'ext-1', 'active', new Date().toISOString()
+    );
+    // Disconnect should clean up the synced event
+    const res = await request(app).post('/api/services/meetup/disconnect');
+    expect(res.status).toBe(200);
+    // Event should be deleted (it was synced with no other platform links)
+    const check = await request(app).get(`/api/events/${eventId}`);
+    expect(check.status).toBe(404);
+  });
+
+  it('POST /api/services/:platform/disconnect resets modified events to local_only', async () => {
+    const { app, db } = createTestAppWithDb();
+    await request(app).post('/api/services/meetup/connect').send({});
+    const created = await request(app).post('/api/events').send({
+      title: 'Modified Event', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const eventId = created.body.data.id;
+    db.prepare("UPDATE events SET sync_status = 'modified' WHERE id = ?").run(eventId);
+    db.prepare("INSERT INTO platform_events (id, event_id, platform, external_id, status, synced_at) VALUES (?, ?, ?, ?, ?, ?)").run(
+      'pe-test2', eventId, 'meetup', 'ext-2', 'active', new Date().toISOString()
+    );
+    await request(app).post('/api/services/meetup/disconnect');
+    // Event should NOT be deleted (was modified), but should be reset to local_only
+    const check = await request(app).get(`/api/events/${eventId}`);
+    expect(check.status).toBe(200);
+    expect(check.body.data.sync_status).toBe('local_only');
+  });
+
   // ── Scores ────────────────────────────────────────────
 
   it('GET /api/events/:id/score returns null for unscored event', async () => {

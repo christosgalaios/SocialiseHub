@@ -141,7 +141,7 @@ export function createPhotosRouter(db: Database): Router {
       });
       if (!searchResp.ok) {
         const text = await searchResp.text();
-        return res.status(searchResp.status).json({ error: `Unsplash error: ${text}` });
+        return res.status(502).json({ error: `Unsplash error: ${text}` });
       }
 
       const searchData = await searchResp.json() as {

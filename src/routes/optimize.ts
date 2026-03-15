@@ -104,7 +104,7 @@ export function createOptimizeRouter(db: Database, eventStore: SqliteEventStore)
 
       if (!response.ok) {
         const text = await response.text();
-        return res.status(response.status).json({ error: `Unsplash error: ${text}` });
+        return res.status(502).json({ error: `Unsplash error: ${text}` });
       }
 
       const data = await response.json() as {
