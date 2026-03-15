@@ -25,11 +25,15 @@ export function createScoreRouter(db: Database, eventStore: SqliteEventStore): R
 
       if (!row) return res.json({ score: null });
 
+      let breakdown, suggestions;
+      try { breakdown = JSON.parse(row.breakdown_json); } catch { breakdown = {}; }
+      try { suggestions = JSON.parse(row.suggestions_json); } catch { suggestions = []; }
+
       res.json({
         score: {
           overall: row.overall,
-          breakdown: JSON.parse(row.breakdown_json),
-          suggestions: JSON.parse(row.suggestions_json),
+          breakdown,
+          suggestions,
           scoredAt: row.scored_at,
         },
       });

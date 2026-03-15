@@ -195,7 +195,9 @@ export function createSyncRouter(
                   // Platform changed since last snapshot — check if local also changed
                   const localEvent = eventStore.getById(linked.eventId);
                   if (localEvent) {
-                    const localPhotos = JSON.parse(existingSnapshot.photosJson || '[]') as string[];
+                    let localPhotos: string[];
+                    try { localPhotos = JSON.parse(existingSnapshot.photosJson || '[]') as string[]; }
+                    catch { localPhotos = []; }
                     const localHash = computeSyncHash({
                       title: localEvent.title,
                       description: localEvent.description ?? '',

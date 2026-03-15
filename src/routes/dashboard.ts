@@ -483,7 +483,9 @@ Respond ONLY with the JSON array, no markdown.`;
         return res.json({ suggestions: null });
       }
 
-      const suggestions = JSON.parse(row.suggestions_json);
+      let suggestions;
+      try { suggestions = JSON.parse(row.suggestions_json); }
+      catch { return res.json({ suggestions: null }); }
       res.json({ suggestions, generatedAt: row.generated_at });
     } catch (err) {
       next(err);
