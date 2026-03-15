@@ -193,11 +193,15 @@ export class PlatformEventStore {
     // If we'd remove more than half the existing events, the pull was likely partial — skip cleanup
     if (staleRows.length > existing.length * 0.5 && existing.length > 2) return 0;
 
-    let removed = 0;
-    for (const row of staleRows) {
-      this.db.prepare('DELETE FROM platform_events WHERE id = ?').run(row.id);
-      removed++;
-    }
-    return removed;
+    const deleteStmt = this.db.prepare('DELETE FROM platform_events WHERE id = ?');
+    const deleteAll = this.db.transaction(() => {
+      let removed = 0;
+      for (const row of staleRows) {
+        deleteStmt.run(row.id);
+        removed++;
+      }
+      return removed;
+    });
+    return deleteAll();
   }
 }
