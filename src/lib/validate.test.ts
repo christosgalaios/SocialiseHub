@@ -203,6 +203,26 @@ describe('validateCreateEventInput', () => {
     expect(result.valid).toBe(false);
     expect(result.errors).toContain('capacity must be 10000 or fewer');
   });
+
+  // ── Description / Venue length ──────────────────────────
+
+  it('fails when description exceeds 5000 characters', () => {
+    const result = validateCreateEventInput({
+      ...validInput,
+      description: 'D'.repeat(5001),
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('description must be 5000 characters or fewer');
+  });
+
+  it('fails when venue exceeds 500 characters', () => {
+    const result = validateCreateEventInput({
+      ...validInput,
+      venue: 'V'.repeat(501),
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('venue must be 500 characters or fewer');
+  });
 });
 
 describe('validateUpdateEventInput', () => {
@@ -273,5 +293,28 @@ describe('validateUpdateEventInput', () => {
     const result = validateUpdateEventInput({ end_time: 'not-a-date' });
     expect(result.valid).toBe(false);
     expect(result.errors).toContain('end_time must be a valid ISO date');
+  });
+
+  it('rejects description over 5000 characters', () => {
+    const result = validateUpdateEventInput({ description: 'A'.repeat(5001) });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('description must be 5000 characters or fewer');
+  });
+
+  it('allows description up to 5000 characters', () => {
+    const result = validateUpdateEventInput({ description: 'A'.repeat(5000) });
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects venue over 500 characters', () => {
+    const result = validateUpdateEventInput({ venue: 'V'.repeat(501) });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('venue must be 500 characters or fewer');
+  });
+
+  it('rejects category over 100 characters', () => {
+    const result = validateUpdateEventInput({ category: 'C'.repeat(101) });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('category must be 100 characters or fewer');
   });
 });

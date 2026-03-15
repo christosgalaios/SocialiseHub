@@ -18,8 +18,17 @@ export function validateCreateEventInput(
     errors.push('title must be 200 characters or fewer');
   }
 
-  if (!input.description?.trim()) errors.push('description is required');
-  if (!input.venue?.trim()) errors.push('venue is required');
+  if (!input.description?.trim()) {
+    errors.push('description is required');
+  } else if (input.description!.length > 5000) {
+    errors.push('description must be 5000 characters or fewer');
+  }
+
+  if (!input.venue?.trim()) {
+    errors.push('venue is required');
+  } else if (input.venue!.length > 500) {
+    errors.push('venue must be 500 characters or fewer');
+  }
 
   if (input.price == null || input.price < 0)
     errors.push('price must be 0 or greater');
@@ -96,6 +105,24 @@ export function validateUpdateEventInput(
     const e = Date.parse(input.end_time as string);
     if (!isNaN(s) && !isNaN(e) && e <= s) {
       errors.push('end_time must be after start_time');
+    }
+  }
+
+  if ('description' in input) {
+    if (typeof input.description === 'string' && input.description.length > 5000) {
+      errors.push('description must be 5000 characters or fewer');
+    }
+  }
+
+  if ('venue' in input) {
+    if (typeof input.venue === 'string' && input.venue.length > 500) {
+      errors.push('venue must be 500 characters or fewer');
+    }
+  }
+
+  if ('category' in input) {
+    if (typeof input.category === 'string' && input.category.length > 100) {
+      errors.push('category must be 100 characters or fewer');
     }
   }
 
