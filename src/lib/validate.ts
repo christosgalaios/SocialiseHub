@@ -89,6 +89,16 @@ export function validateUpdateEventInput(
     }
   }
 
+  // Cross-field: end_time must be after start_time when both are provided
+  if ('start_time' in input && 'end_time' in input &&
+      typeof input.start_time === 'string' && typeof input.end_time === 'string') {
+    const s = Date.parse(input.start_time as string);
+    const e = Date.parse(input.end_time as string);
+    if (!isNaN(s) && !isNaN(e) && e <= s) {
+      errors.push('end_time must be after start_time');
+    }
+  }
+
   if ('price' in input) {
     if (typeof input.price !== 'number' || input.price < 0) {
       errors.push('price must be 0 or greater');

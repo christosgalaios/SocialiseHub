@@ -251,4 +251,27 @@ describe('validateUpdateEventInput', () => {
     expect(result.valid).toBe(false);
     expect(result.errors).toContain('duration_minutes must be between 1 and 1440');
   });
+
+  it('rejects end_time before start_time when both provided', () => {
+    const result = validateUpdateEventInput({
+      start_time: '2030-06-01T19:00:00Z',
+      end_time: '2030-06-01T17:00:00Z',
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('end_time must be after start_time');
+  });
+
+  it('accepts end_time after start_time when both provided', () => {
+    const result = validateUpdateEventInput({
+      start_time: '2030-06-01T17:00:00Z',
+      end_time: '2030-06-01T19:00:00Z',
+    });
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects invalid end_time format', () => {
+    const result = validateUpdateEventInput({ end_time: 'not-a-date' });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('end_time must be a valid ISO date');
+  });
 });

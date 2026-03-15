@@ -98,7 +98,8 @@ export class PlatformEventStore {
         .prepare<[string, string], PlatformEventRow>(
           'SELECT * FROM platform_events WHERE platform = ? AND external_id = ?',
         )
-        .get(input.platform, input.externalId)!;
+        .get(input.platform, input.externalId);
+      if (!updated) throw new Error(`Failed to read back platform event after update: ${input.platform}/${input.externalId}`);
       return rowToEvent(updated);
     }
 
@@ -134,7 +135,8 @@ export class PlatformEventStore {
 
     const inserted = this.db
       .prepare<[string], PlatformEventRow>('SELECT * FROM platform_events WHERE id = ?')
-      .get(id)!;
+      .get(id);
+    if (!inserted) throw new Error(`Failed to read back platform event after insert: ${id}`);
     return rowToEvent(inserted);
   }
 

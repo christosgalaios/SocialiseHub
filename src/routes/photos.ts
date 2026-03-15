@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { mkdirSync, unlinkSync, existsSync, createWriteStream } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import multer from 'multer';
 import type { Database } from '../data/database.js';
@@ -79,7 +79,8 @@ export function createPhotosRouter(db: Database): Router {
         'SELECT * FROM event_photos WHERE id = ?'
       ).get(result.lastInsertRowid as number);
 
-      res.status(201).json({ data: photoToDto(photo!) });
+      if (!photo) return res.status(500).json({ error: 'Failed to read back inserted photo' });
+      res.status(201).json({ data: photoToDto(photo) });
     } catch (err) {
       next(err);
     }
@@ -228,9 +229,13 @@ export function createPhotosRouter(db: Database): Router {
 
       if (!photo) return res.status(404).json({ error: 'Photo not found' });
 
-      // Delete file from disk
-      const filePath = join(process.cwd(), photo.photo_path.replace(/^\/data\//, 'data/'));
-      if (existsSync(filePath)) {
+      // Delete file from disk (with path traversal protection)
+      const filePath = resolve(process.cwd(), photo.photo_path.replace(/^\//, ''));
+      const safeBase = resolve(process.cwd(), 'data');
+      if (!filePath.startsWith(safeBase)) {
+        // Path resolves outside data directory — skip file deletion but still remove DB record
+        console.warn(`Photo path escapes data directory, skipping file delete: ${photo.photo_path}`);
+      } else if (existsSync(filePath)) {
         try { unlinkSync(filePath); } catch (err) {
           console.warn(`Failed to delete photo file ${filePath}:`, err);
         }
