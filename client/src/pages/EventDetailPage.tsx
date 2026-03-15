@@ -34,6 +34,8 @@ import { OptimizePanel } from '../components/OptimizePanel';
 import { ScorePanel } from '../components/ScorePanel';
 import type { ScoreBreakdown, ScoreSuggestion } from '../components/ScorePanel';
 import { PLATFORM_COLORS } from '../lib/platforms';
+import { EventTags } from '../components/EventTags';
+import { EventChecklist } from '../components/EventChecklist';
 import { useToast } from '../context/ToastContext';
 import { loadSettings } from '../lib/settings';
 import { checkEventReadiness, isReadyToPublish } from '../../../src/lib/event-readiness';
@@ -685,6 +687,18 @@ export function EventDetailPage() {
         </div>
       )}
       </div>
+
+      {/* Tags & Checklist */}
+      {!isNew && id && (
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 8 }}>
+          <div style={{ flex: '1 1 280px', minWidth: 280 }}>
+            <EventTags eventId={id} />
+          </div>
+          <div style={{ flex: '1 1 350px', minWidth: 350 }}>
+            <EventChecklist eventId={id} />
+          </div>
+        </div>
+      )}
 
       {/* Score panel */}
       {scoreData && id && (
