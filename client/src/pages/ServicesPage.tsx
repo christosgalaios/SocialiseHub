@@ -128,7 +128,7 @@ export function ServicesPage() {
   };
 
   const handleDisconnect = async (platform: PlatformName) => {
-    if (!confirm(`Disconnect from ${platform}?`)) return;
+    if (!confirm(`Disconnect from ${platform}? This will also delete all synced events, photos, notes, checklists, and scores from this platform. This cannot be undone.`)) return;
     try {
       const updated = await disconnectService(platform);
       setServices((prev) =>

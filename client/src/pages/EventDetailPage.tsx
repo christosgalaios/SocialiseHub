@@ -205,9 +205,19 @@ export function EventDetailPage() {
       durationMinutes !== event.duration_minutes ||
       (category || '') !== (event.category ?? '') ||
       startTime !== toDatetimeLocal(event.start_time) ||
-      endTime !== toDatetimeLocal(event.end_time)
+      endTime !== toDatetimeLocal(event.end_time) ||
+      shortDescription !== ((event as any).short_description ?? '') ||
+      doorsOpenTime !== toDatetimeLocal((event as any).doors_open_time) ||
+      ageRestriction !== ((event as any).age_restriction ?? '') ||
+      eventType !== ((event as any).event_type ?? 'in_person') ||
+      onlineUrl !== ((event as any).online_url ?? '') ||
+      parkingInfo !== ((event as any).parking_info ?? '') ||
+      refundPolicy !== ((event as any).refund_policy ?? '') ||
+      allowGuests !== ((event as any).allow_guests ?? 0) ||
+      rsvpOpen !== toDatetimeLocal((event as any).rsvp_open) ||
+      rsvpClose !== toDatetimeLocal((event as any).rsvp_close)
     );
-  }, [event, isNew, title, description, venue, price, capacity, durationMinutes, category, startTime, endTime]);
+  }, [event, isNew, title, description, venue, price, capacity, durationMinutes, category, startTime, endTime, shortDescription, doorsOpenTime, ageRestriction, eventType, onlineUrl, parkingInfo, refundPolicy, allowGuests, rsvpOpen, rsvpClose]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {

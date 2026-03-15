@@ -194,6 +194,7 @@ export interface SyncLogEntry {
   action: SyncAction;
   eventId?: string;
   externalId?: string;
+  eventTitle?: string;
   status: 'success' | 'error';
   message?: string;
   createdAt: string;

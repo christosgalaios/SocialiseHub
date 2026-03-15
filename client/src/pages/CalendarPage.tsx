@@ -191,6 +191,16 @@ export function CalendarPage() {
                         </div>
                       </button>
                     ))}
+                    <button
+                      style={styles.popoverNewBtn}
+                      onClick={() => {
+                        const pad = (n: number) => n.toString().padStart(2, '0');
+                        const dateStr = `${year}-${pad(month + 1)}-${pad(day)}`;
+                        nav(`/events/new?date=${dateStr}`);
+                      }}
+                    >
+                      + New Event
+                    </button>
                   </div>
                 )}
               </div>
@@ -366,6 +376,20 @@ const styles: Record<string, React.CSSProperties> = {
   popoverMeta: {
     fontSize: 11,
     color: '#7a7a7a',
+  },
+  popoverNewBtn: {
+    display: 'block',
+    width: '100%',
+    padding: '8px 12px',
+    border: 'none',
+    borderTop: '1px solid #e8e6e1',
+    background: 'none',
+    color: '#E2725B',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    textAlign: 'left' as const,
+    marginTop: 4,
   },
   summary: {
     fontSize: 14,
