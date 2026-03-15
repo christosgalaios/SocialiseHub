@@ -123,12 +123,13 @@ export function CalendarPage() {
         <div style={styles.errorBanner}>
           {error}
           <button style={styles.retryBtn} onClick={() => {
+            const cancelled = false;
             setLoading(true);
             setError(null);
             getEvents()
-              .then(r => setEvents(r.data))
-              .catch(err => setError(err instanceof Error ? err.message : 'Failed to load events'))
-              .finally(() => setLoading(false));
+              .then(r => { if (!cancelled) setEvents(r.data); })
+              .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load events'); })
+              .finally(() => { if (!cancelled) setLoading(false); });
           }}>Retry</button>
         </div>
       ) : (

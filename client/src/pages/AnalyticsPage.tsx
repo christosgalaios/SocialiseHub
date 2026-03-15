@@ -24,25 +24,28 @@ export function AnalyticsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function loadData() {
-      try {
-        const [sum, trends] = await Promise.all([getAnalyticsSummary(), getAnalyticsTrends()]);
-        if (cancelled) return;
-        setSummary(sum);
-        setAttendanceData(trends.attendanceByMonth);
-        setRevenueData(trends.revenueByMonth);
-        setFillData(trends.fillByType);
-        setTimingData(trends.timingData);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load analytics');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+  const loadData = async (signal?: { cancelled: boolean }) => {
+    try {
+      setLoading(true);
+      setError(null);
+      const [sum, trends] = await Promise.all([getAnalyticsSummary(), getAnalyticsTrends()]);
+      if (signal?.cancelled) return;
+      setSummary(sum);
+      setAttendanceData(trends.attendanceByMonth);
+      setRevenueData(trends.revenueByMonth);
+      setFillData(trends.fillByType);
+      setTimingData(trends.timingData);
+    } catch (err) {
+      if (!signal?.cancelled) setError(err instanceof Error ? err.message : 'Failed to load analytics');
+    } finally {
+      if (!signal?.cancelled) setLoading(false);
     }
-    loadData();
-    return () => { cancelled = true; };
+  };
+
+  useEffect(() => {
+    const signal = { cancelled: false };
+    loadData(signal);
+    return () => { signal.cancelled = true; };
   }, []);
 
   if (loading) {
@@ -53,7 +56,7 @@ export function AnalyticsPage() {
     return (
       <div style={styles.error}>
         <span>{error}</span>
-        <button style={styles.retryBtn} onClick={() => { setError(null); setLoading(true); window.location.reload(); }}>
+        <button style={styles.retryBtn} onClick={() => loadData()}>
           Retry
         </button>
       </div>
@@ -173,13 +176,13 @@ function getBestTiming(data: TimingDataPoint[]): string {
   if (data.length === 0) return 'No data';
   const best = data.reduce((a, b) => (a.avg_attendance ?? 0) > (b.avg_attendance ?? 0) ? a : b);
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  return `${days[best.day_of_week]}s at ${best.hour}:00`;
+  return `${days[best.day_of_week] ?? 'Unknown'}s at ${best.hour}:00`;
 }
 
 function getTopPlatform(data: FillByTypeData[]): string {
   if (data.length === 0) return 'No data';
   const best = data.reduce((a, b) => (a.avg_fill ?? 0) > (b.avg_fill ?? 0) ? a : b);
-  return `${best.platform} (${best.avg_fill}%)`;
+  return `${best.platform} (${best.avg_fill ?? 0}%)`;
 }
 
 function getBestMonth(data: AttendanceDataPoint[]): string {
