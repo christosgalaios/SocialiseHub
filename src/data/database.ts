@@ -167,6 +167,15 @@ function runMigrations(db: Database): void {
     )`);
     db.pragma('user_version = 10');
   }
+  if (currentVersion < 11) {
+    db.exec(`CREATE TABLE IF NOT EXISTS event_tags (
+      event_id TEXT NOT NULL,
+      tag TEXT NOT NULL,
+      FOREIGN KEY (event_id) REFERENCES events(id),
+      UNIQUE(event_id, tag)
+    )`);
+    db.pragma('user_version = 11');
+  }
 }
 
 function createSchema(db: Database): void {

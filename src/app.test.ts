@@ -3610,4 +3610,139 @@ describe('App', () => {
     const res = await request(app).options('/api/events');
     expect(res.status).toBe(204);
   });
+
+  // ── Tags ─────────────────────────────────────────────────
+
+  it('GET /api/events/:id/tags returns empty array initially', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Tag Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).get(`/api/events/${e.body.data.id}/tags`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+  });
+
+  it('PUT /api/events/:id/tags replaces all tags', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Tag Replace', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+
+    const res = await request(app).put(`/api/events/${id}/tags`).send({
+      tags: ['Outdoor', 'Beginner Friendly', 'FREE'],
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual(['beginner friendly', 'free', 'outdoor']);
+
+    // Replacing again should overwrite
+    const res2 = await request(app).put(`/api/events/${id}/tags`).send({ tags: ['vip'] });
+    expect(res2.body.data).toEqual(['vip']);
+  });
+
+  it('POST /api/events/:id/tags adds a single tag', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Tag Add', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+
+    const res = await request(app).post(`/api/events/${id}/tags`).send({ tag: 'Social' });
+    expect(res.status).toBe(200);
+    expect(res.body.data).toContain('social');
+
+    // Adding same tag again should be idempotent
+    const res2 = await request(app).post(`/api/events/${id}/tags`).send({ tag: 'SOCIAL' });
+    expect(res2.body.data).toEqual(['social']);
+  });
+
+  it('POST /api/events/:id/tags returns 400 for empty tag', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Empty Tag', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${e.body.data.id}/tags`).send({ tag: '   ' });
+    expect(res.status).toBe(400);
+  });
+
+  it('DELETE /api/events/:id/tags/:tag removes a tag', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Tag Delete', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    await request(app).put(`/api/events/${id}/tags`).send({ tags: ['a', 'b', 'c'] });
+
+    const res = await request(app).delete(`/api/events/${id}/tags/b`);
+    expect(res.status).toBe(200);
+
+    const list = await request(app).get(`/api/events/${id}/tags`);
+    expect(list.body.data).toEqual(['a', 'c']);
+  });
+
+  it('DELETE /api/events/:id/tags/:tag returns 404 for missing tag', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'No Tag', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).delete(`/api/events/${e.body.data.id}/tags/nonexistent`);
+    expect(res.status).toBe(404);
+  });
+
+  it('PUT /api/events/:id/tags returns 400 for over 20 tags', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Too Many Tags', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const tags = Array.from({ length: 21 }, (_, i) => `tag-${i}`);
+    const res = await request(app).put(`/api/events/${e.body.data.id}/tags`).send({ tags });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('20');
+  });
+
+  it('GET /api/tags returns all unique tags with counts', async () => {
+    const app = createTestApp();
+    const e1 = await request(app).post('/api/events').send({
+      title: 'E1', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const e2 = await request(app).post('/api/events').send({
+      title: 'E2', description: 'D', start_time: '2030-01-02T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    await request(app).put(`/api/events/${e1.body.data.id}/tags`).send({ tags: ['social', 'outdoor'] });
+    await request(app).put(`/api/events/${e2.body.data.id}/tags`).send({ tags: ['social', 'vip'] });
+
+    const res = await request(app).get('/api/tags');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([
+      { tag: 'social', count: 2 },
+      { tag: 'outdoor', count: 1 },
+      { tag: 'vip', count: 1 },
+    ]);
+  });
+
+  it('deleting an event cleans up its tags', async () => {
+    const { app, db } = createTestAppWithDb();
+    const e = await request(app).post('/api/events').send({
+      title: 'Delete Tags', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    await request(app).put(`/api/events/${id}/tags`).send({ tags: ['a', 'b'] });
+
+    await request(app).delete(`/api/events/${id}`);
+
+    // Tags should be cleaned up
+    const rows = db.prepare('SELECT * FROM event_tags WHERE event_id = ?').all(id);
+    expect(rows).toHaveLength(0);
+  });
 });

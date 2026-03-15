@@ -832,3 +832,44 @@ export async function setupService(
     body: JSON.stringify(config),
   });
 }
+
+// ── Tags ─────────────────────────────────────────────────
+
+export async function getEventTags(eventId: string): Promise<string[]> {
+  const res = await fetch(`${BASE}/events/${eventId}/tags`);
+  const body = await json<{ data: string[] }>(res);
+  return body.data;
+}
+
+export async function setEventTags(eventId: string, tags: string[]): Promise<string[]> {
+  const res = await fetch(`${BASE}/events/${eventId}/tags`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tags }),
+  });
+  const body = await json<{ data: string[] }>(res);
+  return body.data;
+}
+
+export async function addEventTag(eventId: string, tag: string): Promise<string[]> {
+  const res = await fetch(`${BASE}/events/${eventId}/tags`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tag }),
+  });
+  const body = await json<{ data: string[] }>(res);
+  return body.data;
+}
+
+export async function removeEventTag(eventId: string, tag: string): Promise<void> {
+  const res = await fetch(`${BASE}/events/${eventId}/tags/${encodeURIComponent(tag)}`, {
+    method: 'DELETE',
+  });
+  await json<{ success: boolean }>(res);
+}
+
+export async function getAllTags(): Promise<Array<{ tag: string; count: number }>> {
+  const res = await fetch(`${BASE}/tags`);
+  const body = await json<{ data: Array<{ tag: string; count: number }> }>(res);
+  return body.data;
+}
