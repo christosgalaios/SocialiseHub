@@ -267,7 +267,7 @@ export function createSyncRouter(
                 platform: svc.platform,
                 action: 'pull',
                 status: 'error',
-                message: `Failed to process event "${pe.title}": ${String(eventErr)}`,
+                message: `Failed to process "${pe.title}" from ${svc.platform}: ${eventErr instanceof Error ? eventErr.message : String(eventErr)}`,
               });
             }
           }
@@ -285,7 +285,7 @@ export function createSyncRouter(
             platform: svc.platform,
             action: 'pull',
             status: 'error',
-            message: String(err),
+            message: `Pull failed for ${svc.platform}: ${err instanceof Error ? err.message : String(err)}`,
           });
         }
       }
@@ -472,12 +472,13 @@ export function createSyncRouter(
             });
           }
         } catch (err) {
-          results.push({ platform: pe.platform, success: false, error: String(err) });
+          const errMsg = err instanceof Error ? err.message : String(err);
+          results.push({ platform: pe.platform, success: false, error: errMsg });
           syncLogStore.log({
             platform: pe.platform as PlatformName,
             action: 'push',
             status: 'error',
-            message: String(err),
+            message: `Push failed for ${pe.platform}: ${errMsg}`,
           });
         }
       }
