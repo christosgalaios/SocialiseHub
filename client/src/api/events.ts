@@ -409,6 +409,34 @@ export async function getWeeklyDigestPrompt(): Promise<{ prompt: string }> {
   return json(res);
 }
 
+export async function getPortfolio(): Promise<{
+  data: {
+    categories: Array<{
+      category: string; count: number; upcoming: number;
+      draft: number; published: number; avgPrice: number;
+      totalCapacity: number; venueCount: number;
+    }>;
+    summary: {
+      totalEvents: number; totalCategories: number;
+      upcomingEvents: number; calendarGaps: string[];
+    };
+  };
+}> {
+  const res = await fetch(`${BASE}/dashboard/portfolio`);
+  return json(res);
+}
+
+export async function getConflicts(): Promise<{
+  data: Array<{
+    events: Array<{ id: string; title: string; start_time: string; venue: string }>;
+    reason: string;
+  }>;
+  total: number;
+}> {
+  const res = await fetch(`${BASE}/dashboard/conflicts`);
+  return json(res);
+}
+
 export interface EventHealthItem {
   id: string;
   title: string;

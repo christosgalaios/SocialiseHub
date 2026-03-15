@@ -2601,6 +2601,72 @@ describe('App', () => {
     expect(res.body.prompt).toContain('Digest Test Event');
   });
 
+  // ── Portfolio ───────────────────────────────────────
+
+  it('GET /api/dashboard/portfolio returns category breakdown', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Social A', description: 'D', start_time: '2030-06-01T19:00:00Z',
+      venue: 'V1', price: 10, capacity: 30, category: 'social',
+    });
+    await request(app).post('/api/events').send({
+      title: 'Social B', description: 'D', start_time: '2030-06-15T19:00:00Z',
+      venue: 'V2', price: 15, capacity: 40, category: 'social',
+    });
+    await request(app).post('/api/events').send({
+      title: 'Quiz Night', description: 'D', start_time: '2030-07-01T19:00:00Z',
+      venue: 'V1', price: 5, capacity: 50, category: 'quiz',
+    });
+    const res = await request(app).get('/api/dashboard/portfolio');
+    expect(res.status).toBe(200);
+    expect(res.body.data.categories).toHaveLength(2);
+    expect(res.body.data.summary.totalEvents).toBe(3);
+    expect(res.body.data.summary.totalCategories).toBe(2);
+    const social = res.body.data.categories.find((c: { category: string }) => c.category === 'social');
+    expect(social.count).toBe(2);
+  });
+
+  it('GET /api/dashboard/portfolio returns empty for no events', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/dashboard/portfolio');
+    expect(res.status).toBe(200);
+    expect(res.body.data.categories).toEqual([]);
+    expect(res.body.data.summary.totalEvents).toBe(0);
+  });
+
+  // ── Conflicts ──────────────────────────────────────
+
+  it('GET /api/dashboard/conflicts detects overlapping events', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Event A', description: 'D', start_time: '2030-06-01T19:00:00Z',
+      venue: 'V1', price: 10, capacity: 30,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Event B', description: 'D', start_time: '2030-06-01T19:00:00Z',
+      venue: 'V2', price: 15, capacity: 40,
+    });
+    const res = await request(app).get('/api/dashboard/conflicts');
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(1);
+    expect(res.body.data[0].reason).toBe('same_start_time');
+  });
+
+  it('GET /api/dashboard/conflicts returns empty when no overlaps', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Morning', description: 'D', start_time: '2030-06-01T10:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Evening', description: 'D', start_time: '2030-06-01T20:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).get('/api/dashboard/conflicts');
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(0);
+  });
+
   // ── Health ──────────────────────────────────────────
 
   it('GET /api/dashboard/health returns health scores for events', async () => {

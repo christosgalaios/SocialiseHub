@@ -589,6 +589,129 @@ Keep it actionable and concise. No JSON, just plain text.`;
   });
 
   /**
+   * GET /api/dashboard/portfolio
+   * Category-level breakdown of events for portfolio management.
+   */
+  router.get('/portfolio', (_req, res, next) => {
+    try {
+      const events = eventStore.getAll().filter(e => e.status !== 'archived');
+      const now = new Date();
+
+      // Group by category
+      const byCategory: Record<string, {
+        count: number; upcoming: number; draft: number;
+        published: number; avgPrice: number; totalCapacity: number;
+        venues: Set<string>;
+      }> = {};
+
+      for (const e of events) {
+        const cat = e.category || 'uncategorized';
+        if (!byCategory[cat]) {
+          byCategory[cat] = { count: 0, upcoming: 0, draft: 0, published: 0, avgPrice: 0, totalCapacity: 0, venues: new Set() };
+        }
+        const g = byCategory[cat];
+        g.count++;
+        if (new Date(e.start_time) > now) g.upcoming++;
+        if (e.status === 'draft') g.draft++;
+        if (e.status === 'published') g.published++;
+        g.avgPrice += e.price;
+        g.totalCapacity += e.capacity;
+        if (e.venue) g.venues.add(e.venue);
+      }
+
+      const categories = Object.entries(byCategory).map(([category, g]) => ({
+        category,
+        count: g.count,
+        upcoming: g.upcoming,
+        draft: g.draft,
+        published: g.published,
+        avgPrice: g.count > 0 ? Math.round((g.avgPrice / g.count) * 100) / 100 : 0,
+        totalCapacity: g.totalCapacity,
+        venueCount: g.venues.size,
+      })).sort((a, b) => b.count - a.count);
+
+      // Calendar gaps: find weeks in the next 8 weeks with no events
+      const gaps: string[] = [];
+      for (let w = 0; w < 8; w++) {
+        const weekStart = new Date(now);
+        weekStart.setDate(weekStart.getDate() + (w * 7) - weekStart.getDay() + 1); // Monday
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        const hasEvent = events.some(e => {
+          const d = new Date(e.start_time);
+          return d >= weekStart && d <= weekEnd;
+        });
+        if (!hasEvent) {
+          gaps.push(weekStart.toISOString().slice(0, 10));
+        }
+      }
+
+      res.json({
+        data: {
+          categories,
+          summary: {
+            totalEvents: events.length,
+            totalCategories: categories.length,
+            upcomingEvents: events.filter(e => new Date(e.start_time) > now).length,
+            calendarGaps: gaps,
+          },
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/dashboard/conflicts
+   * Detects events scheduled at the same time or overlapping times.
+   */
+  router.get('/conflicts', (_req, res, next) => {
+    try {
+      const events = eventStore.getAll().filter(e => e.status !== 'archived');
+
+      // Sort by start_time
+      const sorted = [...events].sort((a, b) => a.start_time.localeCompare(b.start_time));
+
+      const conflicts: Array<{
+        events: Array<{ id: string; title: string; start_time: string; venue: string }>;
+        reason: string;
+      }> = [];
+
+      for (let i = 0; i < sorted.length; i++) {
+        for (let j = i + 1; j < sorted.length; j++) {
+          const a = sorted[i];
+          const b = sorted[j];
+
+          const aStart = new Date(a.start_time).getTime();
+          const bStart = new Date(b.start_time).getTime();
+          const aDuration = (a.duration_minutes || 120) * 60 * 1000;
+          const aEnd = aStart + aDuration;
+
+          if (bStart >= aEnd) break; // No more overlaps possible for this event
+
+          // Same time or overlapping
+          const reason = aStart === bStart
+            ? 'same_start_time'
+            : 'overlapping';
+
+          conflicts.push({
+            events: [
+              { id: a.id, title: a.title, start_time: a.start_time, venue: a.venue },
+              { id: b.id, title: b.title, start_time: b.start_time, venue: b.venue },
+            ],
+            reason,
+          });
+        }
+      }
+
+      res.json({ data: conflicts, total: conflicts.length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
    * GET /api/dashboard/health
    * Computes a health score (0-100) for each non-archived event.
    * Aggregates readiness checks, photo count, score, notes, and platform coverage.
