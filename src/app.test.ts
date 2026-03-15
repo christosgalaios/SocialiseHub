@@ -172,6 +172,36 @@ describe('App', () => {
     expect(res.body.data.connectedAt).toBeUndefined();
   });
 
+  it('POST /api/services/:platform/connect returns 400 for invalid platform', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/services/fakebook/connect').send({ apiKey: 'key' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Invalid platform');
+  });
+
+  it('POST /api/services/:platform/disconnect returns 400 for invalid platform', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/services/fakebook/disconnect');
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/services/:platform/setup stores extra data', async () => {
+    const app = createTestApp();
+    const res = await request(app)
+      .post('/api/services/meetup/setup')
+      .send({ groupUrlname: 'my-group' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.updated).toBe(true);
+  });
+
+  it('POST /api/services/:platform/setup returns 400 for invalid platform', async () => {
+    const app = createTestApp();
+    const res = await request(app)
+      .post('/api/services/fakebook/setup')
+      .send({ key: 'val' });
+    expect(res.status).toBe(400);
+  });
+
   // ── Scores ────────────────────────────────────────────
 
   it('GET /api/events/:id/score returns null for unscored event', async () => {
