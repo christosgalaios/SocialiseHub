@@ -4253,4 +4253,127 @@ describe('App', () => {
     const dayKey = tomorrow.toISOString().split('T')[0];
     expect(res.body.data[dayKey][0].checklist).toBeNull();
   });
+
+  // ── Checklist Stability ────────────────────────────────
+
+  it('PATCH checklist item sets completed_at to null when uncompleting', async () => {
+    const { app, db } = createTestAppWithDb();
+    const e = await request(app).post('/api/events').send({
+      title: 'Complete Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'Task 1' });
+
+    const list = await request(app).get(`/api/events/${id}/checklist`);
+    const itemId = list.body.data[0].id;
+
+    // Complete the item
+    await request(app).patch(`/api/events/${id}/checklist/${itemId}`).send({ completed: true });
+    const completedRow = db.prepare('SELECT completed_at FROM event_checklist WHERE id = ?').get(itemId) as { completed_at: string | null };
+    expect(completedRow.completed_at).toBeTruthy();
+
+    // Uncomplete the item
+    await request(app).patch(`/api/events/${id}/checklist/${itemId}`).send({ completed: false });
+    const uncompletedRow = db.prepare('SELECT completed_at FROM event_checklist WHERE id = ?').get(itemId) as { completed_at: string | null };
+    expect(uncompletedRow.completed_at).toBeNull();
+  });
+
+  it('PATCH checklist item with invalid itemId returns 400', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Bad ID', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).patch(`/api/events/${e.body.data.id}/checklist/abc`).send({ label: 'X' });
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH checklist rejects empty label', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Empty Label', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'Task' });
+    const list = await request(app).get(`/api/events/${id}/checklist`);
+    const itemId = list.body.data[0].id;
+
+    const res = await request(app).patch(`/api/events/${id}/checklist/${itemId}`).send({ label: '  ' });
+    expect(res.status).toBe(400);
+  });
+
+  // ── Dashboard Endpoint Tests ────────────────────────────
+
+  it('GET /api/dashboard/portfolio returns category breakdown', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Portfolio Event', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20, category: 'Social',
+    });
+    const res = await request(app).get('/api/dashboard/portfolio');
+    expect(res.status).toBe(200);
+    expect(res.body.data.categories).toBeInstanceOf(Array);
+    expect(res.body.data.summary.totalEvents).toBe(1);
+  });
+
+  it('GET /api/dashboard/conflicts returns empty for non-overlapping events', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Event A', description: 'D', start_time: '2030-01-01T10:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Event B', description: 'D', start_time: '2030-01-02T10:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).get('/api/dashboard/conflicts');
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBe(0);
+  });
+
+  it('GET /api/dashboard/conflicts detects same-time events', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Conflict A', description: 'D', start_time: '2030-06-01T19:00:00Z',
+      venue: 'V1', price: 5, capacity: 20,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Conflict B', description: 'D', start_time: '2030-06-01T19:00:00Z',
+      venue: 'V2', price: 5, capacity: 20,
+    });
+    const res = await request(app).get('/api/dashboard/conflicts');
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBeGreaterThanOrEqual(1);
+    expect(res.body.data[0].reason).toBe('same_start_time');
+  });
+
+  it('GET /api/dashboard/health returns scores for events', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Health Check Event With Long Title', description: 'A detailed description that is at least one hundred characters long to earn some health points for this test event.',
+      start_time: '2030-01-01T19:00:00Z', venue: 'Bristol Harbour', price: 10, capacity: 50,
+    });
+    const res = await request(app).get('/api/dashboard/health');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].health).toBeGreaterThan(0);
+    expect(res.body.summary.total).toBe(1);
+    expect(res.body.summary.averageHealth).toBeGreaterThan(0);
+  });
+
+  it('POST /api/dashboard/digest returns a prompt', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/dashboard/digest');
+    expect(res.status).toBe(200);
+    expect(res.body.prompt).toContain('weekly digest');
+  });
+
+  it('POST /api/dashboard/action-plan returns a prompt', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/dashboard/action-plan');
+    expect(res.status).toBe(200);
+    expect(res.body.prompt).toContain('action plan');
+  });
 });

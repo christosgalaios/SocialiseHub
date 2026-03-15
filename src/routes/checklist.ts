@@ -99,7 +99,7 @@ export function createChecklistRouter(db: Database): Router {
       const { label, completed } = req.body as { label?: string; completed?: boolean };
 
       const updates: string[] = [];
-      const values: (string | number)[] = [];
+      const values: (string | number | null)[] = [];
 
       if (typeof label === 'string') {
         if (!label.trim()) return res.status(400).json({ error: 'label must be non-empty' });
@@ -112,7 +112,7 @@ export function createChecklistRouter(db: Database): Router {
         updates.push('completed = ?');
         values.push(completed ? 1 : 0);
         updates.push('completed_at = ?');
-        values.push(completed ? new Date().toISOString() : '');
+        values.push(completed ? new Date().toISOString() : null);
       }
 
       if (updates.length === 0) {
@@ -126,7 +126,8 @@ export function createChecklistRouter(db: Database): Router {
         'SELECT * FROM event_checklist WHERE id = ?'
       ).get(itemId);
 
-      res.json({ data: rowToDto(row!) });
+      if (!row) return res.status(500).json({ error: 'Failed to read back updated item' });
+      res.json({ data: rowToDto(row) });
     } catch (err) {
       next(err);
     }
