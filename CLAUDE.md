@@ -93,7 +93,7 @@ npm run build:all          # Build server + electron + client
 ## Testing
 
 - **Framework:** Vitest
-- **Test count:** 689+ tests across 25 files
+- **Test count:** 700+ tests across 25 files
 - **Database:** Tests use in-memory SQLite (`:memory:`)
 - **HTTP:** Route tests use supertest
 
@@ -122,7 +122,7 @@ npx vitest --watch         # Watch mode
 - cleanStale includes safety checks: skips if pull is empty or would remove >50% of rows
 - Analytics queries use parameterized queries to prevent SQL injection
 - Database tests run in-memory with better-sqlite3 in Node.js (not just Electron)
-- Event creation validates: date format, end_time > start_time, duration (1-1440), title length (max 200), capacity (1-10000)
+- Event creation validates: date format, end_time > start_time, duration (1-1440), title (max 200), capacity (1-10000), description (max 5000), venue (max 500)
 - Event updates use `validateUpdateEventInput` (validates only fields present in the input)
 - Dashboard attention items flag: missing description, no photos, low score, title mismatch, no venue, no capacity, unsaved changes
 - Sync dedup uses normalized title matching with 60% length ratio requirement
@@ -142,4 +142,10 @@ npx vitest --watch         # Watch mode
 - Dashboard `/attention` accepts `?limit=` param (default 10, max 50)
 - Sync `/pull` accepts `?platform=meetup|eventbrite|headfirst` to pull from a single platform
 - React ErrorBoundary wraps all routes in App.tsx
+- Database migration v14 adds indexes on all foreign key columns (event_id) and commonly filtered columns (start_time, status)
+- Dashboard health, attention, and week endpoints use batch queries instead of per-event N+1 queries
+- Event cascade delete now includes sync_log cleanup
+- Validation enforces max lengths: description (5000), venue (500), category (100), title (200)
+- All frontend pages use ListSkeleton loading states and cancelled-flag cleanup in useEffect hooks
+- Event duration and end_time auto-sync in EventDetailPage (changing one computes the other)
 - All pages use cancelled-flag cleanup pattern for unmount safety

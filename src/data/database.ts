@@ -194,6 +194,22 @@ function runMigrations(db: Database): void {
     try { db.exec('ALTER TABLE events ADD COLUMN actual_revenue REAL'); } catch { /* exists */ }
     db.pragma('user_version = 13');
   }
+  if (currentVersion < 14) {
+    // Add indexes on foreign key columns for faster lookups and cascade deletes
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_platform_events_event_id ON platform_events(event_id);
+      CREATE INDEX IF NOT EXISTS idx_event_photos_event_id ON event_photos(event_id);
+      CREATE INDEX IF NOT EXISTS idx_event_scores_event_id ON event_scores(event_id);
+      CREATE INDEX IF NOT EXISTS idx_event_notes_event_id ON event_notes(event_id);
+      CREATE INDEX IF NOT EXISTS idx_event_tags_event_id ON event_tags(event_id);
+      CREATE INDEX IF NOT EXISTS idx_event_checklist_event_id ON event_checklist(event_id);
+      CREATE INDEX IF NOT EXISTS idx_sync_log_event_id ON sync_log(event_id);
+      CREATE INDEX IF NOT EXISTS idx_event_sync_snapshots_event_id ON event_sync_snapshots(event_id);
+      CREATE INDEX IF NOT EXISTS idx_events_start_time ON events(start_time);
+      CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
+    `);
+    db.pragma('user_version = 14');
+  }
 }
 
 function createSchema(db: Database): void {
