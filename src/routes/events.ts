@@ -18,9 +18,31 @@ export function createEventsRouter(
 ): Router {
   const router = Router();
 
-  router.get('/', (_req, res, next) => {
+  router.get('/', (req, res, next) => {
     try {
-      const events = store.getAll();
+      let events = store.getAll();
+
+      // Filter by status (draft, published, cancelled)
+      const status = req.query.status as string | undefined;
+      if (status) events = events.filter(e => e.status === status);
+
+      // Filter by sync_status (synced, modified, local_only)
+      const syncStatus = req.query.sync_status as string | undefined;
+      if (syncStatus) events = events.filter(e => e.sync_status === syncStatus);
+
+      // Search by title (case-insensitive substring match)
+      const search = req.query.search as string | undefined;
+      if (search) {
+        const q = search.toLowerCase();
+        events = events.filter(e => e.title.toLowerCase().includes(q));
+      }
+
+      // Filter upcoming only
+      if (req.query.upcoming === 'true') {
+        const now = new Date().toISOString();
+        events = events.filter(e => e.start_time > now);
+      }
+
       res.json({ data: events, total: events.length });
     } catch (err) {
       next(err);
