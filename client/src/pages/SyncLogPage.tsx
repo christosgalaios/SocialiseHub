@@ -44,7 +44,11 @@ export function SyncLogPage() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    load().then(() => { if (cancelled) return; });
+    return () => { cancelled = true; };
+  }, [load]);
 
   return (
     <div>

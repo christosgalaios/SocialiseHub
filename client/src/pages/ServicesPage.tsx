@@ -8,6 +8,7 @@ import {
   setupService,
 } from '../api/events';
 import { PLATFORM_COLORS, PLATFORM_ICONS } from '../lib/platforms';
+import { ListSkeleton } from '../components/Skeleton';
 
 // Electron API (available when running inside Electron)
 declare global {
@@ -56,7 +57,11 @@ export function ServicesPage() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    load().then(() => { if (cancelled) return; });
+    return () => { cancelled = true; };
+  }, [load]);
 
   // Subscribe to automation status and result events
   useEffect(() => {
@@ -134,7 +139,7 @@ export function ServicesPage() {
     }
   };
 
-  if (loading) return <p style={{ color: '#7a7a7a' }}>Loading services...</p>;
+  if (loading) return <ListSkeleton rows={3} />;
 
   return (
     <div>
