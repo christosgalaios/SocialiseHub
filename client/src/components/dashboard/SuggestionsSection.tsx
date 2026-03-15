@@ -27,6 +27,7 @@ export function SuggestionsSection() {
   const [suggestions, setSuggestions] = useState<DashboardSuggestion[] | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [aiModal, setAiModal] = useState<{ title: string; prompt: string; responseFormat: 'json' | 'text'; onSubmit: (r: string) => void } | null>(null);
 
   const load = useCallback(async () => {
@@ -39,7 +40,11 @@ export function SuggestionsSection() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    load().then(() => { if (cancelled) return; });
+    return () => { cancelled = true; };
+  }, [load]);
 
   const handleRefresh = useCallback(async () => {
     setLoading(true);
@@ -56,8 +61,8 @@ export function SuggestionsSection() {
             const parsed = JSON.parse(arrayMatch ? arrayMatch[1] : rawResponse) as DashboardSuggestion[];
             await storeSuggestions(parsed);
             await load();
-          } catch (err) {
-            console.error('[suggestions] Failed to parse/store:', err);
+          } catch {
+            setError('Failed to parse AI response — try again');
           }
         },
       });
@@ -90,6 +95,10 @@ export function SuggestionsSection() {
           <span style={styles.spinner} />
           <span style={styles.loadingText}>Generating suggestions…</span>
         </div>
+      )}
+
+      {error && (
+        <div style={{ color: '#dc2626', fontSize: 13, padding: '8px 0' }}>{error}</div>
       )}
 
       {!loading && suggestions === null && (

@@ -78,7 +78,9 @@ export function ServicesPage() {
         // Mark service as connected in the database
         try {
           await connectService(platform, { automationConnected: 'true' });
-        } catch { /* ignore */ }
+        } catch {
+          setError('Connected but failed to save connection status');
+        }
 
         // Extract platform-specific data from automation result and store it
         try {
@@ -92,7 +94,6 @@ export function ServicesPage() {
             await setupService(platform, { organizationId: data.organizationId, organizationName: data.organizationName });
           }
         } catch (err) {
-          console.error('Failed to store platform setup data:', err);
           setError(`Connected but failed to save config: ${err instanceof Error ? err.message : 'unknown error'}`);
         }
 
