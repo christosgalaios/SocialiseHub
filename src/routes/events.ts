@@ -434,6 +434,17 @@ export function createEventsRouter(
         else past++;
       }
 
+      // Tag stats
+      const byTag: Record<string, number> = {};
+      if (db) {
+        const tagRows = db.prepare(
+          'SELECT tag, COUNT(*) as count FROM event_tags GROUP BY tag ORDER BY count DESC',
+        ).all() as Array<{ tag: string; count: number }>;
+        for (const row of tagRows) {
+          byTag[row.tag] = row.count;
+        }
+      }
+
       // Activity stats
       const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
       const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -457,6 +468,7 @@ export function createEventsRouter(
           bySyncStatus,
           byCategory,
           byVenue,
+          byTag,
           upcoming,
           past,
           activity: {

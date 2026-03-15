@@ -77,6 +77,7 @@ export function EventDetailPage() {
   const [venue, setVenue] = useState('');
   const [price, setPrice] = useState(0);
   const [capacity, setCapacity] = useState(50);
+  const [category, setCategory] = useState('');
   const [actualAttendance, setActualAttendance] = useState<number | undefined>(undefined);
   const [actualRevenue, setActualRevenue] = useState<number | undefined>(undefined);
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformName[]>([]);
@@ -135,6 +136,7 @@ export function EventDetailPage() {
         setVenue(ev.venue);
         setPrice(ev.price);
         setCapacity(ev.capacity);
+        setCategory(ev.category ?? '');
         setActualAttendance(ev.actual_attendance);
         setActualRevenue(ev.actual_revenue);
         setSelectedPlatforms(ev.platforms.map((p) => p.platform));
@@ -250,6 +252,7 @@ export function EventDetailPage() {
     venue,
     price,
     capacity,
+    category: category || undefined,
     platforms: selectedPlatforms,
   });
 
@@ -455,6 +458,7 @@ export function EventDetailPage() {
     setVenue(ev.venue);
     setPrice(ev.price);
     setCapacity(ev.capacity);
+    setCategory(ev.category ?? '');
     setActualAttendance(ev.actual_attendance);
     setActualRevenue(ev.actual_revenue);
     setSelectedPlatforms(ev.platforms.map((p) => p.platform));
@@ -543,6 +547,7 @@ export function EventDetailPage() {
                 setVenue(ev.venue);
                 setPrice(ev.price);
                 setCapacity(ev.capacity);
+                setCategory(ev.category ?? '');
                 setActualAttendance(ev.actual_attendance);
                 setActualRevenue(ev.actual_revenue);
                 setSelectedPlatforms(ev.platforms.map((p) => p.platform));
@@ -596,6 +601,16 @@ export function EventDetailPage() {
               onChange={(e) => setVenue(e.target.value)}
               placeholder="Venue name"
               required
+            />
+          </label>
+
+          <label style={styles.field}>
+            <span style={styles.label}>Category</span>
+            <input
+              style={styles.input}
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="e.g. workshop, social, networking"
             />
           </label>
 
@@ -695,6 +710,14 @@ export function EventDetailPage() {
             placeholder="Describe your event..."
             required
           />
+          <span style={{
+            fontSize: 11,
+            color: description.length < 100 ? '#E2725B' : description.length < 250 ? '#f0a500' : '#2D9E6B',
+            textAlign: 'right',
+            marginTop: 2,
+          }}>
+            {description.length} chars{description.length < 100 ? ' (min 100 recommended)' : description.length < 250 ? ' (250+ for best score)' : ''}
+          </span>
         </label>
 
         {/* Photos */}
