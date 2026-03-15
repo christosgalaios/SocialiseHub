@@ -168,6 +168,7 @@ function createSchema(db: Database): void {
       capacity INTEGER,
       image_url TEXT,
       status TEXT DEFAULT 'draft',
+      sync_status TEXT DEFAULT 'local_only',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
