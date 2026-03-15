@@ -692,6 +692,38 @@ describe('App', () => {
     expect(res.body.error).toContain('category');
   });
 
+  // ── Batch Reschedule ─────────────────────────────────
+
+  it('PATCH /api/events/batch/reschedule shifts events by offset days', async () => {
+    const app = createTestApp();
+    const e1 = await request(app).post('/api/events').send({
+      title: 'Shift Me', description: 'D', start_time: '2030-06-15T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app)
+      .patch('/api/events/batch/reschedule')
+      .send({ ids: [e1.body.data.id], offsetDays: 7 });
+    expect(res.status).toBe(200);
+    expect(res.body.updated).toBe(1);
+    expect(res.body.data[0].newDate).toContain('2030-06-22');
+  });
+
+  it('PATCH /api/events/batch/reschedule returns 400 for zero offset', async () => {
+    const app = createTestApp();
+    const res = await request(app)
+      .patch('/api/events/batch/reschedule')
+      .send({ ids: ['x'], offsetDays: 0 });
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH /api/events/batch/reschedule returns 400 for offset > 365', async () => {
+    const app = createTestApp();
+    const res = await request(app)
+      .patch('/api/events/batch/reschedule')
+      .send({ ids: ['x'], offsetDays: 400 });
+    expect(res.status).toBe(400);
+  });
+
   // ── Batch Venue ──────────────────────────────────────
 
   it('PATCH /api/events/batch/venue updates venue for multiple events', async () => {
@@ -2679,6 +2711,28 @@ describe('App', () => {
     const res = await request(app).post('/api/dashboard/digest');
     expect(res.status).toBe(200);
     expect(res.body.prompt).toContain('Digest Test Event');
+  });
+
+  // ── Action Plan ─────────────────────────────────────
+
+  it('POST /api/dashboard/action-plan returns a strategic prompt', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Draft Event', description: 'D', start_time: '2030-06-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20, category: 'social',
+    });
+    const res = await request(app).post('/api/dashboard/action-plan');
+    expect(res.status).toBe(200);
+    expect(res.body.prompt).toBeDefined();
+    expect(res.body.prompt).toContain('Draft Event');
+    expect(res.body.prompt).toContain('action plan');
+  });
+
+  it('POST /api/dashboard/action-plan works with no events', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/dashboard/action-plan');
+    expect(res.status).toBe(200);
+    expect(res.body.prompt).toContain('Total active events: 0');
   });
 
   // ── Portfolio ───────────────────────────────────────

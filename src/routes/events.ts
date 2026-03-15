@@ -204,6 +204,54 @@ export function createEventsRouter(
     }
   });
 
+  /**
+   * PATCH /api/events/batch/reschedule
+   * Shifts multiple events by a fixed offset (days) or to specific dates.
+   */
+  router.patch('/batch/reschedule', (req, res, next) => {
+    try {
+      const { ids, offsetDays } = req.body as { ids?: string[]; offsetDays?: number };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+      if (typeof offsetDays !== 'number' || !Number.isInteger(offsetDays) || offsetDays === 0) {
+        return res.status(400).json({ error: 'offsetDays must be a non-zero integer' });
+      }
+      if (Math.abs(offsetDays) > 365) {
+        return res.status(400).json({ error: 'offsetDays must be between -365 and 365' });
+      }
+
+      const results: { id: string; success: boolean; newDate?: string; error?: string }[] = [];
+      for (const id of ids) {
+        const event = store.getById(id);
+        if (!event) {
+          results.push({ id, success: false, error: 'Not found' });
+          continue;
+        }
+        const oldDate = new Date(event.start_time);
+        oldDate.setDate(oldDate.getDate() + offsetDays);
+        const newStartTime = oldDate.toISOString();
+
+        const updateInput: Record<string, unknown> = { start_time: newStartTime };
+        if (event.end_time) {
+          const oldEnd = new Date(event.end_time);
+          oldEnd.setDate(oldEnd.getDate() + offsetDays);
+          updateInput.end_time = oldEnd.toISOString();
+        }
+
+        store.update(id, updateInput);
+        results.push({ id, success: true, newDate: newStartTime });
+      }
+
+      res.json({ data: results, updated: results.filter(r => r.success).length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.delete('/batch', (req, res, next) => {
     try {
       const { ids } = req.body as { ids?: string[] };

@@ -309,6 +309,18 @@ export async function cloneEvent(
   return body.data;
 }
 
+export async function batchReschedule(
+  ids: string[],
+  offsetDays: number,
+): Promise<{ data: Array<{ id: string; success: boolean; newDate?: string }>; updated: number }> {
+  const res = await fetch(`${BASE}/events/batch/reschedule`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, offsetDays }),
+  });
+  return json(res);
+}
+
 export async function batchUpdateVenue(ids: string[], venue: string): Promise<{ updated: number }> {
   const res = await fetch(`${BASE}/events/batch/venue`, {
     method: 'PATCH',
@@ -406,6 +418,11 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
 
 export async function getWeeklyDigestPrompt(): Promise<{ prompt: string }> {
   const res = await fetch(`${BASE}/dashboard/digest`, { method: 'POST' });
+  return json(res);
+}
+
+export async function getActionPlanPrompt(): Promise<{ prompt: string }> {
+  const res = await fetch(`${BASE}/dashboard/action-plan`, { method: 'POST' });
   return json(res);
 }
 

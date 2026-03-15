@@ -589,6 +589,86 @@ Keep it actionable and concise. No JSON, just plain text.`;
   });
 
   /**
+   * POST /api/dashboard/action-plan
+   * Compose an AI prompt analysing the full event portfolio with
+   * health scores, conflicts, gaps, and venue diversity to produce
+   * a prioritised action plan.
+   */
+  router.post('/action-plan', (_req, res, next) => {
+    try {
+      const events = eventStore.getAll().filter(e => e.status !== 'archived');
+      const now = new Date();
+
+      // Categorise events
+      const drafts = events.filter(e => e.status === 'draft');
+      const published = events.filter(e => e.status === 'published');
+      const upcoming = events.filter(e => new Date(e.start_time) > now);
+      const thisMonth = events.filter(e => {
+        const d = new Date(e.start_time);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      });
+
+      // Health data
+      const healthData = events.map(e => {
+        let score = 0;
+        if (e.title && e.title.length >= 5) score += 10;
+        if (e.description && e.description.length >= 100) score += 15;
+        if (e.venue && e.venue.length > 0) score += 10;
+        if (e.price !== undefined) score += 5;
+        if (e.capacity && e.capacity > 0) score += 5;
+        if (e.category) score += 5;
+        if (new Date(e.start_time) > now) score += 10;
+        score += Math.min(e.platforms.length * 10, 30);
+        return { title: e.title, health: Math.min(score, 100), status: e.status };
+      });
+      const lowHealth = healthData.filter(h => h.health < 50);
+
+      // Venue diversity
+      const venues = new Set(events.map(e => e.venue).filter(Boolean));
+      const categories = new Set(events.map(e => e.category).filter(Boolean));
+
+      const prompt = `You are a strategic advisor for Socialise, a Bristol-based events company for young professionals.
+
+## Current Portfolio Snapshot (${now.toISOString().slice(0, 10)})
+- Total active events: ${events.length} (${drafts.length} drafts, ${published.length} published)
+- Upcoming events: ${upcoming.length}
+- Events this month: ${thisMonth.length}
+- Unique venues: ${venues.size}
+- Categories in use: ${[...categories].join(', ') || 'none set'}
+
+## Events Needing Attention
+${lowHealth.length > 0
+  ? lowHealth.map(h => `- "${h.title}" — health ${h.health}/100 [${h.status}]`).join('\n')
+  : '- All events are in good health'}
+
+## Draft Events (need publishing)
+${drafts.length > 0
+  ? drafts.slice(0, 10).map(e => `- "${e.title}" (${e.start_time.slice(0, 10)}) at ${e.venue || 'no venue'}`).join('\n')
+  : '- No drafts pending'}
+
+## Upcoming Events
+${upcoming.slice(0, 10).map(e => {
+  const days = Math.ceil((new Date(e.start_time).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  return `- "${e.title}" in ${days} days (${e.start_time.slice(0, 10)}) — ${e.platforms.length} platform(s)`;
+}).join('\n') || '- No upcoming events'}
+
+## What I Need
+Produce a prioritised action plan with 5-7 items. For each item:
+1. **Priority** (P1/P2/P3)
+2. **Action** — What specifically to do
+3. **Why** — Business impact
+4. **Timeline** — When to do it
+
+Focus on revenue impact, audience growth, and operational efficiency.
+Be direct. No preamble.`;
+
+      res.json({ prompt });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
    * GET /api/dashboard/portfolio
    * Category-level breakdown of events for portfolio management.
    */
