@@ -5683,4 +5683,64 @@ describe('App', () => {
     const detail = await request(app).get(`/api/events/${id}`);
     expect(detail.body.data.title.length).toBe(200);
   });
+
+  // M126 tests
+  it('PATCH checklist reorder rejects duplicate IDs', async () => {
+    const { app, db } = createTestAppWithDb();
+    const ev = await request(app).post('/api/events').send({
+      title: 'Checklist Dup', description: 'D',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const item = await request(app).post(`/api/events/${ev.body.data.id}/checklist`).send({ label: 'Task 1' });
+    const res = await request(app)
+      .patch(`/api/events/${ev.body.data.id}/checklist/reorder`)
+      .send({ order: [item.body.data.id, item.body.data.id] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('duplicate');
+  });
+
+  it('PATCH checklist reorder rejects IDs from other events', async () => {
+    const app = createTestApp();
+    const ev1 = await request(app).post('/api/events').send({
+      title: 'Event A', description: 'D',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const ev2 = await request(app).post('/api/events').send({
+      title: 'Event B', description: 'D',
+      start_time: '2030-06-02T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const item = await request(app).post(`/api/events/${ev2.body.data.id}/checklist`).send({ label: 'Task B' });
+    const res = await request(app)
+      .patch(`/api/events/${ev1.body.data.id}/checklist/reorder`)
+      .send({ order: [item.body.data.id] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('not found');
+  });
+
+  it('services disconnect cascade-deletes related event data', async () => {
+    const { app, db } = createTestAppWithDb();
+    // Create a service
+    db.prepare("INSERT OR REPLACE INTO services (platform, connected, connected_at) VALUES ('meetup', 1, datetime('now'))").run();
+    // Create an event marked as synced
+    const ev = await request(app).post('/api/events').send({
+      title: 'Synced Event', description: 'D',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const eventId = ev.body.data.id;
+    db.prepare("UPDATE events SET sync_status = 'synced' WHERE id = ?").run(eventId);
+    // Link it to a platform event
+    db.prepare("INSERT INTO platform_events (id, platform, external_id, title, event_id, synced_at) VALUES ('pe1', 'meetup', 'ext1', 'Synced Event', ?, datetime('now'))").run(eventId);
+    // Add related data
+    db.prepare("INSERT INTO event_notes (event_id, content, author, created_at) VALUES (?, 'note', 'mgr', datetime('now'))").run(eventId);
+    db.prepare("INSERT INTO event_checklist (event_id, label, sort_order, created_at) VALUES (?, 'task', 0, datetime('now'))").run(eventId);
+    // Disconnect
+    await request(app).post('/api/services/meetup/disconnect');
+    // Verify event and related data are gone
+    const event = db.prepare('SELECT id FROM events WHERE id = ?').get(eventId);
+    expect(event).toBeUndefined();
+    const notes = db.prepare('SELECT id FROM event_notes WHERE event_id = ?').all(eventId);
+    expect(notes).toHaveLength(0);
+    const checklist = db.prepare('SELECT id FROM event_checklist WHERE event_id = ?').all(eventId);
+    expect(checklist).toHaveLength(0);
+  });
 });

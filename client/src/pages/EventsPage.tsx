@@ -38,7 +38,7 @@ export function EventsPage() {
   const nav = useNavigate();
   const { showToast } = useToast();
 
-  const load = async () => {
+  const load = async (signal?: { cancelled: boolean }) => {
     try {
       setLoading(true);
       setError(null);
@@ -47,16 +47,20 @@ export function EventsPage() {
       if (sortBy) filters.sort_by = sortBy;
       if (sortOrder) filters.order = sortOrder;
       const { data } = await getEvents(Object.keys(filters).length > 0 ? filters : undefined);
+      if (signal?.cancelled) return;
       setEvents(data);
     } catch (err) {
+      if (signal?.cancelled) return;
       setError(err instanceof Error ? err.message : 'Failed to load events');
     } finally {
-      setLoading(false);
+      if (!signal?.cancelled) setLoading(false);
     }
   };
 
   useEffect(() => {
-    load();
+    const signal = { cancelled: false };
+    load(signal);
+    return () => { signal.cancelled = true; };
   }, [tagFilter, sortBy, sortOrder]);
 
   useEffect(() => {

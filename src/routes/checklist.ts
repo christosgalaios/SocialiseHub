@@ -83,6 +83,54 @@ export function createChecklistRouter(db: Database): Router {
   });
 
   /**
+   * PATCH /api/events/:id/checklist/reorder
+   * Reorder checklist items. Body: { order: number[] } — array of item IDs in desired order.
+   * NOTE: Must be registered BEFORE /:id/checklist/:itemId to avoid "reorder" matching :itemId.
+   */
+  router.patch('/:id/checklist/reorder', (req, res, next) => {
+    try {
+      const { order } = req.body as { order?: number[] };
+      if (!Array.isArray(order) || order.length === 0) {
+        return res.status(400).json({ error: 'order must be a non-empty array of item IDs' });
+      }
+
+      // Validate no duplicates
+      if (new Set(order).size !== order.length) {
+        return res.status(400).json({ error: 'order must not contain duplicate item IDs' });
+      }
+
+      // Validate all IDs belong to this event
+      const existingItems = db.prepare<[string], { id: number }>(
+        'SELECT id FROM event_checklist WHERE event_id = ?'
+      ).all(req.params.id);
+      const existingIds = new Set(existingItems.map(i => i.id));
+      const invalidIds = order.filter(id => !existingIds.has(id));
+      if (invalidIds.length > 0) {
+        return res.status(400).json({ error: `Item IDs not found for this event: ${invalidIds.join(', ')}` });
+      }
+
+      const reorder = db.transaction(() => {
+        const update = db.prepare(
+          'UPDATE event_checklist SET sort_order = ? WHERE id = ? AND event_id = ?'
+        );
+        for (let i = 0; i < order.length; i++) {
+          update.run(i, order[i], req.params.id);
+        }
+      });
+      reorder();
+
+      // Return updated list
+      const rows = db.prepare<[string], ChecklistRow>(
+        'SELECT * FROM event_checklist WHERE event_id = ? ORDER BY sort_order ASC, id ASC'
+      ).all(req.params.id);
+
+      res.json({ data: rows.map(rowToDto) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
    * PATCH /api/events/:id/checklist/:itemId
    * Update a checklist item. Body: { label?, completed? }
    */
@@ -148,38 +196,6 @@ export function createChecklistRouter(db: Database): Router {
 
       if (result.changes === 0) return res.status(404).json({ error: 'Checklist item not found' });
       res.json({ success: true });
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  /**
-   * PATCH /api/events/:id/checklist/reorder
-   * Reorder checklist items. Body: { order: number[] } — array of item IDs in desired order.
-   */
-  router.patch('/:id/checklist/reorder', (req, res, next) => {
-    try {
-      const { order } = req.body as { order?: number[] };
-      if (!Array.isArray(order) || order.length === 0) {
-        return res.status(400).json({ error: 'order must be a non-empty array of item IDs' });
-      }
-
-      const reorder = db.transaction(() => {
-        const update = db.prepare(
-          'UPDATE event_checklist SET sort_order = ? WHERE id = ? AND event_id = ?'
-        );
-        for (let i = 0; i < order.length; i++) {
-          update.run(i, order[i], req.params.id);
-        }
-      });
-      reorder();
-
-      // Return updated list
-      const rows = db.prepare<[string], ChecklistRow>(
-        'SELECT * FROM event_checklist WHERE event_id = ? ORDER BY sort_order ASC, id ASC'
-      ).all(req.params.id);
-
-      res.json({ data: rows.map(rowToDto) });
     } catch (err) {
       next(err);
     }

@@ -68,9 +68,20 @@ export function createServicesRouter(serviceStore: SqliteServiceStore, db?: Data
             // Only delete if no other platform links remain and event is sync-created
             if (otherLinks.cnt === 0) {
               // Delete synced events (purely from platform, no local edits)
-              const deleted = db.prepare("DELETE FROM events WHERE id = ? AND sync_status = 'synced'").run(event_id);
-              // If event was modified locally (not deleted), reset to local_only since it's no longer linked
-              if (deleted.changes === 0) {
+              // Must cascade-delete related data first
+              const canDelete = db.prepare("SELECT id FROM events WHERE id = ? AND sync_status = 'synced'").get(event_id);
+              if (canDelete) {
+                db.prepare('DELETE FROM event_sync_snapshots WHERE event_id = ?').run(event_id);
+                db.prepare('DELETE FROM event_photos WHERE event_id = ?').run(event_id);
+                db.prepare('DELETE FROM event_scores WHERE event_id = ?').run(event_id);
+                db.prepare('DELETE FROM event_snapshots WHERE event_id = ?').run(event_id);
+                db.prepare('DELETE FROM event_notes WHERE event_id = ?').run(event_id);
+                db.prepare('DELETE FROM event_tags WHERE event_id = ?').run(event_id);
+                db.prepare('DELETE FROM event_checklist WHERE event_id = ?').run(event_id);
+                db.prepare('DELETE FROM sync_log WHERE event_id = ?').run(event_id);
+                db.prepare("DELETE FROM events WHERE id = ?").run(event_id);
+              } else {
+                // If event was modified locally (not deleted), reset to local_only since it's no longer linked
                 db.prepare("UPDATE events SET sync_status = 'local_only' WHERE id = ? AND sync_status = 'modified'").run(event_id);
               }
             }
