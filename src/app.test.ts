@@ -2581,4 +2581,94 @@ describe('App', () => {
     expect(res.status).toBe(201);
     expect(res.body.data.title).toBe('Trimmed Title');
   });
+
+  // ── Full Lifecycle Integration Test ─────────────────────
+
+  it('full event lifecycle: create → note → score → optimize → duplicate → archive → unarchive → delete', async () => {
+    const app = createTestApp();
+
+    // 1. Create event
+    const createRes = await request(app).post('/api/events').send({
+      title: 'Lifecycle Event',
+      description: 'A complete event for lifecycle testing',
+      start_time: '2030-08-01T19:00:00Z',
+      venue: 'Bristol Harbour',
+      price: 12,
+      capacity: 40,
+      category: 'Social',
+    });
+    expect(createRes.status).toBe(201);
+    const id = createRes.body.data.id;
+
+    // 2. Add a note
+    const noteRes = await request(app).post(`/api/events/${id}/notes`).send({
+      content: 'Need to confirm venue booking',
+    });
+    expect(noteRes.status).toBe(201);
+
+    // 3. Check readiness
+    const readinessRes = await request(app).get(`/api/events/${id}/readiness`);
+    expect(readinessRes.status).toBe(200);
+    expect(typeof readinessRes.body.data.score).toBe('number');
+
+    // 4. Generate optimize prompt
+    const optimizeRes = await request(app).post(`/api/events/${id}/optimize`);
+    expect(optimizeRes.status).toBe(200);
+    expect(optimizeRes.body.prompt).toContain('Lifecycle Event');
+
+    // 5. Save a score
+    const scoreRes = await request(app).post(`/api/events/${id}/score/save`).send({
+      overall: 68,
+      breakdown: { seo: 50, timing: 80, pricing: 70, description: 60, photos: 40 },
+      suggestions: [{ field: 'photos', current_issue: 'No photos', suggestion: 'Add 3 photos', impact: 15 }],
+    });
+    expect(scoreRes.status).toBe(200);
+
+    // 6. Verify score retrieval
+    const getScoreRes = await request(app).get(`/api/events/${id}/score`);
+    expect(getScoreRes.body.score.overall).toBe(68);
+
+    // 7. Update the event
+    const updateRes = await request(app).put(`/api/events/${id}`).send({
+      title: 'Lifecycle Event - Updated',
+    });
+    expect(updateRes.status).toBe(200);
+    expect(updateRes.body.data.title).toBe('Lifecycle Event - Updated');
+
+    // 8. Duplicate the event
+    const dupRes = await request(app).post(`/api/events/${id}/duplicate`);
+    expect(dupRes.status).toBe(201);
+    expect(dupRes.body.data.title).toContain('Copy of');
+    const dupId = dupRes.body.data.id;
+
+    // 9. Archive the original
+    const archiveRes = await request(app).post('/api/events/batch/archive').send({ ids: [id] });
+    expect(archiveRes.status).toBe(200);
+
+    // 10. Verify it's hidden from default list
+    const listRes = await request(app).get('/api/events');
+    expect(listRes.body.data.find((e: { id: string }) => e.id === id)).toBeUndefined();
+    // But the duplicate is still there
+    expect(listRes.body.data.find((e: { id: string }) => e.id === dupId)).toBeDefined();
+
+    // 11. Unarchive it
+    const unarchiveRes = await request(app).post('/api/events/batch/archive').send({ ids: [id], unarchive: true });
+    expect(unarchiveRes.status).toBe(200);
+
+    // 12. Undo optimize (restore title)
+    const undoRes = await request(app).post(`/api/events/${id}/optimize/undo`);
+    expect(undoRes.status).toBe(200);
+    expect(undoRes.body.data.title).toBe('Lifecycle Event'); // snapshot has original title
+
+    // 13. Delete both events
+    const deleteRes = await request(app).delete(`/api/events/${id}`);
+    expect(deleteRes.status).toBe(204);
+
+    const deleteDupRes = await request(app).delete(`/api/events/${dupId}`);
+    expect(deleteDupRes.status).toBe(204);
+
+    // 14. Verify they're gone
+    const finalList = await request(app).get('/api/events?include_archived=true');
+    expect(finalList.body.data).toHaveLength(0);
+  });
 });
