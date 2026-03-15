@@ -386,7 +386,7 @@ export async function startAutomation(platform: PlatformName, action: string, da
 
 export async function cancelAutomation(): Promise<void> {
   if (window.electronAPI) {
-    await (window.electronAPI as Record<string, Function>).cancelAutomation();
+    await (window.electronAPI as unknown as Record<string, Function>).cancelAutomation();
   }
 }
 

@@ -11,6 +11,7 @@ const STATUS_COLORS: Record<EventStatus, { bg: string; color: string }> = {
   draft: { bg: '#f0f0f0', color: '#666' },
   published: { bg: '#e6f4ea', color: '#1e7e34' },
   cancelled: { bg: '#fce8e6', color: '#c0392b' },
+  archived: { bg: '#e8e6e1', color: '#9ca3af' },
 };
 
 const PLATFORM_OPTIONS: { value: string; label: string }[] = [

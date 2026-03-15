@@ -9,11 +9,6 @@ export interface ScoreSuggestion {
 }
 
 export interface ScoreBreakdown {
-  seo: number;
-  timing: number;
-  pricing: number;
-  description: number;
-  photos: number;
   [key: string]: number;
 }
 
