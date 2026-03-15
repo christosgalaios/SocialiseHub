@@ -157,6 +157,18 @@ export async function getCalendar(month?: string): Promise<{ data: CalendarDay[]
   return json(res);
 }
 
+export interface ReadinessResult {
+  checks: Array<{ field: string; label: string; passed: boolean; severity: string }>;
+  score: number;
+  ready: boolean;
+}
+
+export async function getEventReadiness(id: string): Promise<ReadinessResult> {
+  const res = await fetch(`${BASE}/events/${id}/readiness`);
+  const body = await json<{ data: ReadinessResult }>(res);
+  return body.data;
+}
+
 export async function getEventPlatforms(id: string): Promise<import('@shared/types').PlatformEvent[]> {
   const res = await fetch(`${BASE}/events/${id}/platforms`);
   const body = await json<{ data: import('@shared/types').PlatformEvent[] }>(res);

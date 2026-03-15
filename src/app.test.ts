@@ -986,6 +986,42 @@ describe('App', () => {
     expect(res.body.prompt).toContain('Bristol');
   });
 
+  // ── Event Readiness ──────────────────────────────────
+
+  it('GET /api/events/:id/readiness returns readiness checks', async () => {
+    const app = createTestApp();
+    const longDesc = 'A'.repeat(101); // passes 100+ char check
+    const created = await request(app).post('/api/events').send({
+      title: 'Ready Event Fully Prepared', description: longDesc, start_time: '2030-06-01T19:00:00Z',
+      venue: 'The Lanes', price: 10, capacity: 50,
+    });
+    const res = await request(app).get(`/api/events/${created.body.data.id}/readiness`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.score).toBe(100);
+    expect(res.body.data.ready).toBe(true);
+    expect(res.body.data.checks).toHaveLength(7);
+  });
+
+  it('GET /api/events/:id/readiness shows failing checks for past event', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Past Event Test', description: 'Short desc', start_time: '2020-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get(`/api/events/${created.body.data.id}/readiness`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.ready).toBe(false); // start_time is in the past
+    expect(res.body.data.score).toBeLessThan(100);
+    const failedChecks = res.body.data.checks.filter((c: any) => !c.passed);
+    expect(failedChecks.length).toBeGreaterThan(0);
+  });
+
+  it('GET /api/events/:id/readiness returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/events/nonexistent/readiness');
+    expect(res.status).toBe(404);
+  });
+
   // ── Event Recurrence ─────────────────────────────────
 
   it('POST /api/events/:id/recur creates weekly recurring events', async () => {

@@ -335,6 +335,28 @@ export function createEventsRouter(
     }
   });
 
+  router.get('/:id/readiness', (req, res, next) => {
+    try {
+      const event = store.getById(req.params.id);
+      if (!event) return res.status(404).json({ error: 'Event not found' });
+
+      const checks = checkEventReadiness(event);
+      const passed = checks.filter(c => c.passed).length;
+      const total = checks.length;
+      const ready = checks.filter(c => c.severity === 'required').every(c => c.passed);
+
+      res.json({
+        data: {
+          checks,
+          score: Math.round((passed / total) * 100),
+          ready,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.post('/:id/duplicate', (req, res, next) => {
     try {
       const original = store.getById(req.params.id);
