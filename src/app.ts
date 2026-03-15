@@ -26,6 +26,7 @@ import { createTimelineRouter } from './routes/timeline.js';
 import { createTagsRouter } from './routes/tags.js';
 import { createChecklistRouter } from './routes/checklist.js';
 import { createDataRouter } from './routes/data.js';
+import { createConflictsRouter } from './routes/conflicts.js';
 import { SyncSnapshotStore } from './data/sync-snapshot-store.js';
 import { TemplateStore } from './data/template-store.js';
 import { MarketAnalyzer } from './agents/market-analyzer.js';
@@ -101,7 +102,8 @@ export function createApp(deps?: AppDeps): express.Express {
   app.use('/api/events', createOptimizeRouter(db, eventStore));
   app.use('/api/events', createPhotosRouter(db));
   app.use('/api/events', createScoreRouter(db, eventStore));
-  app.use('/api/dashboard', createDashboardRouter(db, eventStore));
+  app.use('/api/dashboard', createDashboardRouter(db, eventStore, platformEventStore));
+  app.use('/api/events', createConflictsRouter(eventStore, platformEventStore));
   app.use('/api/events', createNotesRouter(db));
   app.use('/api/events', createTimelineRouter(db));
   app.use('/api/events', createTagsRouter(db));
