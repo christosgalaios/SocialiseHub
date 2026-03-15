@@ -234,6 +234,7 @@ export class SqliteEventStore {
     this.db.prepare('DELETE FROM event_snapshots WHERE event_id = ?').run(id);
     this.db.prepare('DELETE FROM event_notes WHERE event_id = ?').run(id);
     this.db.prepare('DELETE FROM event_tags WHERE event_id = ?').run(id);
+    this.db.prepare('DELETE FROM event_checklist WHERE event_id = ?').run(id);
     this.db.prepare('UPDATE platform_events SET event_id = NULL WHERE event_id = ?').run(id);
     const result = this.db
       .prepare('DELETE FROM events WHERE id = ?')

@@ -873,3 +873,57 @@ export async function getAllTags(): Promise<Array<{ tag: string; count: number }
   const body = await json<{ data: Array<{ tag: string; count: number }> }>(res);
   return body.data;
 }
+
+// ── Checklist ────────────────────────────────────────────
+
+export interface ChecklistItem {
+  id: number;
+  eventId: string;
+  label: string;
+  completed: boolean;
+  sortOrder: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export async function getEventChecklist(eventId: string): Promise<{ data: ChecklistItem[]; total: number; done: number }> {
+  const res = await fetch(`${BASE}/events/${eventId}/checklist`);
+  return json(res);
+}
+
+export async function addChecklistItem(eventId: string, label: string): Promise<ChecklistItem> {
+  const res = await fetch(`${BASE}/events/${eventId}/checklist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label }),
+  });
+  const body = await json<{ data: ChecklistItem }>(res);
+  return body.data;
+}
+
+export async function updateChecklistItem(
+  eventId: string, itemId: number, update: { label?: string; completed?: boolean }
+): Promise<ChecklistItem> {
+  const res = await fetch(`${BASE}/events/${eventId}/checklist/${itemId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(update),
+  });
+  const body = await json<{ data: ChecklistItem }>(res);
+  return body.data;
+}
+
+export async function deleteChecklistItem(eventId: string, itemId: number): Promise<void> {
+  const res = await fetch(`${BASE}/events/${eventId}/checklist/${itemId}`, { method: 'DELETE' });
+  await json<{ success: boolean }>(res);
+}
+
+export async function reorderChecklist(eventId: string, order: number[]): Promise<ChecklistItem[]> {
+  const res = await fetch(`${BASE}/events/${eventId}/checklist/reorder`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ order }),
+  });
+  const body = await json<{ data: ChecklistItem[] }>(res);
+  return body.data;
+}

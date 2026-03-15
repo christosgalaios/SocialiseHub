@@ -3730,6 +3730,147 @@ describe('App', () => {
     ]);
   });
 
+  // ── Checklist ────────────────────────────────────────────
+
+  it('GET /api/events/:id/checklist returns empty initially', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Checklist Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).get(`/api/events/${e.body.data.id}/checklist`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.total).toBe(0);
+    expect(res.body.done).toBe(0);
+  });
+
+  it('POST /api/events/:id/checklist adds an item', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Checklist Add', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${e.body.data.id}/checklist`).send({
+      label: 'Book venue',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data.label).toBe('Book venue');
+    expect(res.body.data.completed).toBe(false);
+    expect(res.body.data.sortOrder).toBe(0);
+  });
+
+  it('POST /api/events/:id/checklist returns 400 for empty label', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Bad Checklist', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${e.body.data.id}/checklist`).send({ label: '' });
+    expect(res.status).toBe(400);
+  });
+
+  it('PATCH /api/events/:id/checklist/:itemId toggles completion', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Toggle Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    const item = await request(app).post(`/api/events/${id}/checklist`).send({ label: 'Task 1' });
+
+    const res = await request(app).patch(`/api/events/${id}/checklist/${item.body.data.id}`).send({
+      completed: true,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.data.completed).toBe(true);
+    expect(res.body.data.completedAt).toBeTruthy();
+
+    // Uncomplete
+    const res2 = await request(app).patch(`/api/events/${id}/checklist/${item.body.data.id}`).send({
+      completed: false,
+    });
+    expect(res2.body.data.completed).toBe(false);
+  });
+
+  it('PATCH /api/events/:id/checklist/:itemId returns 404 for missing item', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Missing Item', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).patch(`/api/events/${e.body.data.id}/checklist/99999`).send({
+      completed: true,
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it('DELETE /api/events/:id/checklist/:itemId removes an item', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Delete Item', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    const item = await request(app).post(`/api/events/${id}/checklist`).send({ label: 'Remove me' });
+    const res = await request(app).delete(`/api/events/${id}/checklist/${item.body.data.id}`);
+    expect(res.status).toBe(200);
+
+    const list = await request(app).get(`/api/events/${id}/checklist`);
+    expect(list.body.data).toHaveLength(0);
+  });
+
+  it('GET /api/events/:id/checklist tracks completion count', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Count Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    const i1 = await request(app).post(`/api/events/${id}/checklist`).send({ label: 'A' });
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'B' });
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'C' });
+
+    await request(app).patch(`/api/events/${id}/checklist/${i1.body.data.id}`).send({ completed: true });
+
+    const res = await request(app).get(`/api/events/${id}/checklist`);
+    expect(res.body.total).toBe(3);
+    expect(res.body.done).toBe(1);
+  });
+
+  it('checklist items maintain sort order', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Order Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'First' });
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'Second' });
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'Third' });
+
+    const res = await request(app).get(`/api/events/${id}/checklist`);
+    expect(res.body.data[0].label).toBe('First');
+    expect(res.body.data[1].label).toBe('Second');
+    expect(res.body.data[2].label).toBe('Third');
+    expect(res.body.data[0].sortOrder).toBe(0);
+    expect(res.body.data[1].sortOrder).toBe(1);
+    expect(res.body.data[2].sortOrder).toBe(2);
+  });
+
+  it('deleting an event cleans up its checklist', async () => {
+    const { app, db } = createTestAppWithDb();
+    const e = await request(app).post('/api/events').send({
+      title: 'Delete Checklist', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'Will be removed' });
+    await request(app).delete(`/api/events/${id}`);
+    const rows = db.prepare('SELECT * FROM event_checklist WHERE event_id = ?').all(id);
+    expect(rows).toHaveLength(0);
+  });
+
   it('deleting an event cleans up its tags', async () => {
     const { app, db } = createTestAppWithDb();
     const e = await request(app).post('/api/events').send({
