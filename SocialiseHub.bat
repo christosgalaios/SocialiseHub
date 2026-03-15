@@ -8,8 +8,15 @@ echo.
 
 cd /d "%~dp0"
 
-:: ── Auto-update from main ──────────────────────────────
-:: Fetch latest from remote and check if main has new commits
+:: ── Auto-update from main (production only) ────────────
+:: Only auto-update if we're on the main branch
+for /f %%i in ('git rev-parse --abbrev-ref HEAD') do set "CURRENT_BRANCH=%%i"
+if /i not "%CURRENT_BRANCH%"=="main" (
+  echo  On branch '%CURRENT_BRANCH%' — skipping auto-update.
+  echo.
+  goto :skip_update
+)
+
 echo  Checking for updates...
 git fetch origin main >nul 2>&1
 if errorlevel 1 (
