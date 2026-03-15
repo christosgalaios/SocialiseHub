@@ -4132,4 +4132,125 @@ describe('App', () => {
     const rows = db.prepare('SELECT * FROM event_tags WHERE event_id = ?').all(id);
     expect(rows).toHaveLength(0);
   });
+
+  // ── Dashboard Week Endpoint ──────────────────────────────
+
+  it('GET /api/dashboard/week returns empty when no events', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/dashboard/week');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual({});
+    expect(res.body.totalEvents).toBe(0);
+    expect(res.body.startDate).toBeDefined();
+    expect(res.body.endDate).toBeDefined();
+  });
+
+  it('GET /api/dashboard/week returns events within 7 days grouped by day', async () => {
+    const { app, db } = createTestAppWithDb();
+
+    // Create events: one today+1 day, one today+3 days, one today+10 days (outside range)
+    const now = new Date();
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 19, 0, 0);
+    const threeDays = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 3, 18, 0, 0);
+    const tenDays = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 10, 19, 0, 0);
+
+    await request(app).post('/api/events').send({
+      title: 'Tomorrow Event', description: 'Desc', start_time: tomorrow.toISOString(),
+      venue: 'V1', price: 5, capacity: 20,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Three Days Event', description: 'Desc', start_time: threeDays.toISOString(),
+      venue: 'V2', price: 10, capacity: 30,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Far Future Event', description: 'Desc', start_time: tenDays.toISOString(),
+      venue: 'V3', price: 15, capacity: 40,
+    });
+
+    const res = await request(app).get('/api/dashboard/week');
+    expect(res.status).toBe(200);
+    expect(res.body.totalEvents).toBe(2);
+
+    // Should have 2 day keys
+    const dayKeys = Object.keys(res.body.data);
+    expect(dayKeys).toHaveLength(2);
+
+    // Each day should have the right event
+    const tomorrowKey = tomorrow.toISOString().split('T')[0];
+    const threeDaysKey = threeDays.toISOString().split('T')[0];
+    expect(res.body.data[tomorrowKey]).toHaveLength(1);
+    expect(res.body.data[tomorrowKey][0].title).toBe('Tomorrow Event');
+    expect(res.body.data[threeDaysKey]).toHaveLength(1);
+    expect(res.body.data[threeDaysKey][0].title).toBe('Three Days Event');
+  });
+
+  it('GET /api/dashboard/week includes checklist progress', async () => {
+    const { app, db } = createTestAppWithDb();
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(19, 0, 0, 0);
+
+    const createRes = await request(app).post('/api/events').send({
+      title: 'Checklist Event', description: 'Desc', start_time: tomorrow.toISOString(),
+      venue: 'V1', price: 5, capacity: 20,
+    });
+    const eventId = createRes.body.data.id;
+
+    // Add checklist items
+    await request(app).post(`/api/events/${eventId}/checklist`).send({ label: 'Task 1' });
+    await request(app).post(`/api/events/${eventId}/checklist`).send({ label: 'Task 2' });
+
+    // Complete one
+    const checklistRes = await request(app).get(`/api/events/${eventId}/checklist`);
+    const firstItemId = checklistRes.body.data[0].id;
+    await request(app).patch(`/api/events/${eventId}/checklist/${firstItemId}`).send({ completed: true });
+
+    const res = await request(app).get('/api/dashboard/week');
+    expect(res.status).toBe(200);
+    expect(res.body.totalEvents).toBe(1);
+
+    const dayKey = tomorrow.toISOString().split('T')[0];
+    const event = res.body.data[dayKey][0];
+    expect(event.checklist).toEqual({ total: 2, done: 1 });
+  });
+
+  it('GET /api/dashboard/week excludes cancelled and archived events', async () => {
+    const { app, db } = createTestAppWithDb();
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(19, 0, 0, 0);
+
+    const createRes = await request(app).post('/api/events').send({
+      title: 'Cancelled Event', description: 'Desc', start_time: tomorrow.toISOString(),
+      venue: 'V1', price: 5, capacity: 20,
+    });
+    const eventId = createRes.body.data.id;
+
+    // Cancel the event via batch status endpoint
+    await request(app).patch('/api/events/batch/status').send({ ids: [eventId], status: 'cancelled' });
+
+    const res = await request(app).get('/api/dashboard/week');
+    expect(res.status).toBe(200);
+    expect(res.body.totalEvents).toBe(0);
+  });
+
+  it('GET /api/dashboard/week shows null checklist when no items exist', async () => {
+    const { app } = createTestAppWithDb();
+
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(19, 0, 0, 0);
+
+    await request(app).post('/api/events').send({
+      title: 'No Checklist Event', description: 'Desc', start_time: tomorrow.toISOString(),
+      venue: 'V1', price: 5, capacity: 20,
+    });
+
+    const res = await request(app).get('/api/dashboard/week');
+    expect(res.status).toBe(200);
+    const dayKey = tomorrow.toISOString().split('T')[0];
+    expect(res.body.data[dayKey][0].checklist).toBeNull();
+  });
 });

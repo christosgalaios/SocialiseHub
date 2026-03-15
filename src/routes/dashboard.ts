@@ -911,5 +911,65 @@ Be direct. No preamble.`;
     }
   });
 
+  /**
+   * GET /api/dashboard/week
+   * Events for the next 7 days grouped by day, with checklist progress.
+   */
+  router.get('/week', (_req, res, next) => {
+    try {
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const endOfWeek = new Date(startOfToday.getTime() + 7 * 86400000);
+
+      const events = db.prepare(`
+        SELECT e.id, e.title, e.start_time, e.venue, e.status, e.capacity, e.price
+        FROM events e
+        WHERE e.start_time >= ? AND e.start_time < ?
+          AND e.status != 'cancelled' AND e.status != 'archived'
+        ORDER BY e.start_time ASC
+      `).all(startOfToday.toISOString(), endOfWeek.toISOString()) as Array<{
+        id: string; title: string; start_time: string; venue: string | null;
+        status: string; capacity: number | null; price: number;
+      }>;
+
+      // Get checklist progress for each event
+      const checklistStmt = db.prepare(
+        'SELECT COUNT(*) as total, SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as done FROM event_checklist WHERE event_id = ?'
+      );
+
+      const days: Record<string, Array<{
+        id: string; title: string; startTime: string; venue: string | null;
+        status: string; capacity: number | null; price: number;
+        checklist: { total: number; done: number } | null;
+      }>> = {};
+
+      for (const e of events) {
+        const dayKey = e.start_time.split('T')[0];
+        if (!days[dayKey]) days[dayKey] = [];
+
+        const checklistRow = checklistStmt.get(e.id) as { total: number; done: number };
+        days[dayKey].push({
+          id: e.id,
+          title: e.title,
+          startTime: e.start_time,
+          venue: e.venue,
+          status: e.status,
+          capacity: e.capacity,
+          price: e.price,
+          checklist: checklistRow.total > 0 ? { total: checklistRow.total, done: checklistRow.done } : null,
+        });
+      }
+
+      res.json({
+        data: days,
+        totalEvents: events.length,
+        startDate: startOfToday.toISOString().split('T')[0],
+        endDate: endOfWeek.toISOString().split('T')[0],
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }
