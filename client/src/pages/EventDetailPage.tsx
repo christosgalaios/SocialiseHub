@@ -631,7 +631,13 @@ export function EventDetailPage() {
               style={styles.input}
               type="datetime-local"
               value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
+              onChange={(e) => {
+                setEndTime(e.target.value);
+                if (startTime && e.target.value) {
+                  const diff = Math.round((new Date(e.target.value).getTime() - new Date(startTime).getTime()) / 60000);
+                  if (diff > 0 && diff <= 1440) setDurationMinutes(diff);
+                }
+              }}
             />
           </label>
 
@@ -642,7 +648,14 @@ export function EventDetailPage() {
               type="number"
               min="1"
               value={durationMinutes}
-              onChange={(e) => setDurationMinutes(Number(e.target.value))}
+              onChange={(e) => {
+                const mins = Number(e.target.value);
+                setDurationMinutes(mins);
+                if (startTime && mins > 0) {
+                  const end = new Date(new Date(startTime).getTime() + mins * 60000);
+                  setEndTime(toDatetimeLocal(end.toISOString()));
+                }
+              }}
               required
             />
           </label>

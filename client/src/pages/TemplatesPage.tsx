@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { Template } from '@shared/types';
 import { getTemplates, deleteTemplate, createEventFromTemplate } from '../api/events';
+import { ListSkeleton } from '../components/Skeleton';
 
 export function TemplatesPage() {
   const [templates, setTemplates] = useState<Template[]>([]);
@@ -49,10 +50,22 @@ export function TemplatesPage() {
         </div>
       </div>
 
-      {error && <div style={styles.error}>{error}</div>}
+      {error && (
+        <div style={styles.errorBanner}>
+          {error}
+          <button style={styles.retryBtn} onClick={() => {
+            setError(null);
+            setLoading(true);
+            getTemplates()
+              .then(data => setTemplates(data))
+              .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
+              .finally(() => setLoading(false));
+          }}>Retry</button>
+        </div>
+      )}
 
       {loading ? (
-        <p style={styles.loading}>Loading templates...</p>
+        <ListSkeleton rows={3} />
       ) : templates.length === 0 ? (
         <div style={styles.empty}>
           <p style={styles.emptyTitle}>No templates yet</p>
@@ -110,16 +123,30 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 4,
   },
   subtitle: { fontSize: 14, color: '#7a7a7a' },
-  error: {
-    padding: '12px 16px',
+  errorBanner: {
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
     borderRadius: 12,
-    background: '#fce8e6',
-    color: '#E2725B',
+    padding: '14px 20px',
+    color: '#dc2626',
     fontSize: 14,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
     marginBottom: 20,
-    fontWeight: 500,
   },
-  loading: { color: '#7a7a7a', fontSize: 14 },
+  retryBtn: {
+    padding: '6px 16px',
+    borderRadius: 8,
+    border: '1px solid #fecaca',
+    background: '#fff',
+    color: '#dc2626',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
+  },
   empty: { textAlign: 'center' as const, padding: '80px 0' },
   emptyTitle: {
     fontFamily: "'Outfit', sans-serif",
