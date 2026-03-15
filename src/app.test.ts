@@ -5814,4 +5814,37 @@ describe('App', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('200 characters');
   });
+
+  // ── M131: Stability fixes ─────────────────────────────
+
+  it('PATCH batch/reschedule handles event with corrupt start_time gracefully', async () => {
+    const { app, db } = createTestAppWithDb();
+    // Create event then corrupt its start_time
+    const e = await request(app).post('/api/events').send({
+      title: 'Corrupt Date', description: 'D', start_time: '2030-06-01T18:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    db.prepare("UPDATE events SET start_time = 'not-a-date' WHERE id = ?").run(id);
+
+    const res = await request(app).patch('/api/events/batch/reschedule').send({
+      ids: [id], offsetDays: 7,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].success).toBe(false);
+    expect(res.body.data[0].error).toContain('invalid');
+  });
+
+  it('POST generator/ideas/store truncates long fields', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/generator/ideas/store').send({
+      ideas: [{
+        title: 'T'.repeat(300),
+        shortDescription: 'D'.repeat(2000),
+        category: 'C'.repeat(200),
+      }],
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.stored).toBe(1);
+  });
 });

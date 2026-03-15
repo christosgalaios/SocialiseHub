@@ -61,6 +61,16 @@ export function createPhotosRouter(db: Database): Router {
       if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
       const eventId = req.params.id as string;
+
+      // Limit photos per event
+      const countRow = db.prepare<[string], { cnt: number }>(
+        'SELECT COUNT(*) as cnt FROM event_photos WHERE event_id = ?'
+      ).get(eventId);
+      if (countRow && countRow.cnt >= 50) {
+        try { unlinkSync(req.file.path); } catch {}
+        return res.status(400).json({ error: 'Maximum 50 photos per event' });
+      }
+
       const source = (req.body as { source?: string }).source ?? 'upload';
       const relativePath = `/data/photos/${eventId}/${req.file.filename}`;
 

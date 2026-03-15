@@ -260,6 +260,10 @@ export function createEventsRouter(
           continue;
         }
         const oldDate = new Date(event.start_time);
+        if (isNaN(oldDate.getTime())) {
+          results.push({ id, success: false, error: 'Event has invalid start_time' });
+          continue;
+        }
         oldDate.setDate(oldDate.getDate() + offsetDays);
         const newStartTime = oldDate.toISOString();
 
@@ -686,26 +690,29 @@ export function createEventsRouter(
 
       // Copy tags and checklist items if db is available
       if (db) {
-        const tags = db.prepare(
-          'SELECT tag FROM event_tags WHERE event_id = ?'
-        ).all(req.params.id) as Array<{ tag: string }>;
-        const insertTag = db.prepare(
-          'INSERT OR IGNORE INTO event_tags (event_id, tag) VALUES (?, ?)'
-        );
-        for (const { tag } of tags) {
-          insertTag.run(cloned.id, tag);
-        }
+        const copyRelated = db.transaction(() => {
+          const tags = db.prepare(
+            'SELECT tag FROM event_tags WHERE event_id = ?'
+          ).all(req.params.id) as Array<{ tag: string }>;
+          const insertTag = db.prepare(
+            'INSERT OR IGNORE INTO event_tags (event_id, tag) VALUES (?, ?)'
+          );
+          for (const { tag } of tags) {
+            insertTag.run(cloned.id, tag);
+          }
 
-        const checklistItems = db.prepare(
-          'SELECT label, sort_order FROM event_checklist WHERE event_id = ? ORDER BY sort_order ASC'
-        ).all(req.params.id) as Array<{ label: string; sort_order: number }>;
-        const insertChecklist = db.prepare(
-          'INSERT INTO event_checklist (event_id, label, sort_order, created_at) VALUES (?, ?, ?, ?)'
-        );
-        const now = new Date().toISOString();
-        for (const item of checklistItems) {
-          insertChecklist.run(cloned.id, item.label, item.sort_order, now);
-        }
+          const checklistItems = db.prepare(
+            'SELECT label, sort_order FROM event_checklist WHERE event_id = ? ORDER BY sort_order ASC'
+          ).all(req.params.id) as Array<{ label: string; sort_order: number }>;
+          const insertChecklist = db.prepare(
+            'INSERT INTO event_checklist (event_id, label, sort_order, created_at) VALUES (?, ?, ?, ?)'
+          );
+          const now = new Date().toISOString();
+          for (const item of checklistItems) {
+            insertChecklist.run(cloned.id, item.label, item.sort_order, now);
+          }
+        });
+        copyRelated();
       }
 
       res.status(201).json({ data: cloned });

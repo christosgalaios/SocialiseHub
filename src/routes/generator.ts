@@ -163,6 +163,12 @@ export function createGeneratorRouter(
       if (invalid) {
         return res.status(400).json({ error: 'Each idea must have a non-empty title' });
       }
+      // Sanitize field lengths
+      for (const idea of ideas) {
+        idea.title = idea.title.trim().slice(0, 200);
+        if (idea.shortDescription) idea.shortDescription = String(idea.shortDescription).slice(0, 1000);
+        if (idea.category) idea.category = String(idea.category).slice(0, 100);
+      }
       ideaStore.insertBatch(ideas);
       res.json({ stored: ideas.length });
     } catch (err) {
