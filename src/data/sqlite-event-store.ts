@@ -96,7 +96,52 @@ export class SqliteEventStore {
     const rows = this.db
       .prepare<[], EventRow>(`SELECT * FROM events ORDER BY start_time DESC`)
       .all();
-    return rows.map((row) => this.rowToEvent(row));
+    if (rows.length === 0) return [];
+
+    // Batch-load all platform events to avoid N+1 queries
+    const allPlatformRows = this.db.prepare<[], PlatformEventRow & { event_id: string }>(
+      `SELECT event_id, platform, external_id, external_url, published_at
+       FROM platform_events WHERE event_id IS NOT NULL`,
+    ).all();
+    const platformsByEvent = new Map<string, PlatformPublishStatus[]>();
+    for (const pr of allPlatformRows) {
+      if (!platformsByEvent.has(pr.event_id)) platformsByEvent.set(pr.event_id, []);
+      platformsByEvent.get(pr.event_id)!.push({
+        platform: pr.platform as PlatformName,
+        published: pr.published_at != null,
+        externalId: pr.external_id,
+        externalUrl: pr.external_url ?? undefined,
+        publishedAt: pr.published_at ?? undefined,
+      });
+    }
+
+    // Batch-load all cover photos
+    const coverPhotos = new Map<string, string>();
+    const photoRows = this.db.prepare<[], { event_id: string; photo_path: string }>(
+      'SELECT event_id, photo_path FROM event_photos WHERE is_cover = 1',
+    ).all();
+    for (const p of photoRows) coverPhotos.set(p.event_id, p.photo_path);
+
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      description: row.description ?? '',
+      start_time: row.start_time,
+      end_time: row.end_time ?? undefined,
+      duration_minutes: row.duration_minutes,
+      venue: row.venue ?? '',
+      price: row.price,
+      capacity: row.capacity ?? 0,
+      imageUrl: coverPhotos.get(row.id) ?? (row.image_url || undefined),
+      category: row.category ?? undefined,
+      status: row.status as EventStatus,
+      sync_status: (row.sync_status ?? 'local_only') as 'synced' | 'modified' | 'local_only',
+      actual_attendance: row.actual_attendance ?? undefined,
+      actual_revenue: row.actual_revenue ?? undefined,
+      platforms: platformsByEvent.get(row.id) ?? [],
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
   }
 
   getById(id: string): SocialiseEvent | undefined {
