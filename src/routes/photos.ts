@@ -93,7 +93,22 @@ export function createPhotosRouter(db: Database): Router {
   router.patch('/:id/photos/reorder', (req, res, next) => {
     try {
       const { order } = req.body as { order?: number[] };
-      if (!Array.isArray(order)) return res.status(400).json({ error: 'order must be an array of photo IDs' });
+      if (!Array.isArray(order) || order.length === 0) return res.status(400).json({ error: 'order must be a non-empty array of photo IDs' });
+
+      // Validate: no duplicates
+      if (new Set(order).size !== order.length) {
+        return res.status(400).json({ error: 'order must not contain duplicate photo IDs' });
+      }
+
+      // Validate: all IDs belong to this event
+      const existingPhotos = db.prepare<[string], { id: number }>(
+        'SELECT id FROM event_photos WHERE event_id = ?'
+      ).all(req.params.id);
+      const existingIds = new Set(existingPhotos.map(p => p.id));
+      const invalidIds = order.filter(id => !existingIds.has(id));
+      if (invalidIds.length > 0) {
+        return res.status(400).json({ error: `Photo IDs not found for this event: ${invalidIds.join(', ')}` });
+      }
 
       const updatePos = db.prepare('UPDATE event_photos SET position = ?, is_cover = ? WHERE id = ? AND event_id = ?');
       const reorder = db.transaction(() => {

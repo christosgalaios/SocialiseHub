@@ -286,7 +286,10 @@ export function createEventsRouter(
 
       // Optional month filter: ?month=2030-01
       const month = req.query.month as string | undefined;
-      if (month && /^\d{4}-\d{2}$/.test(month)) {
+      if (month) {
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+          return res.status(400).json({ error: 'month must be YYYY-MM format with valid month (01-12)' });
+        }
         events = events.filter(e => e.start_time.startsWith(month));
       }
 

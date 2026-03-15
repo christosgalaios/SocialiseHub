@@ -811,6 +811,19 @@ describe('App', () => {
     expect(res.body.data[0].events[0].title).toBe('March');
   });
 
+  it('GET /api/events/calendar?month=2030-13 returns 400 for invalid month', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/events/calendar?month=2030-13');
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('YYYY-MM');
+  });
+
+  it('GET /api/events/calendar?month=2030-00 returns 400 for month 00', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/events/calendar?month=2030-00');
+    expect(res.status).toBe(400);
+  });
+
   it('GET /api/events/calendar returns empty for no events', async () => {
     const app = createTestApp();
     const res = await request(app).get('/api/events/calendar');
@@ -2109,6 +2122,32 @@ describe('App', () => {
     });
     const res = await request(app).patch(`/api/events/${created.body.data.id}/photos/reorder`).send({});
     expect(res.status).toBe(400);
+  });
+
+  it('PATCH /api/events/:id/photos/reorder returns 400 for duplicate IDs', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Dup Reorder', description: 'Test',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app)
+      .patch(`/api/events/${created.body.data.id}/photos/reorder`)
+      .send({ order: [1, 1, 2] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('duplicate');
+  });
+
+  it('PATCH /api/events/:id/photos/reorder returns 400 for invalid photo IDs', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Bad IDs Reorder', description: 'Test',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app)
+      .patch(`/api/events/${created.body.data.id}/photos/reorder`)
+      .send({ order: [9999, 9998] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('not found');
   });
 
   it('POST /api/events/:id/photos/auto returns 503 without API key', async () => {
