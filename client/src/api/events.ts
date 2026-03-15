@@ -112,6 +112,18 @@ export async function batchDeleteEvents(
   return json(res);
 }
 
+export async function getEventStats(): Promise<{
+  total: number;
+  byStatus: Record<string, number>;
+  bySyncStatus: Record<string, number>;
+  upcoming: number;
+  past: number;
+}> {
+  const res = await fetch(`${BASE}/events/stats`);
+  const body = await json<{ data: { total: number; byStatus: Record<string, number>; bySyncStatus: Record<string, number>; upcoming: number; past: number } }>(res);
+  return body.data;
+}
+
 export function getEventsExportUrl(params?: { status?: string; upcoming?: boolean }): string {
   const qs = new URLSearchParams();
   if (params?.status) qs.set('status', params.status);

@@ -128,6 +128,37 @@ export function createEventsRouter(
     }
   });
 
+  router.get('/stats', (_req, res, next) => {
+    try {
+      const events = store.getAll();
+      const byStatus: Record<string, number> = { draft: 0, published: 0, cancelled: 0 };
+      const bySyncStatus: Record<string, number> = { synced: 0, modified: 0, local_only: 0 };
+      let upcoming = 0;
+      let past = 0;
+      const now = new Date().toISOString();
+
+      for (const e of events) {
+        byStatus[e.status] = (byStatus[e.status] ?? 0) + 1;
+        const ss = e.sync_status ?? 'local_only';
+        bySyncStatus[ss] = (bySyncStatus[ss] ?? 0) + 1;
+        if (e.start_time > now) upcoming++;
+        else past++;
+      }
+
+      res.json({
+        data: {
+          total: events.length,
+          byStatus,
+          bySyncStatus,
+          upcoming,
+          past,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.get('/export/csv', (req, res, next) => {
     try {
       let events = store.getAll();

@@ -81,6 +81,163 @@ describe('App', () => {
     expect(res.body.total).toBe(0);
   });
 
+  // ── Single Event CRUD ──────────────────────────────────
+
+  it('PUT /api/events/:id updates an event', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Original', description: 'Desc', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app)
+      .put(`/api/events/${created.body.data.id}`)
+      .send({ title: 'Updated', price: 15 });
+    expect(res.status).toBe(200);
+    expect(res.body.data.title).toBe('Updated');
+    expect(res.body.data.price).toBe(15);
+    expect(res.body.data.description).toBe('Desc'); // unchanged
+  });
+
+  it('PUT /api/events/:id returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).put('/api/events/nonexistent').send({ title: 'X' });
+    expect(res.status).toBe(404);
+  });
+
+  it('PUT /api/events/:id returns 400 for invalid input', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app)
+      .put(`/api/events/${created.body.data.id}`)
+      .send({ price: -5 });
+    expect(res.status).toBe(400);
+  });
+
+  it('DELETE /api/events/:id removes an event', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'ToDelete', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).delete(`/api/events/${created.body.data.id}`);
+    expect(res.status).toBe(204);
+    const check = await request(app).get(`/api/events/${created.body.data.id}`);
+    expect(check.status).toBe(404);
+  });
+
+  it('DELETE /api/events/:id returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).delete('/api/events/nonexistent');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /api/events/:id/duplicate clones an event', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Original', description: 'Desc', start_time: '2030-01-01T19:00:00Z',
+      venue: 'Hall', price: 10, capacity: 50,
+    });
+    const res = await request(app).post(`/api/events/${created.body.data.id}/duplicate`);
+    expect(res.status).toBe(201);
+    expect(res.body.data.title).toBe('Copy of Original');
+    expect(res.body.data.id).not.toBe(created.body.data.id);
+    expect(res.body.data.venue).toBe('Hall');
+    expect(res.body.data.status).toBe('draft');
+  });
+
+  it('POST /api/events/:id/duplicate returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/nonexistent/duplicate');
+    expect(res.status).toBe(404);
+  });
+
+  // ── Services ──────────────────────────────────────────
+
+  it('POST /api/services/:platform/disconnect disconnects a service', async () => {
+    const app = createTestApp();
+    // First connect
+    await request(app).post('/api/services/meetup/connect').send({ apiKey: 'key' });
+    // Then disconnect
+    const res = await request(app).post('/api/services/meetup/disconnect');
+    expect(res.status).toBe(200);
+    expect(res.body.data.connected).toBe(false);
+    expect(res.body.data.connectedAt).toBeUndefined();
+  });
+
+  // ── Scores ────────────────────────────────────────────
+
+  it('GET /api/events/:id/score returns null for unscored event', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get(`/api/events/${created.body.data.id}/score`);
+    expect(res.status).toBe(200);
+    expect(res.body.score).toBeNull();
+  });
+
+  it('POST /api/events/:id/score returns a prompt', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Score Me', description: 'Great event', start_time: '2030-01-01T19:00:00Z',
+      venue: 'Bristol', price: 10, capacity: 50,
+    });
+    const res = await request(app).post(`/api/events/${created.body.data.id}/score`);
+    expect(res.status).toBe(200);
+    expect(res.body.prompt).toContain('Score Me');
+    expect(res.body.eventId).toBe(created.body.data.id);
+  });
+
+  it('POST /api/events/:id/score returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/nonexistent/score');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /api/events/:id/score/save persists score', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Scored', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const saveRes = await request(app)
+      .post(`/api/events/${created.body.data.id}/score/save`)
+      .send({ overall: 75, breakdown: { seo: 80, timing: 70 }, suggestions: [] });
+    expect(saveRes.status).toBe(200);
+    expect(saveRes.body.success).toBe(true);
+
+    // Verify it's retrievable
+    const getRes = await request(app).get(`/api/events/${created.body.data.id}/score`);
+    expect(getRes.body.score.overall).toBe(75);
+    expect(getRes.body.score.breakdown.seo).toBe(80);
+  });
+
+  it('POST /api/events/:id/score/save returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app)
+      .post('/api/events/nonexistent/score/save')
+      .send({ overall: 50, breakdown: {}, suggestions: [] });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /api/events/:id/score/save returns 400 for invalid overall', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app)
+      .post(`/api/events/${created.body.data.id}/score/save`)
+      .send({ overall: 'not-a-number', breakdown: {}, suggestions: [] });
+    expect(res.status).toBe(400);
+  });
+
+  // ── Filters ───────────────────────────────────────────
+
   it('GET /api/events?status=draft filters by status', async () => {
     const app = createTestApp();
     // Create an event (defaults to draft)
@@ -362,5 +519,36 @@ describe('App', () => {
     expect(res.status).toBe(200);
     const lines = res.text.split('\n');
     expect(lines).toHaveLength(1); // header only
+  });
+
+  // ── Stats ─────────────────────────────────────────────
+
+  it('GET /api/events/stats returns zeroes when empty', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/events/stats');
+    expect(res.status).toBe(200);
+    expect(res.body.data.total).toBe(0);
+    expect(res.body.data.byStatus).toEqual({ draft: 0, published: 0, cancelled: 0 });
+    expect(res.body.data.bySyncStatus).toEqual({ synced: 0, modified: 0, local_only: 0 });
+    expect(res.body.data.upcoming).toBe(0);
+    expect(res.body.data.past).toBe(0);
+  });
+
+  it('GET /api/events/stats aggregates correctly', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Future Draft', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Past Draft', description: 'D', start_time: '2020-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get('/api/events/stats');
+    expect(res.body.data.total).toBe(2);
+    expect(res.body.data.byStatus.draft).toBe(2);
+    expect(res.body.data.upcoming).toBe(1);
+    expect(res.body.data.past).toBe(1);
+    expect(res.body.data.bySyncStatus.local_only).toBe(2);
   });
 });
