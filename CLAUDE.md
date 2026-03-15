@@ -96,3 +96,9 @@ npm run build:all          # Build server + electron + client
 - Service connection status stored in SQLite `services` table
 - Sync pull calls `client.fetchEvents()` which uses automation bridge → Electron → browser scrape
 - Meetup publish supports `draft: true` in data to save as draft instead of going live
+- Dashboard summary uses `events` table as primary source, not `platform_events`
+- Publish endpoint creates sync snapshots and sets `sync_status` to track sync state
+- findMatch dedup requires 60% title length overlap for substring matches to avoid false positives
+- cleanStale includes safety checks: skips if pull is empty or would remove >50% of rows
+- Analytics queries use parameterized queries to prevent SQL injection
+- Database tests run in-memory with better-sqlite3 in Node.js (not just Electron)
