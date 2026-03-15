@@ -110,7 +110,7 @@ export function createSyncRouter(
    */
   router.get('/log', (req, res, next) => {
     try {
-      const limit = req.query.limit ? Number(req.query.limit) : 50;
+      const limit = Math.min(Math.max(1, Number(req.query.limit) || 50), 200);
       const entries = syncLogStore.getRecent(limit);
       res.json({ data: entries, total: entries.length });
     } catch (err) {

@@ -67,7 +67,6 @@ export class MeetupAutomationClient implements PlatformClient {
       throw new Error(`Meetup scrape failed: ${result.error ?? 'Bridge not available — is the Electron app running?'}`);
     }
     const rawEval = result.data?.lastEvalResult;
-    console.log('[meetup-client] rawEval type:', typeof rawEval, 'preview:', String(rawEval).slice(0, 200));
     const parsed = typeof rawEval === 'string' ? JSON.parse(rawEval) : rawEval;
     // Handle both raw array and wrapped { success, events } response shapes
     let events: Array<Record<string, unknown>>;
@@ -83,7 +82,6 @@ export class MeetupAutomationClient implements PlatformClient {
     } else {
       throw new Error(`Meetup scrape returned null/undefined result`);
     }
-    console.log('[meetup-client] parsed', events.length, 'events');
     return events.map((e: Record<string, unknown>) => {
       // Normalize date to ISO without timezone offset (SQLite strftime compatibility)
       let dateStr = String(e.date ?? '');

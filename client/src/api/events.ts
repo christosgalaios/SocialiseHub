@@ -367,7 +367,7 @@ export async function generateIdeasPrompt(): Promise<{ prompt: string }> {
   return json<{ prompt: string }>(res);
 }
 
-export async function storeIdeas(ideas: any[]): Promise<{ stored: number }> {
+export async function storeIdeas(ideas: Omit<QueuedIdea, 'id' | 'used' | 'createdAt'>[]): Promise<{ stored: number }> {
   const res = await fetch(`${BASE}/generator/ideas/store`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -386,16 +386,29 @@ export async function magicFill(eventId: string): Promise<{ prompt: string; even
   return json<{ prompt: string; eventId: string }>(res);
 }
 
-export async function autoFillPhotos(eventId: string): Promise<{ photos: any[] }> {
+export async function autoFillPhotos(eventId: string): Promise<{ photos: EventPhoto[] }> {
   const res = await fetch(`${BASE}/events/${eventId}/photos/auto`, { method: 'POST' });
-  return json<{ photos: any[] }>(res);
+  return json<{ photos: EventPhoto[] }>(res);
 }
 
 // ── Scoring ────────────────────────────────────────────
 
-export async function getEventScore(id: string): Promise<{ score: any | null }> {
+export interface EventScore {
+  overall: number;
+  breakdown: Record<string, number>;
+  suggestions: Array<{
+    field: string;
+    current_issue: string;
+    suggestion: string;
+    impact: number;
+    suggested_value?: string | null;
+  }>;
+  scoredAt: string;
+}
+
+export async function getEventScore(id: string): Promise<{ score: EventScore | null }> {
   const res = await fetch(`${BASE}/events/${id}/score`);
-  return json<{ score: any | null }>(res);
+  return json<{ score: EventScore | null }>(res);
 }
 
 export async function scoreEvent(id: string): Promise<{ prompt: string; eventId: string }> {
@@ -403,7 +416,7 @@ export async function scoreEvent(id: string): Promise<{ prompt: string; eventId:
   return json<{ prompt: string; eventId: string }>(res);
 }
 
-export async function saveEventScore(id: string, data: { overall: number; breakdown: Record<string, number>; suggestions: any[] }): Promise<void> {
+export async function saveEventScore(id: string, data: { overall: number; breakdown: Record<string, number>; suggestions: EventScore['suggestions'] }): Promise<void> {
   const res = await fetch(`${BASE}/events/${id}/score/save`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
