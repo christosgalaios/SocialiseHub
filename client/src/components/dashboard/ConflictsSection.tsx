@@ -3,16 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { getConflicts } from '../../api/dashboard';
 import type { Conflict } from '../../api/dashboard';
 
-function formatDate(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', {
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 export function ConflictsSection() {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,26 +25,28 @@ export function ConflictsSection() {
   return (
     <section style={styles.section}>
       <h2 style={styles.sectionTitle}>
-        Scheduling Conflicts ({conflicts.length})
+        Platform Conflicts ({conflicts.length})
       </h2>
       <div style={styles.list}>
-        {conflicts.slice(0, 5).map((c, i) => (
-          <div key={i} style={styles.card}>
-            <div style={styles.reason}>
-              {c.reason === 'same_start_time' ? 'Same start time' : 'Overlapping'}
+        {conflicts.slice(0, 5).map((c) => (
+          <div
+            key={c.eventId}
+            style={styles.card}
+            onClick={() => navigate(`/conflicts/${c.eventId}`)}
+          >
+            <div style={styles.cardTop}>
+              <span style={styles.eventTitle}>{c.eventTitle}</span>
+              <span style={styles.conflictCount}>
+                {c.conflictCount} field conflict{c.conflictCount !== 1 ? 's' : ''}
+              </span>
             </div>
-            <div style={styles.events}>
-              {c.events.map((ev) => (
-                <div
-                  key={ev.id}
-                  style={styles.eventRow}
-                  onClick={() => navigate(`/events/${ev.id}`)}
-                >
-                  <span style={styles.eventTitle}>{ev.title}</span>
-                  <span style={styles.eventDate}>{formatDate(ev.start_time)}</span>
-                  {ev.venue && <span style={styles.venue}>{ev.venue}</span>}
-                </div>
-              ))}
+            <div style={styles.cardBottom}>
+              <div style={styles.platforms}>
+                {c.platforms.map((p) => (
+                  <span key={p} style={styles.platformBadge}>{p}</span>
+                ))}
+              </div>
+              <span style={styles.fields}>{c.fields.join(', ')}</span>
             </div>
           </div>
         ))}
@@ -86,26 +78,16 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #fecaca',
     borderRadius: 12,
     padding: '12px 16px',
-  },
-  reason: {
-    fontSize: 11,
-    fontWeight: 700,
-    color: '#dc2626',
-    textTransform: 'uppercase' as const,
-    marginBottom: 8,
-    letterSpacing: 0.5,
-  },
-  events: {
+    cursor: 'pointer',
     display: 'flex',
     flexDirection: 'column',
-    gap: 6,
+    gap: 8,
   },
-  eventRow: {
+  cardTop: {
     display: 'flex',
     alignItems: 'center',
-    gap: 10,
-    cursor: 'pointer',
-    padding: '4px 0',
+    justifyContent: 'space-between',
+    gap: 12,
   },
   eventTitle: {
     fontSize: 14,
@@ -114,16 +96,36 @@ const styles: Record<string, React.CSSProperties> = {
     flex: 1,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
+    whiteSpace: 'nowrap' as const,
   },
-  eventDate: {
+  conflictCount: {
+    fontSize: 12,
+    fontWeight: 700,
+    color: '#dc2626',
+    whiteSpace: 'nowrap' as const,
+  },
+  cardBottom: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 10,
+    flexWrap: 'wrap' as const,
+  },
+  platforms: {
+    display: 'flex',
+    gap: 4,
+  },
+  platformBadge: {
+    fontSize: 10,
+    fontWeight: 700,
+    color: '#fff',
+    background: '#6b7280',
+    padding: '2px 8px',
+    borderRadius: 20,
+    textTransform: 'capitalize' as const,
+    letterSpacing: 0.3,
+  },
+  fields: {
     fontSize: 12,
     color: '#6b7280',
-    whiteSpace: 'nowrap',
-  },
-  venue: {
-    fontSize: 12,
-    color: '#9ca3af',
-    whiteSpace: 'nowrap',
   },
 };

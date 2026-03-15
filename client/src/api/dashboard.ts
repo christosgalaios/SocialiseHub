@@ -138,8 +138,11 @@ export async function getPortfolio(): Promise<PortfolioData> {
 }
 
 export interface Conflict {
-  events: Array<{ id: string; title: string; start_time: string; venue: string }>;
-  reason: string;
+  eventId: string;
+  eventTitle: string;
+  conflictCount: number;
+  platforms: string[];
+  fields: string[];
 }
 
 export async function getConflicts(): Promise<{ data: Conflict[]; total: number }> {
