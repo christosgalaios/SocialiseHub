@@ -64,10 +64,14 @@ export function createTemplatesRouter(
       const template = templateStore.getById(req.params.id);
       if (!template) return res.status(404).json({ error: 'Template not found' });
 
+      const nextWeek = new Date();
+      nextWeek.setDate(nextWeek.getDate() + 7);
+      nextWeek.setHours(19, 0, 0, 0);
+
       const event = eventStore.create({
         title: template.title,
         description: template.description,
-        start_time: new Date().toISOString(),
+        start_time: nextWeek.toISOString(),
         duration_minutes: template.durationMinutes,
         venue: template.venue,
         price: template.price,

@@ -63,3 +63,49 @@ export function validateCreateEventInput(
 
   return { valid: errors.length === 0, errors };
 }
+
+export function validateUpdateEventInput(
+  input: Record<string, unknown>,
+): ValidationResult {
+  const errors: string[] = [];
+
+  if ('title' in input) {
+    if (typeof input.title !== 'string' || !input.title.trim()) {
+      errors.push('title must be a non-empty string');
+    } else if (input.title.length > 200) {
+      errors.push('title must be 200 characters or fewer');
+    }
+  }
+
+  if ('start_time' in input) {
+    if (typeof input.start_time !== 'string' || isNaN(Date.parse(input.start_time))) {
+      errors.push('start_time must be a valid ISO date');
+    }
+  }
+
+  if ('end_time' in input) {
+    if (typeof input.end_time !== 'string' || isNaN(Date.parse(input.end_time))) {
+      errors.push('end_time must be a valid ISO date');
+    }
+  }
+
+  if ('price' in input) {
+    if (typeof input.price !== 'number' || input.price < 0) {
+      errors.push('price must be 0 or greater');
+    }
+  }
+
+  if ('capacity' in input) {
+    if (typeof input.capacity !== 'number' || input.capacity < 1 || input.capacity > 10000) {
+      errors.push('capacity must be between 1 and 10000');
+    }
+  }
+
+  if ('duration_minutes' in input) {
+    if (typeof input.duration_minutes !== 'number' || input.duration_minutes < 1 || input.duration_minutes > 1440) {
+      errors.push('duration_minutes must be between 1 and 1440');
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}

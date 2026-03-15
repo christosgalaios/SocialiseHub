@@ -6,7 +6,7 @@ import type { SyncLogStore } from '../data/sync-log-store.js';
 import type { SyncSnapshotStore } from '../data/sync-snapshot-store.js';
 import { computeSyncHash } from '../data/sync-snapshot-store.js';
 import type { PlatformName } from '../shared/types.js';
-import { validateCreateEventInput } from '../lib/validate.js';
+import { validateCreateEventInput, validateUpdateEventInput } from '../lib/validate.js';
 
 export function createEventsRouter(
   store: SqliteEventStore,
@@ -51,6 +51,10 @@ export function createEventsRouter(
 
   router.put('/:id', (req, res, next) => {
     try {
+      const validation = validateUpdateEventInput(req.body);
+      if (!validation.valid) {
+        return res.status(400).json({ error: `Validation failed: ${validation.errors.join(', ')}` });
+      }
       const event = store.update(req.params.id, req.body);
       if (!event) return res.status(404).json({ error: 'Event not found' });
       res.json({ data: event });

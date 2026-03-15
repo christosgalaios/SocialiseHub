@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { validateCreateEventInput } from './validate.js';
+import { validateCreateEventInput, validateUpdateEventInput } from './validate.js';
 
 describe('validateCreateEventInput', () => {
   const validInput = {
@@ -202,5 +202,53 @@ describe('validateCreateEventInput', () => {
     });
     expect(result.valid).toBe(false);
     expect(result.errors).toContain('capacity must be 10000 or fewer');
+  });
+});
+
+describe('validateUpdateEventInput', () => {
+  it('passes with empty input (no fields to validate)', () => {
+    const result = validateUpdateEventInput({});
+    expect(result.valid).toBe(true);
+  });
+
+  it('passes with valid partial fields', () => {
+    const result = validateUpdateEventInput({ title: 'New Title', price: 5 });
+    expect(result.valid).toBe(true);
+  });
+
+  it('rejects empty title', () => {
+    const result = validateUpdateEventInput({ title: '' });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('title must be a non-empty string');
+  });
+
+  it('rejects title over 200 chars', () => {
+    const result = validateUpdateEventInput({ title: 'a'.repeat(201) });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('title must be 200 characters or fewer');
+  });
+
+  it('rejects invalid start_time', () => {
+    const result = validateUpdateEventInput({ start_time: 'not-a-date' });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('start_time must be a valid ISO date');
+  });
+
+  it('rejects negative price', () => {
+    const result = validateUpdateEventInput({ price: -5 });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('price must be 0 or greater');
+  });
+
+  it('rejects capacity over 10000', () => {
+    const result = validateUpdateEventInput({ capacity: 10001 });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('capacity must be between 1 and 10000');
+  });
+
+  it('rejects duration_minutes over 1440', () => {
+    const result = validateUpdateEventInput({ duration_minutes: 2000 });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toContain('duration_minutes must be between 1 and 1440');
   });
 });

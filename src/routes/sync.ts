@@ -39,6 +39,7 @@ export async function linkPlatformEventToEvent(
         price: pe.ticketPrice ?? 0,
         capacity: pe.capacity ?? 0,
       });
+      if (pe.imageUrls?.[0]) eventStore.update(newEvent.id, { image_url: pe.imageUrls[0] } as never);
       eventStore.updateStatus(newEvent.id, mapPlatformStatus(pe.status));
       eventStore.updateSyncStatus(newEvent.id, 'synced');
       platformEventStore.linkToEvent(pe.id, newEvent.id);
@@ -54,7 +55,8 @@ export async function linkPlatformEventToEvent(
       description: pe.description ?? existing.description,
       price: pe.ticketPrice ?? existing.price,
       capacity: pe.capacity ?? existing.capacity,
-    });
+      image_url: pe.imageUrls?.[0] ?? existing.imageUrl,
+    } as never);
     // update() auto-flips sync_status to 'modified' for synced events — restore to synced
     eventStore.updateSyncStatus(pe.eventId, 'synced');
     eventStore.updateStatus(pe.eventId, mapPlatformStatus(pe.status));
@@ -85,6 +87,7 @@ export async function linkPlatformEventToEvent(
       price: pe.ticketPrice ?? 0,
       capacity: pe.capacity ?? 0,
     });
+    if (pe.imageUrls?.[0]) eventStore.update(newEvent.id, { image_url: pe.imageUrls[0] } as never);
     eventStore.updateStatus(newEvent.id, mapPlatformStatus(pe.status));
     eventStore.updateSyncStatus(newEvent.id, 'synced');
     platformEventStore.linkToEvent(pe.id, newEvent.id);

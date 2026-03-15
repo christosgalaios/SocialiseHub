@@ -219,9 +219,12 @@ export function createPhotosRouter(db: Database): Router {
    */
   router.delete('/:id/photos/:photoId', (req, res, next) => {
     try {
+      const photoId = Number(req.params.photoId);
+      if (Number.isNaN(photoId)) return res.status(400).json({ error: 'Invalid photo ID' });
+
       const photo = db.prepare<[number, string], PhotoRow>(
         'SELECT * FROM event_photos WHERE id = ? AND event_id = ?'
-      ).get(Number(req.params.photoId), req.params.id);
+      ).get(photoId, req.params.id);
 
       if (!photo) return res.status(404).json({ error: 'Photo not found' });
 

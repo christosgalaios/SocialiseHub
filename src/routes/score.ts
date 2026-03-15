@@ -90,6 +90,9 @@ export function createScoreRouter(db: Database, eventStore: SqliteEventStore): R
         }>;
       };
 
+      const event = eventStore.getById(req.params.id);
+      if (!event) return res.status(404).json({ error: 'Event not found' });
+
       if (typeof overall !== 'number') {
         return res.status(400).json({ error: 'overall must be a number' });
       }
