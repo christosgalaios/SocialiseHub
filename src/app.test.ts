@@ -5743,4 +5743,34 @@ describe('App', () => {
     const checklist = db.prepare('SELECT id FROM event_checklist WHERE event_id = ?').all(eventId);
     expect(checklist).toHaveLength(0);
   });
+
+  // M127 tests
+  it('PATCH batch/category rejects non-string ids', async () => {
+    const app = createTestApp();
+    const res = await request(app).patch('/api/events/batch/category').send({
+      ids: [123, null],
+      category: 'Social',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('non-empty strings');
+  });
+
+  it('PATCH batch/category rejects overly long category', async () => {
+    const app = createTestApp();
+    const res = await request(app).patch('/api/events/batch/category').send({
+      ids: ['some-id'],
+      category: 'x'.repeat(101),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('100 characters');
+  });
+
+  it('POST batch/delete rejects non-string ids', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/batch/delete').send({
+      ids: [42],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('non-empty strings');
+  });
 });

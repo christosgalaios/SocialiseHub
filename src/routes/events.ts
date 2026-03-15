@@ -166,8 +166,14 @@ export function createEventsRouter(
       if (ids.length > 100) {
         return res.status(400).json({ error: 'Maximum 100 events per batch' });
       }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'All ids must be non-empty strings' });
+      }
       if (typeof category !== 'string' || !category.trim()) {
         return res.status(400).json({ error: 'category must be a non-empty string' });
+      }
+      if (category.length > 100) {
+        return res.status(400).json({ error: 'category must be 100 characters or fewer' });
       }
 
       const results: { id: string; success: boolean; error?: string }[] = [];
@@ -196,8 +202,14 @@ export function createEventsRouter(
       if (ids.length > 100) {
         return res.status(400).json({ error: 'Maximum 100 events per batch' });
       }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'All ids must be non-empty strings' });
+      }
       if (typeof venue !== 'string' || !venue.trim()) {
         return res.status(400).json({ error: 'venue must be a non-empty string' });
+      }
+      if (venue.length > 500) {
+        return res.status(400).json({ error: 'venue must be 500 characters or fewer' });
       }
 
       const results: { id: string; success: boolean; error?: string }[] = [];
@@ -714,6 +726,9 @@ export function createEventsRouter(
       }
       if (ids.length > 100) {
         return res.status(400).json({ error: 'Maximum 100 events per batch delete' });
+      }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'All ids must be non-empty strings' });
       }
 
       const results = ids.map(id => {
