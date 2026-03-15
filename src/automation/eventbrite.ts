@@ -155,26 +155,37 @@ export function eventbritePublishSteps(event: SocialiseEvent): AutomationStep[] 
         description: `Setting venue: ${event.venue}`,
       },
     ] : []),
-    // Save and continue (step 1 of wizard — saves as draft, goes to tickets step)
+    // Save and continue — Eventbrite uses AJAX, poll for URL change to tickets step
     {
       action: 'click',
       selector: PUBLISH_SELECTORS.submitButton,
       description: 'Saving event page...',
     },
     {
-      action: 'waitForNavigation',
-      timeout: 15_000,
-      description: 'Waiting for save...',
-    },
-    {
       action: 'evaluate',
-      script: `(() => {
-        const url = window.location.href;
-        const eidMatch = url.match(/events\\/(\\d+)/);
-        const externalId = eidMatch ? eidMatch[1] : null;
-        return JSON.stringify({ externalId, externalUrl: url });
+      script: `(async () => {
+        const startUrl = window.location.href;
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 1000));
+          const url = window.location.href;
+          // URL changes when save completes (adds event ID or moves to tickets step)
+          if (url !== startUrl || url.match(/events\\/\\d+/)) {
+            const eidMatch = url.match(/events\\/(\\d+)/);
+            return JSON.stringify({ externalId: eidMatch ? eidMatch[1] : null, externalUrl: url });
+          }
+          // Also check for success toast or error
+          const toast = document.querySelector('[class*="toast"], [class*="notification"], [role="alert"]');
+          if (toast?.textContent?.toLowerCase().includes('error')) {
+            return JSON.stringify({ error: 'Save failed: ' + toast.textContent?.trim().slice(0, 100) });
+          }
+        }
+        // If URL has an event ID even without changing, extract it
+        const finalUrl = window.location.href;
+        const match = finalUrl.match(/events\\/(\\d+)/);
+        if (match) return JSON.stringify({ externalId: match[1], externalUrl: finalUrl });
+        return JSON.stringify({ error: 'Timed out waiting for save to complete' });
       })()`,
-      description: 'Extracting event ID...',
+      description: 'Waiting for save to complete...',
     },
   ];
 }

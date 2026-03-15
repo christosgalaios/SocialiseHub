@@ -184,40 +184,52 @@ export function headfirstPublishSteps(event: SocialiseEvent): AutomationStep[] {
       selector: FORM_SELECTORS.modalCreateButton,
       description: 'Creating event...',
     },
-    // Wait for redirect to editor page
+    // Wait for event creation — poll for new event link in the list or URL change
     {
       action: 'evaluate',
       script: `(async () => {
-        // Poll for URL change to editor page
+        // Capture existing event IDs before creation
+        const existingIds = new Set(
+          Array.from(document.querySelectorAll('a[href*="/events/"]'))
+            .map(a => a.href.match(/events\\/(\\d+)/)?.[1])
+            .filter(Boolean)
+        );
+        // Poll for a new event ID to appear
         for (let i = 0; i < 30; i++) {
-          await new Promise(r => setTimeout(r, 500));
-          const url = window.location.href;
-          const match = url.match(/events\\/(\\d+)/);
-          if (match) return JSON.stringify({ eventId: match[1], url });
+          await new Promise(r => setTimeout(r, 1000));
+          // Check URL first (might redirect to editor)
+          const urlMatch = window.location.href.match(/events\\/(\\d+).*editor/);
+          if (urlMatch) return JSON.stringify({ eventId: urlMatch[1] });
+          // Check for new event links in the list
+          const currentLinks = Array.from(document.querySelectorAll('a[href*="/events/"]'));
+          for (const link of currentLinks) {
+            const id = link.href.match(/events\\/(\\d+)/)?.[1];
+            if (id && !existingIds.has(id)) return JSON.stringify({ eventId: id });
+          }
         }
         return JSON.stringify({ error: 'Timed out waiting for event creation' });
       })()`,
       description: 'Waiting for event to be created...',
     },
-    // Phase 2: Fill details on the editor page
+    // Phase 2: Navigate to editor and wait for form to render
     {
       action: 'evaluate',
       script: `(async () => {
-        // Navigate to details editor if not already there
+        // Extract event ID from current URL or previous step result
         const match = window.location.href.match(/events\\/(\\d+)/);
-        if (match) {
-          window.location.href = '/event-manager#/events/' + match[1] + '/editor/details';
-          await new Promise(r => setTimeout(r, 2000));
+        if (!match) return JSON.stringify({ error: 'No event ID found in URL' });
+        const eventId = match[1];
+        // Navigate to the details editor
+        window.location.hash = '/events/' + eventId + '/editor/details';
+        // Poll for the event name input to appear (SPA routing)
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 1000));
+          const nameInput = document.querySelector('${FORM_SELECTORS.eventName}');
+          if (nameInput) return JSON.stringify({ ready: true, eventId });
         }
-        return 'navigated to editor';
+        return JSON.stringify({ error: 'Editor form did not load within 30 seconds' });
       })()`,
-      description: 'Opening event editor...',
-    },
-    {
-      action: 'waitForSelector',
-      selector: FORM_SELECTORS.eventName,
-      timeout: 10_000,
-      description: 'Waiting for editor to load...',
+      description: 'Opening event editor and waiting for form...',
     },
     {
       action: 'fill',

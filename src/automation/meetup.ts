@@ -118,6 +118,7 @@ export function meetupPublishSteps(event: SocialiseEvent, groupUrlname: string, 
                   startDateTime: ${JSON.stringify(event.start_time)},
                   duration: ${JSON.stringify(isoDuration)},
                   publishStatus: ${JSON.stringify(draft ? 'DRAFT' : 'PUBLISHED')},
+                  ${event.price && event.price > 0 ? `feeOption: { amount: ${event.price}, currency: "GBP", required: true },` : ''}
                 }
               }
             })
