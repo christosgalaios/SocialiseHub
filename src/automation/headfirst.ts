@@ -6,15 +6,22 @@ const SELECTORS = {
   loggedInIndicator: '.user-menu, .account-nav, a[href*="/logout"], a[href*="/account"]',
 };
 
+// Verified against live Headfirst Event Manager DOM 2026-03-15
+// Create flow: event-manager → "Create Event" → date picker → venue combobox + type select → create
+// Edit flow: /event-manager#/events/{id}/editor/details → name, short desc, description → Save Changes
 const FORM_SELECTORS = {
-  titleInput: 'input[name="title"], input[name="event_name"], #event-title',
-  descriptionTextarea: 'textarea[name="description"], textarea[name="event_description"], #event-description',
-  dateInput: 'input[name="date"], input[type="date"], #event-date',
-  timeInput: 'input[name="time"], input[type="time"], #event-time',
-  venueDropdown: 'select[name="venue"], select[name="venue_id"], #event-venue',
-  venueTextInput: 'input[name="venue"], input[name="venue_name"]',
-  priceInput: 'input[name="price"], input[name="ticket_price"], #event-price',
-  submitButton: 'button[type="submit"], input[type="submit"]',
+  // Create modal
+  createButton: 'button.events-view__create-button',
+  calendarDay: '.calendar__day',
+  monthSelect: 'select[aria-label="Select month"]',
+  venueCombobox: '.hf-modal__content input[role="combobox"]',
+  eventTypeSelect: '.hf-modal__content select.hf-select',
+  modalCreateButton: '.hf-modal__actions .hf-button',
+  // Edit page (event-manager#/events/{id}/editor/details)
+  eventName: 'input[name="event_name"]',
+  shortDescription: 'input[name="desc_short"]',
+  descriptionEditor: '[aria-label="editable markdown"][role="textbox"]',
+  saveButton: 'button[type="submit"]',
 };
 
 /**
@@ -73,95 +80,186 @@ export function headfirstConnectSteps(): AutomationStep[] {
 }
 
 /**
- * Steps to publish an event on Headfirst Bristol.
- * Uses a simple HTML form — no complex editor or wizard.
+ * Steps to create an event on Headfirst Bristol via the Event Manager.
+ * Two-phase: (1) create skeleton via modal (date + venue + type), (2) fill details on editor page.
+ * Verified against live DOM 2026-03-15.
  */
 export function headfirstPublishSteps(event: SocialiseEvent): AutomationStep[] {
   const startDate = new Date(event.start_time);
-  const dateStr = startDate.toISOString().split('T')[0];
-  const timeStr = startDate.toTimeString().slice(0, 5);
+  const day = startDate.getDate();
+  const month = startDate.getMonth(); // 0-indexed
 
   return [
+    // Phase 1: Create event skeleton via modal
     {
       action: 'navigate',
-      url: 'https://www.headfirstbristol.co.uk/submit-event',
-      description: 'Opening event submission form...',
+      url: 'https://www.headfirstbristol.co.uk/event-manager#/events/future',
+      description: 'Opening Headfirst Event Manager...',
     },
     {
       action: 'waitForSelector',
-      selector: FORM_SELECTORS.titleInput,
+      selector: FORM_SELECTORS.createButton,
+      timeout: 15_000,
+      description: 'Waiting for event manager to load...',
+    },
+    {
+      action: 'click',
+      selector: FORM_SELECTORS.createButton,
+      description: 'Clicking Create Event...',
+    },
+    {
+      action: 'waitForSelector',
+      selector: FORM_SELECTORS.calendarDay,
       timeout: 10_000,
-      description: 'Waiting for form to load...',
+      description: 'Waiting for date picker...',
     },
+    // Select the correct month and day in the calendar
     {
-      action: 'fill',
-      selector: FORM_SELECTORS.titleInput,
-      value: event.title,
-      description: `Filling title: "${event.title}"`,
+      action: 'evaluate',
+      script: `(async () => {
+        // Navigate to the correct month using the month select
+        const monthSelect = document.querySelector('${FORM_SELECTORS.monthSelect}');
+        if (monthSelect) {
+          const options = Array.from(monthSelect.options);
+          // Find the option matching our target month (options contain month names)
+          const targetMonth = ${month};
+          if (options[targetMonth]) {
+            monthSelect.selectedIndex = targetMonth;
+            monthSelect.dispatchEvent(new Event('change', { bubbles: true }));
+            await new Promise(r => setTimeout(r, 500));
+          }
+        }
+        // Click the target day
+        const days = Array.from(document.querySelectorAll('${FORM_SELECTORS.calendarDay}'));
+        const dayBtn = days.find(b => b.textContent?.trim() === '${day}');
+        if (dayBtn) { dayBtn.click(); return 'selected day ${day}'; }
+        return 'day not found';
+      })()`,
+      description: `Selecting date: ${startDate.toDateString()}...`,
     },
+    // Wait for venue/type fields to appear after date selection
     {
-      action: 'fill',
-      selector: FORM_SELECTORS.descriptionTextarea,
-      value: event.description,
-      description: 'Filling description...',
+      action: 'waitForSelector',
+      selector: FORM_SELECTORS.eventTypeSelect,
+      timeout: 5_000,
+      description: 'Waiting for venue & type fields...',
     },
+    // Set event type (default to "other" = Arts & Performance)
     {
-      action: 'fill',
-      selector: FORM_SELECTORS.dateInput,
-      value: dateStr,
-      description: `Setting date: ${dateStr}`,
+      action: 'evaluate',
+      script: `(() => {
+        const select = document.querySelector('${FORM_SELECTORS.eventTypeSelect}');
+        if (select) {
+          select.value = 'other';
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+          return 'set type';
+        }
+        return 'no select';
+      })()`,
+      description: 'Setting event type...',
     },
-    {
-      action: 'fill',
-      selector: FORM_SELECTORS.timeInput,
-      value: timeStr,
-      description: `Setting time: ${timeStr}`,
-    },
-    // Venue — try dropdown first, fall back to text input
+    // Type venue name in combobox (if provided)
     ...(event.venue ? [
       {
         action: 'evaluate' as const,
-        script: `(() => {
-          const dropdown = document.querySelector('${FORM_SELECTORS.venueDropdown}');
-          if (dropdown) {
-            const options = Array.from(dropdown.querySelectorAll('option'));
-            const match = options.find(o => o.textContent?.toLowerCase().includes(${JSON.stringify(event.venue.toLowerCase())}));
-            if (match) { dropdown.value = match.value; dropdown.dispatchEvent(new Event('change', { bubbles: true })); return 'dropdown'; }
-          }
-          const textInput = document.querySelector('${FORM_SELECTORS.venueTextInput}');
-          if (textInput) { textInput.value = ${JSON.stringify(event.venue)}; textInput.dispatchEvent(new Event('input', { bubbles: true })); return 'text'; }
-          return 'not_found';
+        script: `(async () => {
+          const input = document.querySelector('${FORM_SELECTORS.venueCombobox}');
+          if (!input) return 'no venue input';
+          input.focus();
+          input.value = ${JSON.stringify(event.venue)};
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          // Wait for autocomplete suggestions
+          await new Promise(r => setTimeout(r, 1500));
+          // Click first suggestion if any
+          const suggestions = document.querySelectorAll('.hf-modal__content [class*="option"], .hf-modal__content li');
+          if (suggestions.length > 0) { suggestions[0].click(); return 'selected suggestion'; }
+          return 'typed venue (no suggestions)';
         })()`,
         description: `Setting venue: ${event.venue}`,
       },
     ] : []),
-    // Price
-    ...(event.price !== undefined ? [
-      {
-        action: 'fill' as const,
-        selector: FORM_SELECTORS.priceInput,
-        value: String(event.price),
-        description: `Setting price: £${event.price}`,
-      },
-    ] : []),
+    // Click "Create Event" in modal
     {
       action: 'click',
-      selector: FORM_SELECTORS.submitButton,
-      description: 'Submitting event...',
+      selector: FORM_SELECTORS.modalCreateButton,
+      description: 'Creating event...',
+    },
+    // Wait for redirect to editor page
+    {
+      action: 'evaluate',
+      script: `(async () => {
+        // Poll for URL change to editor page
+        for (let i = 0; i < 30; i++) {
+          await new Promise(r => setTimeout(r, 500));
+          const url = window.location.href;
+          const match = url.match(/events\\/(\\d+)/);
+          if (match) return JSON.stringify({ eventId: match[1], url });
+        }
+        return JSON.stringify({ error: 'Timed out waiting for event creation' });
+      })()`,
+      description: 'Waiting for event to be created...',
+    },
+    // Phase 2: Fill details on the editor page
+    {
+      action: 'evaluate',
+      script: `(async () => {
+        // Navigate to details editor if not already there
+        const match = window.location.href.match(/events\\/(\\d+)/);
+        if (match) {
+          window.location.href = '/event-manager#/events/' + match[1] + '/editor/details';
+          await new Promise(r => setTimeout(r, 2000));
+        }
+        return 'navigated to editor';
+      })()`,
+      description: 'Opening event editor...',
     },
     {
-      action: 'waitForNavigation',
+      action: 'waitForSelector',
+      selector: FORM_SELECTORS.eventName,
       timeout: 10_000,
-      description: 'Waiting for confirmation...',
+      description: 'Waiting for editor to load...',
+    },
+    {
+      action: 'fill',
+      selector: FORM_SELECTORS.eventName,
+      value: event.title,
+      description: `Setting title: "${event.title}"`,
+    },
+    {
+      action: 'fill',
+      selector: FORM_SELECTORS.shortDescription,
+      value: (event.description ?? '').slice(0, 200),
+      description: 'Setting short description...',
+    },
+    // Fill the markdown description editor
+    {
+      action: 'evaluate',
+      script: `(() => {
+        const editor = document.querySelector('${FORM_SELECTORS.descriptionEditor}');
+        if (editor) {
+          editor.focus();
+          document.execCommand('selectAll', false, null);
+          document.execCommand('insertText', false, ${JSON.stringify(event.description ?? '')});
+          return 'filled';
+        }
+        return 'no editor';
+      })()`,
+      description: 'Filling description...',
+    },
+    // Save
+    {
+      action: 'click',
+      selector: FORM_SELECTORS.saveButton,
+      description: 'Saving event...',
     },
     {
       action: 'evaluate',
       script: `(() => {
         const url = window.location.href;
-        const idMatch = url.match(/event\\/(\\d+)/) ?? url.match(/(\\d+)/);
+        const match = url.match(/events\\/(\\d+)/);
         return JSON.stringify({
-          externalId: idMatch ? idMatch[1] : null,
-          externalUrl: url,
+          externalId: match ? match[1] : null,
+          externalUrl: 'https://www.headfirstbristol.co.uk/#/events/' + (match ? match[1] : ''),
         });
       })()`,
       description: 'Extracting event ID...',

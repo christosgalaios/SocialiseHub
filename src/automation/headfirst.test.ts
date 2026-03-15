@@ -40,37 +40,28 @@ describe('headfirstConnectSteps', () => {
 });
 
 describe('headfirstPublishSteps', () => {
-  it('navigates to submit-event page', () => {
+  it('navigates to event manager', () => {
     const steps = headfirstPublishSteps(mockEvent);
-    expect(steps[0].url).toContain('submit-event');
+    expect(steps[0].url).toContain('event-manager');
   });
 
-  it('fills title with plain fill action', () => {
+  it('clicks Create Event button', () => {
+    const steps = headfirstPublishSteps(mockEvent);
+    const clickStep = steps.find(s => s.action === 'click' && s.description.includes('Create Event'));
+    expect(clickStep).toBeDefined();
+  });
+
+  it('fills title on editor page', () => {
     const steps = headfirstPublishSteps(mockEvent);
     const fillTitle = steps.find(s => s.action === 'fill' && s.description.includes('title'));
     expect(fillTitle).toBeDefined();
     expect(fillTitle!.value).toBe('Test Event');
   });
 
-  it('fills description as plain text (textarea, not contenteditable)', () => {
-    const steps = headfirstPublishSteps(mockEvent);
-    const fillDesc = steps.find(s => s.action === 'fill' && s.description.includes('description'));
-    expect(fillDesc).toBeDefined();
-    expect(fillDesc!.selector).toContain('textarea');
-  });
-
-  it('handles venue with dropdown-first strategy', () => {
+  it('handles venue with combobox', () => {
     const steps = headfirstPublishSteps(mockEvent);
     const venueStep = steps.find(s => s.description.includes('venue'));
     expect(venueStep).toBeDefined();
-    expect(venueStep!.script).toContain('dropdown');
-  });
-
-  it('sets the price', () => {
-    const steps = headfirstPublishSteps(mockEvent);
-    const priceStep = steps.find(s => s.description.includes('price'));
-    expect(priceStep).toBeDefined();
-    expect(priceStep!.value).toBe('5');
   });
 
   it('ends with evaluate extracting event ID', () => {
