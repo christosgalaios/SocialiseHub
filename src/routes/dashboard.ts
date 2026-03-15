@@ -1,8 +1,14 @@
 import { Router } from 'express';
 import type { Database } from '../data/database.js';
 import type { SqliteEventStore } from '../data/sqlite-event-store.js';
+import type { PlatformEventStore } from '../data/platform-event-store.js';
+import { COMPARABLE_FIELDS, valuesMatch } from './conflict-utils.js';
 
-export function createDashboardRouter(db: Database, eventStore: SqliteEventStore): Router {
+export function createDashboardRouter(
+  db: Database,
+  eventStore: SqliteEventStore,
+  platformEventStore?: PlatformEventStore,
+): Router {
   const router = Router();
 
   /**
@@ -772,50 +778,59 @@ Be direct. No preamble.`;
 
   /**
    * GET /api/dashboard/conflicts
-   * Detects events scheduled at the same time or overlapping times.
+   * Detects events where hub field values differ from linked platform events.
    */
   router.get('/conflicts', (_req, res, next) => {
     try {
-      const events = eventStore.getAll().filter(e =>
-        e.status !== 'archived' && e.start_time && !isNaN(new Date(e.start_time).getTime())
-      );
+      if (!platformEventStore) {
+        res.json({ data: [], total: 0 });
+        return;
+      }
 
-      // Sort by start_time
-      const sorted = [...events].sort((a, b) => a.start_time.localeCompare(b.start_time));
+      const events = eventStore.getAll().filter(e => e.status !== 'archived');
 
-      const conflicts: Array<{
-        events: Array<{ id: string; title: string; start_time: string; venue: string }>;
-        reason: string;
+      const result: Array<{
+        eventId: string;
+        eventTitle: string;
+        conflictCount: number;
+        platforms: string[];
+        fields: string[];
       }> = [];
 
-      for (let i = 0; i < sorted.length; i++) {
-        for (let j = i + 1; j < sorted.length; j++) {
-          const a = sorted[i];
-          const b = sorted[j];
+      for (const event of events) {
+        const platformEvents = platformEventStore.getByEventId(event.id);
+        if (platformEvents.length === 0) continue;
 
-          const aStart = new Date(a.start_time).getTime();
-          const bStart = new Date(b.start_time).getTime();
-          const aDuration = (a.duration_minutes || 120) * 60 * 1000;
-          const aEnd = aStart + aDuration;
+        const conflictFields = new Set<string>();
+        const conflictPlatforms = new Set<string>();
 
-          if (bStart >= aEnd) break; // No more overlaps possible for this event
+        for (const fieldDef of COMPARABLE_FIELDS) {
+          const hubRaw = (event as unknown as Record<string, unknown>)[fieldDef.hubKey];
+          const hubValue = hubRaw == null ? null : (hubRaw as string | number);
 
-          // Same time or overlapping
-          const reason = aStart === bStart
-            ? 'same_start_time'
-            : 'overlapping';
+          for (const pe of platformEvents) {
+            const platRaw = (pe as unknown as Record<string, unknown>)[fieldDef.platformKey];
+            const platValue = platRaw == null ? null : (platRaw as string | number);
 
-          conflicts.push({
-            events: [
-              { id: a.id, title: a.title, start_time: a.start_time, venue: a.venue },
-              { id: b.id, title: b.title, start_time: b.start_time, venue: b.venue },
-            ],
-            reason,
+            if (!valuesMatch(hubValue, platValue, fieldDef.type)) {
+              conflictFields.add(fieldDef.field);
+              conflictPlatforms.add(pe.platform);
+            }
+          }
+        }
+
+        if (conflictFields.size > 0) {
+          result.push({
+            eventId: event.id,
+            eventTitle: event.title,
+            conflictCount: conflictFields.size,
+            platforms: Array.from(conflictPlatforms),
+            fields: Array.from(conflictFields),
           });
         }
       }
 
-      res.json({ data: conflicts, total: conflicts.length });
+      res.json({ data: result, total: result.length });
     } catch (err) {
       next(err);
     }

@@ -2975,39 +2975,6 @@ describe('App', () => {
     expect(res.body.data.summary.totalEvents).toBe(0);
   });
 
-  // ── Conflicts ──────────────────────────────────────
-
-  it('GET /api/dashboard/conflicts detects overlapping events', async () => {
-    const app = createTestApp();
-    await request(app).post('/api/events').send({
-      title: 'Event A', description: 'D', start_time: '2030-06-01T19:00:00Z',
-      venue: 'V1', price: 10, capacity: 30,
-    });
-    await request(app).post('/api/events').send({
-      title: 'Event B', description: 'D', start_time: '2030-06-01T19:00:00Z',
-      venue: 'V2', price: 15, capacity: 40,
-    });
-    const res = await request(app).get('/api/dashboard/conflicts');
-    expect(res.status).toBe(200);
-    expect(res.body.total).toBe(1);
-    expect(res.body.data[0].reason).toBe('same_start_time');
-  });
-
-  it('GET /api/dashboard/conflicts returns empty when no overlaps', async () => {
-    const app = createTestApp();
-    await request(app).post('/api/events').send({
-      title: 'Morning', description: 'D', start_time: '2030-06-01T10:00:00Z',
-      venue: 'V', price: 5, capacity: 20,
-    });
-    await request(app).post('/api/events').send({
-      title: 'Evening', description: 'D', start_time: '2030-06-01T20:00:00Z',
-      venue: 'V', price: 5, capacity: 20,
-    });
-    const res = await request(app).get('/api/dashboard/conflicts');
-    expect(res.status).toBe(200);
-    expect(res.body.total).toBe(0);
-  });
-
   // ── Health ──────────────────────────────────────────
 
   it('GET /api/dashboard/health returns health scores for events', async () => {
@@ -4345,37 +4312,6 @@ describe('App', () => {
     expect(res.body.data.summary.totalEvents).toBe(1);
   });
 
-  it('GET /api/dashboard/conflicts returns empty for non-overlapping events', async () => {
-    const app = createTestApp();
-    await request(app).post('/api/events').send({
-      title: 'Event A', description: 'D', start_time: '2030-01-01T10:00:00Z',
-      venue: 'V', price: 5, capacity: 20,
-    });
-    await request(app).post('/api/events').send({
-      title: 'Event B', description: 'D', start_time: '2030-01-02T10:00:00Z',
-      venue: 'V', price: 5, capacity: 20,
-    });
-    const res = await request(app).get('/api/dashboard/conflicts');
-    expect(res.status).toBe(200);
-    expect(res.body.total).toBe(0);
-  });
-
-  it('GET /api/dashboard/conflicts detects same-time events', async () => {
-    const app = createTestApp();
-    await request(app).post('/api/events').send({
-      title: 'Conflict A', description: 'D', start_time: '2030-06-01T19:00:00Z',
-      venue: 'V1', price: 5, capacity: 20,
-    });
-    await request(app).post('/api/events').send({
-      title: 'Conflict B', description: 'D', start_time: '2030-06-01T19:00:00Z',
-      venue: 'V2', price: 5, capacity: 20,
-    });
-    const res = await request(app).get('/api/dashboard/conflicts');
-    expect(res.status).toBe(200);
-    expect(res.body.total).toBeGreaterThanOrEqual(1);
-    expect(res.body.data[0].reason).toBe('same_start_time');
-  });
-
   it('GET /api/dashboard/health returns scores for events', async () => {
     const app = createTestApp();
     await request(app).post('/api/events').send({
@@ -5044,79 +4980,6 @@ describe('App', () => {
         title: 'A'.repeat(201),
       });
       expect(res.status).toBe(400);
-    });
-  });
-
-  // ── Dashboard Conflicts Structure ───────────────────────
-
-  describe('Dashboard conflicts response structure', () => {
-    it('GET /api/dashboard/conflicts returns data array and total', async () => {
-      const app = createTestApp();
-      const res = await request(app).get('/api/dashboard/conflicts');
-      expect(res.status).toBe(200);
-      expect(Array.isArray(res.body.data)).toBe(true);
-      expect(typeof res.body.total).toBe('number');
-    });
-
-    it('GET /api/dashboard/conflicts conflict entries have correct shape', async () => {
-      const app = createTestApp();
-      await request(app).post('/api/events').send({
-        title: 'Conflict Alpha', description: 'D', start_time: '2030-09-01T19:00:00Z',
-        venue: 'Venue A', price: 5, capacity: 20,
-      });
-      await request(app).post('/api/events').send({
-        title: 'Conflict Beta', description: 'D', start_time: '2030-09-01T19:00:00Z',
-        venue: 'Venue B', price: 10, capacity: 30,
-      });
-      const res = await request(app).get('/api/dashboard/conflicts');
-      expect(res.status).toBe(200);
-      expect(res.body.total).toBeGreaterThanOrEqual(1);
-      const conflict = res.body.data[0];
-      expect(Array.isArray(conflict.events)).toBe(true);
-      expect(conflict.events).toHaveLength(2);
-      // Each event entry should have id, title, start_time, venue
-      const entry = conflict.events[0];
-      expect(typeof entry.id).toBe('string');
-      expect(typeof entry.title).toBe('string');
-      expect(typeof entry.start_time).toBe('string');
-      expect(typeof entry.venue).toBe('string');
-      expect(conflict.reason).toBe('same_start_time');
-    });
-
-    it('GET /api/dashboard/conflicts detects overlapping (not just same-start) events', async () => {
-      const app = createTestApp();
-      // Event A starts at 18:00 with default 120 min duration, ends at 20:00
-      // Event B starts at 19:00 — overlaps
-      await request(app).post('/api/events').send({
-        title: 'Long Event', description: 'D', start_time: '2030-10-01T18:00:00Z',
-        venue: 'V1', price: 5, capacity: 20, duration_minutes: 120,
-      });
-      await request(app).post('/api/events').send({
-        title: 'Overlapping Event', description: 'D', start_time: '2030-10-01T19:00:00Z',
-        venue: 'V2', price: 5, capacity: 20,
-      });
-      const res = await request(app).get('/api/dashboard/conflicts');
-      expect(res.status).toBe(200);
-      // Should detect the overlap (either same_start_time or overlapping)
-      expect(res.body.total).toBeGreaterThanOrEqual(1);
-    });
-
-    it('GET /api/dashboard/conflicts excludes archived events', async () => {
-      const app = createTestApp();
-      const e1 = await request(app).post('/api/events').send({
-        title: 'Archived Conflict A', description: 'D', start_time: '2030-11-01T19:00:00Z',
-        venue: 'V1', price: 5, capacity: 20,
-      });
-      await request(app).post('/api/events').send({
-        title: 'Archived Conflict B', description: 'D', start_time: '2030-11-01T19:00:00Z',
-        venue: 'V2', price: 5, capacity: 20,
-      });
-      // Archive first event
-      await request(app).post('/api/events/batch/archive').send({ ids: [e1.body.data.id] });
-      const res = await request(app).get('/api/dashboard/conflicts');
-      expect(res.status).toBe(200);
-      // No conflict since one is archived
-      expect(res.body.total).toBe(0);
     });
   });
 
