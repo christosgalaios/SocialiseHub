@@ -35,7 +35,7 @@ export function AnalyticsPage() {
         setFillData(trends.fillByType);
         setTimingData(trends.timingData);
       } catch (err) {
-        if (!cancelled) setError(String(err));
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load analytics');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -49,7 +49,14 @@ export function AnalyticsPage() {
   }
 
   if (error) {
-    return <div style={styles.error}>Failed to load analytics: {error}</div>;
+    return (
+      <div style={styles.error}>
+        <span>{error}</span>
+        <button style={styles.retryBtn} onClick={() => { setError(null); setLoading(true); window.location.reload(); }}>
+          Retry
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -185,7 +192,8 @@ function getBestMonth(data: AttendanceDataPoint[]): string {
 const styles: Record<string, CSSProperties> = {
   page: { display: 'flex', flexDirection: 'column', gap: 24 },
   loading: { display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 300, color: '#888' },
-  error: { background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 12, padding: '20px 24px', color: '#ef4444' },
+  error: { background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 12, padding: '14px 20px', color: '#dc2626', fontSize: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  retryBtn: { padding: '6px 16px', borderRadius: 8, border: '1px solid #fecaca', background: '#fff', color: '#dc2626', fontSize: 13, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' as const },
   title: { fontFamily: "'Outfit', sans-serif", fontSize: 28, fontWeight: 700, color: '#080810', margin: 0, marginBottom: 4 },
   subtitle: { fontSize: 14, color: '#7a7a7a', margin: 0 },
 

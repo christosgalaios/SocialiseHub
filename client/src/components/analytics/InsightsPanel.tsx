@@ -28,7 +28,7 @@ export function InsightsPanel() {
         },
       });
     } catch (err) {
-      setError(String(err));
+      setError(err instanceof Error ? err.message : 'Failed to generate insights');
     } finally {
       setLoading(false);
     }
