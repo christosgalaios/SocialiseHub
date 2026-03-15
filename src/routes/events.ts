@@ -515,6 +515,61 @@ export function createEventsRouter(
     }
   });
 
+  /**
+   * POST /api/events/:id/clone
+   * Duplicates an event as a new draft with an optional date shift.
+   */
+  router.post('/:id/clone', (req, res, next) => {
+    try {
+      const original = store.getById(req.params.id);
+      if (!original) return res.status(404).json({ error: 'Event not found' });
+
+      const { newDate, titleSuffix } = req.body as { newDate?: string; titleSuffix?: string };
+
+      const cloned = store.create({
+        title: titleSuffix ? `${original.title} ${titleSuffix}` : original.title,
+        description: original.description,
+        start_time: newDate || original.start_time,
+        end_time: original.end_time,
+        duration_minutes: original.duration_minutes,
+        venue: original.venue,
+        price: original.price,
+        capacity: original.capacity,
+        category: original.category,
+      });
+
+      res.status(201).json({ data: cloned });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * POST /api/events/batch/delete
+   * Permanently deletes multiple events. Irreversible.
+   */
+  router.post('/batch/delete', (req, res, next) => {
+    try {
+      const { ids } = req.body as { ids?: string[] };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch delete' });
+      }
+
+      const results = ids.map(id => {
+        const deleted = store.delete(id);
+        return { id, deleted };
+      });
+
+      const deletedCount = results.filter(r => r.deleted).length;
+      res.json({ data: results, deleted: deletedCount, total: ids.length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.post('/quick-create', (req, res, next) => {
     try {
       const { title, date, category } = req.body as {

@@ -3011,6 +3011,81 @@ describe('App', () => {
     expect(res.body.total).toBe(1);
   });
 
+  // ── Clone ───────────────────────────────────────────
+
+  it('POST /api/events/:id/clone duplicates an event as draft', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Original Event', description: 'Great event', start_time: '2030-03-15T19:00:00Z',
+      venue: 'The Venue', price: 15, capacity: 40, category: 'social',
+    });
+    const res = await request(app).post(`/api/events/${e.body.data.id}/clone`).send({});
+    expect(res.status).toBe(201);
+    expect(res.body.data.title).toBe('Original Event');
+    expect(res.body.data.venue).toBe('The Venue');
+    expect(res.body.data.price).toBe(15);
+    expect(res.body.data.status).toBe('draft');
+    expect(res.body.data.id).not.toBe(e.body.data.id);
+  });
+
+  it('POST /api/events/:id/clone accepts new date and title suffix', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Quiz Night', description: 'D', start_time: '2030-03-15T19:00:00Z',
+      venue: 'V', price: 5, capacity: 30,
+    });
+    const res = await request(app)
+      .post(`/api/events/${e.body.data.id}/clone`)
+      .send({ newDate: '2030-04-15T19:00:00Z', titleSuffix: '(Copy)' });
+    expect(res.status).toBe(201);
+    expect(res.body.data.title).toBe('Quiz Night (Copy)');
+    expect(res.body.data.start_time).toContain('2030-04-15');
+  });
+
+  it('POST /api/events/:id/clone returns 404 for unknown event', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/nonexistent/clone').send({});
+    expect(res.status).toBe(404);
+  });
+
+  // ── Batch Delete ───────────────────────────────────
+
+  it('POST /api/events/batch/delete deletes multiple events', async () => {
+    const app = createTestApp();
+    const e1 = await request(app).post('/api/events').send({
+      title: 'Del 1', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const e2 = await request(app).post('/api/events').send({
+      title: 'Del 2', description: 'D', start_time: '2030-01-02T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app)
+      .post('/api/events/batch/delete')
+      .send({ ids: [e1.body.data.id, e2.body.data.id] });
+    expect(res.status).toBe(200);
+    expect(res.body.deleted).toBe(2);
+    // Verify they're gone
+    const check = await request(app).get('/api/events');
+    expect(check.body.data).toHaveLength(0);
+  });
+
+  it('POST /api/events/batch/delete returns 400 for empty ids', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/batch/delete').send({ ids: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/events/batch/delete handles non-existent ids gracefully', async () => {
+    const app = createTestApp();
+    const res = await request(app)
+      .post('/api/events/batch/delete')
+      .send({ ids: ['fake-id-1', 'fake-id-2'] });
+    expect(res.status).toBe(200);
+    expect(res.body.deleted).toBe(0);
+    expect(res.body.total).toBe(2);
+  });
+
   // ── Recurrence ──────────────────────────────────────
 
   it('POST /api/events/:id/recur creates weekly recurring events', async () => {

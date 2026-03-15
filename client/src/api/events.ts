@@ -296,6 +296,28 @@ export async function compareEvents(ids: string[]): Promise<CompareEventResult[]
   return body.data;
 }
 
+export async function cloneEvent(
+  id: string,
+  options?: { newDate?: string; titleSuffix?: string },
+): Promise<SocialiseEvent> {
+  const res = await fetch(`${BASE}/events/${id}/clone`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(options ?? {}),
+  });
+  const body = await json<{ data: SocialiseEvent }>(res);
+  return body.data;
+}
+
+export async function batchDeleteEvents(ids: string[]): Promise<{ deleted: number; total: number }> {
+  const res = await fetch(`${BASE}/events/batch/delete`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  return json(res);
+}
+
 export function getEventsJsonExportUrl(params?: { status?: string; upcoming?: boolean }): string {
   const qs = new URLSearchParams();
   if (params?.status) qs.set('status', params.status);
