@@ -210,6 +210,24 @@ function runMigrations(db: Database): void {
     `);
     db.pragma('user_version = 14');
   }
+  if (currentVersion < 15) {
+    const newCols = [
+      "ALTER TABLE events ADD COLUMN short_description TEXT",
+      "ALTER TABLE events ADD COLUMN doors_open_time TEXT",
+      "ALTER TABLE events ADD COLUMN age_restriction TEXT",
+      "ALTER TABLE events ADD COLUMN event_type TEXT DEFAULT 'in_person'",
+      "ALTER TABLE events ADD COLUMN online_url TEXT",
+      "ALTER TABLE events ADD COLUMN parking_info TEXT",
+      "ALTER TABLE events ADD COLUMN refund_policy TEXT",
+      "ALTER TABLE events ADD COLUMN allow_guests INTEGER",
+      "ALTER TABLE events ADD COLUMN rsvp_open TEXT",
+      "ALTER TABLE events ADD COLUMN rsvp_close TEXT",
+    ];
+    for (const sql of newCols) {
+      try { db.exec(sql); } catch { /* column exists */ }
+    }
+    db.pragma('user_version = 15');
+  }
 }
 
 function createSchema(db: Database): void {

@@ -70,6 +70,31 @@ export function validateCreateEventInput(
     }
   }
 
+  if (input.short_description !== undefined && typeof input.short_description === 'string' && input.short_description.length > 300) {
+    errors.push('short_description must be at most 300 characters');
+  }
+  if (input.age_restriction !== undefined && typeof input.age_restriction === 'string' && input.age_restriction.length > 50) {
+    errors.push('age_restriction must be at most 50 characters');
+  }
+  if (input.event_type !== undefined && !['in_person', 'online', 'hybrid'].includes(input.event_type as string)) {
+    errors.push('event_type must be in_person, online, or hybrid');
+  }
+  if (input.online_url !== undefined && typeof input.online_url === 'string' && input.online_url.length > 500) {
+    errors.push('online_url must be at most 500 characters');
+  }
+  if (input.parking_info !== undefined && typeof input.parking_info === 'string' && input.parking_info.length > 1000) {
+    errors.push('parking_info must be at most 1000 characters');
+  }
+  if (input.refund_policy !== undefined && typeof input.refund_policy === 'string' && input.refund_policy.length > 1000) {
+    errors.push('refund_policy must be at most 1000 characters');
+  }
+  if (input.allow_guests !== undefined && input.allow_guests !== null) {
+    const g = Number(input.allow_guests);
+    if (!Number.isInteger(g) || g < 0 || g > 5) {
+      errors.push('allow_guests must be an integer between 0 and 5');
+    }
+  }
+
   return { valid: errors.length === 0, errors };
 }
 
@@ -153,6 +178,43 @@ export function validateUpdateEventInput(
   if ('actual_revenue' in input && input.actual_revenue != null) {
     if (typeof input.actual_revenue !== 'number' || input.actual_revenue < 0) {
       errors.push('actual_revenue must be 0 or greater');
+    }
+  }
+
+  if ('short_description' in input) {
+    if (typeof input.short_description === 'string' && input.short_description.length > 300) {
+      errors.push('short_description must be at most 300 characters');
+    }
+  }
+  if ('age_restriction' in input) {
+    if (typeof input.age_restriction === 'string' && input.age_restriction.length > 50) {
+      errors.push('age_restriction must be at most 50 characters');
+    }
+  }
+  if ('event_type' in input && input.event_type != null) {
+    if (!['in_person', 'online', 'hybrid'].includes(input.event_type as string)) {
+      errors.push('event_type must be in_person, online, or hybrid');
+    }
+  }
+  if ('online_url' in input) {
+    if (typeof input.online_url === 'string' && input.online_url.length > 500) {
+      errors.push('online_url must be at most 500 characters');
+    }
+  }
+  if ('parking_info' in input) {
+    if (typeof input.parking_info === 'string' && input.parking_info.length > 1000) {
+      errors.push('parking_info must be at most 1000 characters');
+    }
+  }
+  if ('refund_policy' in input) {
+    if (typeof input.refund_policy === 'string' && input.refund_policy.length > 1000) {
+      errors.push('refund_policy must be at most 1000 characters');
+    }
+  }
+  if ('allow_guests' in input && input.allow_guests != null) {
+    const g = Number(input.allow_guests);
+    if (!Number.isInteger(g) || g < 0 || g > 5) {
+      errors.push('allow_guests must be an integer between 0 and 5');
     }
   }
 

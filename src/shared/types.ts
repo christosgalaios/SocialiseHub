@@ -34,6 +34,16 @@ export interface SocialiseEvent {
   sync_status?: 'synced' | 'modified' | 'local_only';
   actual_attendance?: number;
   actual_revenue?: number;
+  short_description?: string;
+  doors_open_time?: string;
+  age_restriction?: string;
+  event_type?: string;
+  online_url?: string;
+  parking_info?: string;
+  refund_policy?: string;
+  allow_guests?: number;
+  rsvp_open?: string;
+  rsvp_close?: string;
   platforms: PlatformPublishStatus[];
   notesCount?: number;
   checklistTotal?: number;

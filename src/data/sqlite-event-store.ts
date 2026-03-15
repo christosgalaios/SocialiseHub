@@ -14,6 +14,9 @@ const UPDATABLE_FIELDS = new Set([
   'title', 'description', 'start_time', 'end_time', 'duration_minutes',
   'venue', 'price', 'capacity', 'image_url', 'category',
   'actual_attendance', 'actual_revenue',
+  'short_description', 'doors_open_time', 'age_restriction', 'event_type',
+  'online_url', 'parking_info', 'refund_policy', 'allow_guests',
+  'rsvp_open', 'rsvp_close',
 ]);
 
 interface EventRow {
@@ -32,6 +35,16 @@ interface EventRow {
   sync_status: string | null;
   actual_attendance: number | null;
   actual_revenue: number | null;
+  short_description: string | null;
+  doors_open_time: string | null;
+  age_restriction: string | null;
+  event_type: string | null;
+  online_url: string | null;
+  parking_info: string | null;
+  refund_policy: string | null;
+  allow_guests: number | null;
+  rsvp_open: string | null;
+  rsvp_close: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -86,6 +99,16 @@ export class SqliteEventStore {
       sync_status: (row.sync_status ?? 'local_only') as 'synced' | 'modified' | 'local_only',
       actual_attendance: row.actual_attendance ?? undefined,
       actual_revenue: row.actual_revenue ?? undefined,
+      short_description: row.short_description ?? undefined,
+      doors_open_time: row.doors_open_time ?? undefined,
+      age_restriction: row.age_restriction ?? undefined,
+      event_type: row.event_type ?? undefined,
+      online_url: row.online_url ?? undefined,
+      parking_info: row.parking_info ?? undefined,
+      refund_policy: row.refund_policy ?? undefined,
+      allow_guests: row.allow_guests ?? undefined,
+      rsvp_open: row.rsvp_open ?? undefined,
+      rsvp_close: row.rsvp_close ?? undefined,
       platforms,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -152,6 +175,16 @@ export class SqliteEventStore {
       sync_status: (row.sync_status ?? 'local_only') as 'synced' | 'modified' | 'local_only',
       actual_attendance: row.actual_attendance ?? undefined,
       actual_revenue: row.actual_revenue ?? undefined,
+      short_description: row.short_description ?? undefined,
+      doors_open_time: row.doors_open_time ?? undefined,
+      age_restriction: row.age_restriction ?? undefined,
+      event_type: row.event_type ?? undefined,
+      online_url: row.online_url ?? undefined,
+      parking_info: row.parking_info ?? undefined,
+      refund_policy: row.refund_policy ?? undefined,
+      allow_guests: row.allow_guests ?? undefined,
+      rsvp_open: row.rsvp_open ?? undefined,
+      rsvp_close: row.rsvp_close ?? undefined,
       platforms: platformsByEvent.get(row.id) ?? [],
       notesCount: notesCounts.get(row.id) ?? 0,
       checklistTotal: checklistProgress.get(row.id)?.total ?? 0,
@@ -216,9 +249,15 @@ export class SqliteEventStore {
       .prepare(
         `INSERT INTO events
            (id, title, description, start_time, end_time, duration_minutes,
-            venue, price, capacity, category, status, sync_status, created_at, updated_at)
+            venue, price, capacity, category, status, sync_status,
+            short_description, doors_open_time, age_restriction, event_type,
+            online_url, parking_info, refund_policy, allow_guests,
+            rsvp_open, rsvp_close,
+            created_at, updated_at)
          VALUES
-           (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'local_only', ?, ?)`,
+           (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'local_only',
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            ?, ?)`,
       )
       .run(
         id,
@@ -231,6 +270,16 @@ export class SqliteEventStore {
         input.price ?? 0,
         input.capacity ?? null,
         input.category ?? null,
+        input.short_description ?? null,
+        input.doors_open_time ?? null,
+        input.age_restriction ?? null,
+        input.event_type ?? null,
+        input.online_url ?? null,
+        input.parking_info ?? null,
+        input.refund_policy ?? null,
+        input.allow_guests ?? null,
+        input.rsvp_open ?? null,
+        input.rsvp_close ?? null,
         now,
         now,
       );
