@@ -1,4 +1,4 @@
-> **Cross-project rules:** See [`claude-shared`](https://github.com/christosgalaios/claude-shared) repo (`~/.claude/claude-shared/CLAUDE.md`). Run `bash setup.sh` on new machines.
+> **IMPORTANT — Cross-project rules apply.** Read `~/.claude/claude-shared/CLAUDE.md` before starting work. If that file doesn't exist, run: `git clone https://github.com/christosgalaios/claude-shared.git ~/.claude/claude-shared`
 
 # SocialiseHub
 
