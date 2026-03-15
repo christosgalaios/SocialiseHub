@@ -4771,4 +4771,138 @@ describe('App', () => {
       expect(res.status).toBe(404);
     });
   });
+
+  // ── Timeline Route ────────────────────────────────────────
+
+  describe('Timeline', () => {
+    it('GET /api/events/:id/timeline returns 404 for non-existent event', async () => {
+      const app = createTestApp();
+      const res = await request(app).get('/api/events/no-such-id/timeline');
+      expect(res.status).toBe(404);
+    });
+
+    it('GET /api/events/:id/timeline returns timeline for existing event', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Timeline Test', description: 'Desc', start_time: '2026-06-01T18:00:00Z',
+        venue: 'V', price: 5, capacity: 30,
+      });
+      const res = await request(app).get(`/api/events/${created.body.data.id}/timeline`);
+      expect(res.status).toBe(200);
+      expect(res.body.data).toBeInstanceOf(Array);
+      expect(res.body.data.length).toBeGreaterThanOrEqual(1);
+      expect(res.body.data[0].type).toBe('created');
+    });
+
+    it('GET /api/events/:id/timeline includes notes', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Timeline Notes', description: 'D', start_time: '2026-07-01T18:00:00Z',
+        venue: 'V', price: 5, capacity: 30,
+      });
+      const id = created.body.data.id;
+      await request(app).post(`/api/events/${id}/notes`).send({ content: 'A note' });
+      const res = await request(app).get(`/api/events/${id}/timeline`);
+      expect(res.status).toBe(200);
+      const types = res.body.data.map((e: { type: string }) => e.type);
+      expect(types).toContain('created');
+      expect(types).toContain('note');
+    });
+  });
+
+  // ── Generator Route ───────────────────────────────────────
+
+  describe('Generator', () => {
+    it('POST /api/generator/save with missing title returns 400', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/generator/save').send({ description: 'D' });
+      expect(res.status).toBe(400);
+    });
+
+    it('POST /api/generator/save with missing description returns 400', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/generator/save').send({ title: 'T' });
+      expect(res.status).toBe(400);
+    });
+
+    it('POST /api/generator/save with invalid date returns 400', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/generator/save').send({ title: 'T', description: 'D', date: 'bad' });
+      expect(res.status).toBe(400);
+    });
+
+    it('POST /api/generator/save creates event with valid data', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/generator/save').send({ title: 'Gen Event', description: 'Desc' });
+      expect(res.status).toBe(201);
+      expect(res.body.data.title).toBe('Gen Event');
+    });
+
+    it('GET /api/generator/ideas returns idea data', async () => {
+      const app = createTestApp();
+      const res = await request(app).get('/api/generator/ideas');
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('remaining');
+    });
+  });
+
+  // ── Notes edge cases ──────────────────────────────────────
+
+  describe('Notes edge cases', () => {
+    it('POST /api/events/:id/notes with empty content returns 400', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Note Test', description: 'D', start_time: '2026-06-01T18:00:00Z',
+        venue: 'V', price: 5, capacity: 30,
+      });
+      const res = await request(app).post(`/api/events/${created.body.data.id}/notes`).send({ content: '' });
+      expect(res.status).toBe(400);
+    });
+
+    it('POST /api/events/:id/notes with content over 5000 chars returns 400', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Note Limit', description: 'D', start_time: '2026-06-01T18:00:00Z',
+        venue: 'V', price: 5, capacity: 30,
+      });
+      const res = await request(app).post(`/api/events/${created.body.data.id}/notes`).send({ content: 'x'.repeat(5001) });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ── JSON Import edge cases ────────────────────────────────
+
+  describe('JSON Import', () => {
+    it('POST /api/events/import/json with empty array returns 400', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/events/import/json').send({ events: [] });
+      expect(res.status).toBe(400);
+    });
+
+    it('POST /api/events/import/json with valid events returns results', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/events/import/json').send({
+        events: [
+          { title: 'Import 1', start_time: '2026-08-01T18:00:00Z' },
+          { title: 'Import 2', start_time: '2026-08-02T18:00:00Z' },
+        ],
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.data.length).toBe(2);
+      expect(res.body.data[0].success).toBe(true);
+    });
+
+    it('POST /api/events/import/json with missing title reports error per item', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/events/import/json').send({
+        events: [
+          { start_time: '2026-08-01T18:00:00Z' },
+          { title: 'Good', start_time: '2026-08-01T18:00:00Z' },
+        ],
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.data[0].success).toBe(false);
+      expect(res.body.data[1].success).toBe(true);
+    });
+  });
 });
