@@ -101,6 +101,7 @@ export function EventDetailPage() {
   const [allowGuests, setAllowGuests] = useState(0);
   const [rsvpOpen, setRsvpOpen] = useState('');
   const [rsvpClose, setRsvpClose] = useState('');
+  const [organizerName, setOrganizerName] = useState('');
 
   // Pre-fill date from query param (calendar day click)
   const prefillDate = searchParams.get('date');
@@ -170,6 +171,7 @@ export function EventDetailPage() {
         setAllowGuests((ev as any).allow_guests ?? 0);
         setRsvpOpen(toDatetimeLocal((ev as any).rsvp_open));
         setRsvpClose(toDatetimeLocal((ev as any).rsvp_close));
+        setOrganizerName(ev.organizer_name ?? '');
       })
       .catch((err: unknown) => {
         if (!cancelled) setError(err instanceof Error ? err.message : 'Load failed');
@@ -216,9 +218,10 @@ export function EventDetailPage() {
       refundPolicy !== ((event as any).refund_policy ?? '') ||
       allowGuests !== ((event as any).allow_guests ?? 0) ||
       rsvpOpen !== toDatetimeLocal((event as any).rsvp_open) ||
-      rsvpClose !== toDatetimeLocal((event as any).rsvp_close)
+      rsvpClose !== toDatetimeLocal((event as any).rsvp_close) ||
+      organizerName !== (event.organizer_name ?? '')
     );
-  }, [event, isNew, title, description, venue, price, capacity, durationMinutes, category, startTime, endTime, shortDescription, doorsOpenTime, ageRestriction, eventType, onlineUrl, parkingInfo, refundPolicy, allowGuests, rsvpOpen, rsvpClose]);
+  }, [event, isNew, title, description, venue, price, capacity, durationMinutes, category, startTime, endTime, shortDescription, doorsOpenTime, ageRestriction, eventType, onlineUrl, parkingInfo, refundPolicy, allowGuests, rsvpOpen, rsvpClose, organizerName]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -346,6 +349,7 @@ export function EventDetailPage() {
     allow_guests: allowGuests,
     rsvp_open: rsvpOpen ? new Date(rsvpOpen).toISOString() : undefined,
     rsvp_close: rsvpClose ? new Date(rsvpClose).toISOString() : undefined,
+    organizer_name: organizerName || undefined,
   } as CreateEventInput);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -580,6 +584,7 @@ export function EventDetailPage() {
     setAllowGuests((ev as any).allow_guests ?? 0);
     setRsvpOpen(toDatetimeLocal((ev as any).rsvp_open));
     setRsvpClose(toDatetimeLocal((ev as any).rsvp_close));
+    setOrganizerName(ev.organizer_name ?? '');
   };
 
   const handlePushPlatform = async (platform: string) => {
@@ -826,6 +831,18 @@ export function EventDetailPage() {
               <option value="Networking">Networking</option>
               <option value="Other">Other</option>
             </select>
+          </label>
+
+          <label style={styles.field}>
+            <span style={styles.label}>Organizer</span>
+            <input
+              style={styles.input}
+              type="text"
+              value={organizerName}
+              onChange={(e) => setOrganizerName(e.target.value)}
+              placeholder="Event organizer name"
+              maxLength={200}
+            />
           </label>
 
           <label style={styles.field}>

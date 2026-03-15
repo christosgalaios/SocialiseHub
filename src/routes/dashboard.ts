@@ -1057,5 +1057,31 @@ Be direct. No preamble.`;
     }
   });
 
+  /**
+   * GET /api/dashboard/last-synced
+   * Returns last successful sync timestamp per platform from sync_log.
+   */
+  router.get('/last-synced', (_req, res, next) => {
+    try {
+      const rows = db.prepare(`
+        SELECT platform, MAX(created_at) as last_synced_at
+        FROM sync_log
+        WHERE status = 'success' AND action = 'pull'
+        GROUP BY platform
+      `).all() as Array<{ platform: string; last_synced_at: string }>;
+
+      const byPlatform: Record<string, string> = {};
+      let overall: string | null = null;
+      for (const row of rows) {
+        byPlatform[row.platform] = row.last_synced_at;
+        if (!overall || row.last_synced_at > overall) overall = row.last_synced_at;
+      }
+
+      res.json({ data: { byPlatform, overall } });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }

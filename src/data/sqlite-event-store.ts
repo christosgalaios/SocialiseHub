@@ -16,7 +16,7 @@ const UPDATABLE_FIELDS = new Set([
   'actual_attendance', 'actual_revenue',
   'short_description', 'doors_open_time', 'age_restriction', 'event_type',
   'online_url', 'parking_info', 'refund_policy', 'allow_guests',
-  'rsvp_open', 'rsvp_close',
+  'rsvp_open', 'rsvp_close', 'organizer_name',
 ]);
 
 interface EventRow {
@@ -45,6 +45,7 @@ interface EventRow {
   allow_guests: number | null;
   rsvp_open: string | null;
   rsvp_close: string | null;
+  organizer_name: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -113,6 +114,7 @@ export class SqliteEventStore {
       allow_guests: row.allow_guests ?? undefined,
       rsvp_open: row.rsvp_open ?? undefined,
       rsvp_close: row.rsvp_close ?? undefined,
+      organizer_name: row.organizer_name ?? undefined,
       platforms,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -259,11 +261,11 @@ export class SqliteEventStore {
             venue, price, capacity, category, status, sync_status,
             short_description, doors_open_time, age_restriction, event_type,
             online_url, parking_info, refund_policy, allow_guests,
-            rsvp_open, rsvp_close,
+            rsvp_open, rsvp_close, organizer_name,
             created_at, updated_at)
          VALUES
            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'local_only',
-            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
             ?, ?)`,
       )
       .run(
@@ -287,6 +289,7 @@ export class SqliteEventStore {
         input.allow_guests ?? null,
         input.rsvp_open ?? null,
         input.rsvp_close ?? null,
+        (input as any).organizer_name ?? null,
         now,
         now,
       );

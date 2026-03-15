@@ -415,7 +415,7 @@ export function EventsPage() {
       {error && (
         <div style={styles.errorBanner}>
           {error}
-          <button style={styles.retryBtn} onClick={load}>Retry</button>
+          <button style={styles.retryBtn} onClick={() => load()}>Retry</button>
         </div>
       )}
 

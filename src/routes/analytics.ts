@@ -664,24 +664,32 @@ Respond with ONLY the analysis text. No preamble, no introductory text.`;
   router.get('/day-of-week', (_req, res, next) => {
     try {
       const rows = db.prepare(`
-        SELECT
-          CASE CAST(strftime('%w', date) AS INTEGER)
-            WHEN 0 THEN 6
-            WHEN 1 THEN 0
-            WHEN 2 THEN 1
-            WHEN 3 THEN 2
-            WHEN 4 THEN 3
-            WHEN 5 THEN 4
-            WHEN 6 THEN 5
-          END as day_index,
+        SELECT day_index,
           COUNT(*) as event_count,
-          SUM(COALESCE(attendance, 0)) as total_attendance,
-          AVG(CASE WHEN attendance IS NOT NULL AND attendance > 0 THEN attendance END) as avg_attendance,
-          SUM(COALESCE(revenue, 0)) as total_revenue
-        FROM platform_events
-        WHERE date IS NOT NULL AND date != '' AND strftime('%w', date) IS NOT NULL
-        GROUP BY 1
-        ORDER BY 1
+          SUM(max_att) as total_attendance,
+          AVG(CASE WHEN max_att > 0 THEN max_att END) as avg_attendance,
+          SUM(max_rev) as total_revenue
+        FROM (
+          SELECT
+            CASE CAST(strftime('%w', date) AS INTEGER)
+              WHEN 0 THEN 6
+              WHEN 1 THEN 0
+              WHEN 2 THEN 1
+              WHEN 3 THEN 2
+              WHEN 4 THEN 3
+              WHEN 5 THEN 4
+              WHEN 6 THEN 5
+            END as day_index,
+            event_id,
+            MAX(COALESCE(attendance, 0)) as max_att,
+            MAX(COALESCE(revenue, 0)) as max_rev
+          FROM platform_events
+          WHERE date IS NOT NULL AND date != '' AND strftime('%w', date) IS NOT NULL
+            AND event_id IS NOT NULL
+          GROUP BY day_index, event_id
+        )
+        GROUP BY day_index
+        ORDER BY day_index
       `).all() as Array<{
         day_index: number;
         event_count: number;
@@ -703,13 +711,28 @@ Respond with ONLY the analysis text. No preamble, no introductory text.`;
   router.get('/top-events', (_req, res, next) => {
     try {
       const rows = db.prepare(`
-        SELECT pe.title, pe.date, pe.attendance, pe.capacity, pe.revenue, pe.ticket_price, pe.platform, pe.organizer_name, pe.venue, pe.external_url,
+        SELECT sub.title, sub.date, sub.attendance, sub.capacity, sub.revenue, sub.ticket_price, sub.platform, sub.organizer_name, sub.venue, sub.external_url,
           e.category,
-          CASE WHEN pe.capacity > 0 THEN CAST(pe.attendance AS REAL) / CAST(pe.capacity AS REAL) ELSE NULL END as fill_rate
-        FROM platform_events pe
-        LEFT JOIN events e ON pe.event_id = e.id
-        WHERE pe.attendance IS NOT NULL AND pe.attendance > 0
-        ORDER BY pe.attendance DESC
+          CASE WHEN sub.capacity > 0 THEN CAST(sub.attendance AS REAL) / CAST(sub.capacity AS REAL) ELSE NULL END as fill_rate
+        FROM (
+          SELECT event_id,
+            MAX(title) as title,
+            MAX(date) as date,
+            MAX(COALESCE(attendance, 0)) as attendance,
+            MAX(COALESCE(capacity, 0)) as capacity,
+            MAX(COALESCE(revenue, 0)) as revenue,
+            MAX(ticket_price) as ticket_price,
+            MAX(platform) as platform,
+            MAX(organizer_name) as organizer_name,
+            MAX(venue) as venue,
+            MAX(external_url) as external_url
+          FROM platform_events
+          WHERE attendance IS NOT NULL AND attendance > 0
+            AND event_id IS NOT NULL
+          GROUP BY event_id
+        ) sub
+        LEFT JOIN events e ON sub.event_id = e.id
+        ORDER BY sub.attendance DESC
         LIMIT 20
       `).all() as Array<{
         title: string;

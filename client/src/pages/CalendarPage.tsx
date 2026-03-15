@@ -161,8 +161,10 @@ export function CalendarPage() {
                       style={{
                         ...styles.eventChip,
                         background: getEventColor(evt),
+                        cursor: 'pointer',
                       }}
                       title={evt.title}
+                      onClick={(e) => { e.stopPropagation(); nav(`/events/${evt.id}`); }}
                     >
                       {evt.title.length > 12 ? evt.title.slice(0, 12) + '…' : evt.title}
                     </div>

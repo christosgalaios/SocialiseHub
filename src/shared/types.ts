@@ -44,6 +44,7 @@ export interface SocialiseEvent {
   allow_guests?: number;
   rsvp_open?: string;
   rsvp_close?: string;
+  organizer_name?: string;
   platforms: PlatformPublishStatus[];
   notesCount?: number;
   checklistTotal?: number;

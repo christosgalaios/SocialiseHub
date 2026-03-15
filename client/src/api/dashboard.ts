@@ -187,3 +187,13 @@ export async function generateActionPlanPrompt(): Promise<{ prompt: string }> {
   const res = await fetch(`${BASE}/action-plan`, { method: 'POST' });
   return json<{ prompt: string }>(res);
 }
+
+export interface LastSyncedData {
+  byPlatform: Record<string, string>;
+  overall: string | null;
+}
+
+export async function getLastSynced(): Promise<{ data: LastSyncedData }> {
+  const res = await fetch(`${BASE}/last-synced`);
+  return json<{ data: LastSyncedData }>(res);
+}

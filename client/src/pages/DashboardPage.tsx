@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { syncPull } from '../api/events';
-import { getAttentionItems, getUpcomingEvents, getPerformance } from '../api/dashboard';
-import type { AttentionItem, UpcomingEvent, PerformanceStats } from '../api/dashboard';
+import { getAttentionItems, getUpcomingEvents, getPerformance, getLastSynced } from '../api/dashboard';
+import type { AttentionItem, UpcomingEvent, PerformanceStats, LastSyncedData } from '../api/dashboard';
 import { AttentionSection } from '../components/dashboard/AttentionSection';
 import { UpcomingSection } from '../components/dashboard/UpcomingSection';
 import { PerformanceSection } from '../components/dashboard/PerformanceSection';
@@ -12,6 +12,17 @@ import { useToast } from '../context/ToastContext';
 import { ListSkeleton } from '../components/Skeleton';
 
 const SYNC_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
+
+function formatTimeAgo(isoStr: string): string {
+  const diff = Date.now() - new Date(isoStr).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
 
 interface DashboardData {
   attentionItems: AttentionItem[];
@@ -25,6 +36,7 @@ export function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [lastSynced, setLastSynced] = useState<LastSyncedData | null>(null);
   const { showToast } = useToast();
 
   const load = useCallback(async () => {
@@ -65,6 +77,7 @@ export function DashboardPage() {
       localStorage.setItem('lastSyncAt', new Date().toISOString());
       showToast(`Synced ${result.pulled} event${result.pulled !== 1 ? 's' : ''}`, 'success');
       await load();
+      getLastSynced().then(r => setLastSynced(r.data)).catch(() => {});
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Sync failed', 'error');
     } finally {
@@ -75,6 +88,7 @@ export function DashboardPage() {
   useEffect(() => {
     let cancelled = false;
     load().then(() => { if (cancelled) return; });
+    getLastSynced().then(r => { if (!cancelled) setLastSynced(r.data); }).catch(() => {});
     return () => { cancelled = true; };
   }, [load]);
 
@@ -96,6 +110,11 @@ export function DashboardPage() {
           <p style={styles.subtitle}>Overview of your events and platforms</p>
         </div>
         <div style={styles.headerActions}>
+          {lastSynced?.overall && (
+            <span style={styles.lastSyncLabel} title={Object.entries(lastSynced.byPlatform).map(([p, t]) => `${p}: ${new Date(t).toLocaleString()}`).join('\n')}>
+              Last synced {formatTimeAgo(lastSynced.overall)}
+            </span>
+          )}
           {syncing && <span style={styles.syncMsg}>Syncing...</span>}
           <button
             style={{ ...styles.syncBtn, opacity: syncing ? 0.7 : 1 }}
@@ -162,6 +181,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 13,
     color: '#2D5F5D',
     fontWeight: 600,
+  },
+  lastSyncLabel: {
+    fontSize: 12,
+    color: '#999',
+    cursor: 'help',
   },
   syncBtn: {
     padding: '10px 20px',
