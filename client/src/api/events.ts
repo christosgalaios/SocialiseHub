@@ -89,6 +89,36 @@ export async function duplicateEvent(id: string): Promise<SocialiseEvent> {
   return body.data;
 }
 
+export async function batchUpdateStatus(
+  ids: string[],
+  status: 'draft' | 'published' | 'cancelled',
+): Promise<{ data: { id: string; success: boolean; error?: string }[]; updated: number }> {
+  const res = await fetch(`${BASE}/events/batch/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, status }),
+  });
+  return json(res);
+}
+
+export async function batchDeleteEvents(
+  ids: string[],
+): Promise<{ data: { id: string; success: boolean; error?: string }[]; deleted: number }> {
+  const res = await fetch(`${BASE}/events/batch`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  return json(res);
+}
+
+export function getEventsExportUrl(params?: { status?: string; upcoming?: boolean }): string {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.upcoming) qs.set('upcoming', 'true');
+  return `${BASE}/events/export/csv${qs.toString() ? '?' + qs.toString() : ''}`;
+}
+
 // ── Services ────────────────────────────────────────────
 
 export async function getServices(): Promise<ServiceConnection[]> {

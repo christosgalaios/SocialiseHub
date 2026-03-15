@@ -74,6 +74,93 @@ export function createEventsRouter(
     }
   });
 
+  // Batch and export routes must be before /:id to avoid param capture
+  router.patch('/batch/status', (req, res, next) => {
+    try {
+      const { ids, status } = req.body as { ids?: string[]; status?: string };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+      const validStatuses = ['draft', 'published', 'cancelled'];
+      if (!status || !validStatuses.includes(status)) {
+        return res.status(400).json({ error: `status must be one of: ${validStatuses.join(', ')}` });
+      }
+
+      const results: { id: string; success: boolean; error?: string }[] = [];
+      for (const id of ids) {
+        const event = store.getById(id);
+        if (!event) {
+          results.push({ id, success: false, error: 'Not found' });
+          continue;
+        }
+        store.updateStatus(id, status as 'draft' | 'published' | 'cancelled');
+        results.push({ id, success: true });
+      }
+
+      res.json({ data: results, updated: results.filter(r => r.success).length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.delete('/batch', (req, res, next) => {
+    try {
+      const { ids } = req.body as { ids?: string[] };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+
+      const results: { id: string; success: boolean; error?: string }[] = [];
+      for (const id of ids) {
+        const deleted = store.delete(id);
+        results.push(deleted ? { id, success: true } : { id, success: false, error: 'Not found' });
+      }
+
+      res.json({ data: results, deleted: results.filter(r => r.success).length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/export/csv', (req, res, next) => {
+    try {
+      let events = store.getAll();
+
+      const status = req.query.status as string | undefined;
+      if (status) events = events.filter(e => e.status === status);
+      if (req.query.upcoming === 'true') {
+        const now = new Date().toISOString();
+        events = events.filter(e => e.start_time > now);
+      }
+
+      const escCsv = (val: string | number | undefined | null): string => {
+        if (val == null) return '';
+        const s = String(val);
+        return s.includes(',') || s.includes('"') || s.includes('\n')
+          ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+
+      const headers = ['id', 'title', 'description', 'start_time', 'end_time', 'duration_minutes', 'venue', 'price', 'capacity', 'status', 'sync_status', 'createdAt', 'updatedAt'];
+      const rows = events.map(e =>
+        headers.map(h => escCsv((e as Record<string, unknown>)[h] as string)).join(',')
+      );
+
+      const csv = [headers.join(','), ...rows].join('\n');
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="events.csv"');
+      res.send(csv);
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.get('/:id', (req, res, next) => {
     try {
       const event = store.getById(req.params.id);
@@ -116,37 +203,6 @@ export function createEventsRouter(
       const deleted = store.delete(req.params.id);
       if (!deleted) return res.status(404).json({ error: 'Event not found' });
       res.status(204).end();
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  router.patch('/batch/status', (req, res, next) => {
-    try {
-      const { ids, status } = req.body as { ids?: string[]; status?: string };
-      if (!Array.isArray(ids) || ids.length === 0) {
-        return res.status(400).json({ error: 'ids must be a non-empty array' });
-      }
-      if (ids.length > 100) {
-        return res.status(400).json({ error: 'Maximum 100 events per batch' });
-      }
-      const validStatuses = ['draft', 'published', 'cancelled'];
-      if (!status || !validStatuses.includes(status)) {
-        return res.status(400).json({ error: `status must be one of: ${validStatuses.join(', ')}` });
-      }
-
-      const results: { id: string; success: boolean; error?: string }[] = [];
-      for (const id of ids) {
-        const event = store.getById(id);
-        if (!event) {
-          results.push({ id, success: false, error: 'Not found' });
-          continue;
-        }
-        store.updateStatus(id, status as 'draft' | 'published' | 'cancelled');
-        results.push({ id, success: true });
-      }
-
-      res.json({ data: results, updated: results.filter(r => r.success).length });
     } catch (err) {
       next(err);
     }

@@ -270,4 +270,97 @@ describe('App', () => {
     expect(res.body.data[1].success).toBe(false);
     expect(res.body.data[1].error).toBe('Not found');
   });
+
+  // ── Batch Delete ──────────────────────────────────────
+
+  it('DELETE /api/events/batch deletes multiple events', async () => {
+    const app = createTestApp();
+    const e1 = await request(app).post('/api/events').send({
+      title: 'Del 1', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const e2 = await request(app).post('/api/events').send({
+      title: 'Del 2', description: 'D', start_time: '2030-01-02T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app)
+      .delete('/api/events/batch')
+      .send({ ids: [e1.body.data.id, e2.body.data.id] });
+    expect(res.status).toBe(200);
+    expect(res.body.deleted).toBe(2);
+
+    // Verify they're gone
+    const list = await request(app).get('/api/events');
+    expect(list.body.data).toHaveLength(0);
+  });
+
+  it('DELETE /api/events/batch returns 400 for empty ids', async () => {
+    const app = createTestApp();
+    const res = await request(app).delete('/api/events/batch').send({ ids: [] });
+    expect(res.status).toBe(400);
+  });
+
+  it('DELETE /api/events/batch handles missing events gracefully', async () => {
+    const app = createTestApp();
+    const e1 = await request(app).post('/api/events').send({
+      title: 'Keep', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app)
+      .delete('/api/events/batch')
+      .send({ ids: [e1.body.data.id, 'ghost'] });
+    expect(res.status).toBe(200);
+    expect(res.body.deleted).toBe(1);
+    expect(res.body.data[1].success).toBe(false);
+  });
+
+  // ── CSV Export ────────────────────────────────────────
+
+  it('GET /api/events/export/csv returns CSV content', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'CSV Event', description: 'For export', start_time: '2030-01-01T19:00:00Z',
+      venue: 'Hall', price: 15, capacity: 100,
+    });
+    const res = await request(app).get('/api/events/export/csv');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toContain('text/csv');
+    expect(res.headers['content-disposition']).toContain('events.csv');
+    const lines = res.text.split('\n');
+    expect(lines[0]).toBe('id,title,description,start_time,end_time,duration_minutes,venue,price,capacity,status,sync_status,createdAt,updatedAt');
+    expect(lines).toHaveLength(2); // header + 1 event
+    expect(lines[1]).toContain('CSV Event');
+  });
+
+  it('GET /api/events/export/csv escapes commas in fields', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Event, with comma', description: 'Desc', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get('/api/events/export/csv');
+    expect(res.text).toContain('"Event, with comma"');
+  });
+
+  it('GET /api/events/export/csv?status=draft filters exported events', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Draft One', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get('/api/events/export/csv?status=draft');
+    const lines = res.text.split('\n');
+    expect(lines).toHaveLength(2);
+    const resPublished = await request(app).get('/api/events/export/csv?status=published');
+    const pubLines = resPublished.text.split('\n');
+    expect(pubLines).toHaveLength(1); // header only
+  });
+
+  it('GET /api/events/export/csv returns empty CSV for no events', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/events/export/csv');
+    expect(res.status).toBe(200);
+    const lines = res.text.split('\n');
+    expect(lines).toHaveLength(1); // header only
+  });
 });
