@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { PlatformName } from '@shared/types';
 import { loadSettings, saveSettings } from '../lib/settings';
 import { useToast } from '../context/ToastContext';
+import { clearAllData, clearCategory } from '../api/data';
 
 const PLATFORMS: { key: PlatformName; label: string }[] = [
   { key: 'meetup', label: 'Meetup' },
@@ -10,6 +11,15 @@ const PLATFORMS: { key: PlatformName; label: string }[] = [
 ];
 
 const DURATIONS = [30, 60, 90, 120, 180];
+
+const DATA_CATEGORIES = [
+  { key: 'events', label: 'Events', description: 'All events, photos, notes, tags, checklists, scores, and sync history' },
+  { key: 'platforms', label: 'Platform Connections', description: 'Disconnect all platforms and clear sync snapshots' },
+  { key: 'templates', label: 'Templates', description: 'All saved event templates' },
+  { key: 'ideas', label: 'Ideas', description: 'All generated event ideas' },
+  { key: 'market', label: 'Market Research', description: 'Cached market analysis data' },
+  { key: 'dashboard', label: 'Dashboard Cache', description: 'Dashboard suggestions and cached analytics' },
+];
 
 export function SettingsPage() {
   const [settings, setSettings] = useState(loadSettings);
@@ -27,6 +37,31 @@ export function SettingsPage() {
   const handleSave = () => {
     saveSettings(settings);
     showToast('Settings saved', 'success');
+  };
+
+  const [clearing, setClearing] = useState<string | null>(null);
+
+  const handleClear = async (category: string | 'all') => {
+    const label = category === 'all'
+      ? 'ALL local data including events, platform connections, templates, and history'
+      : DATA_CATEGORIES.find(c => c.key === category)?.label?.toLowerCase() ?? category;
+
+    const confirmed = window.confirm(
+      `This will permanently delete ${label}. This cannot be undone. Are you sure?`
+    );
+    if (!confirmed) return;
+
+    setClearing(category);
+    try {
+      const result = category === 'all'
+        ? await clearAllData()
+        : await clearCategory(category);
+      showToast(result.message, 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to clear data', 'error');
+    } finally {
+      setClearing(null);
+    }
   };
 
   return (
@@ -110,6 +145,37 @@ export function SettingsPage() {
         <button style={styles.saveBtn} onClick={handleSave}>
           Save Settings
         </button>
+
+        <div style={{ ...styles.section, paddingTop: 32, borderTop: '1px solid #eee' }}>
+          <h3 style={styles.sectionTitle}>Data Management</h3>
+          <p style={styles.hint}>Clear local data to start fresh. These actions cannot be undone.</p>
+
+          <div style={{ display: 'flex', flexDirection: 'column' as const, gap: 12 }}>
+            {DATA_CATEGORIES.map((cat) => (
+              <div key={cat.key} style={dataStyles.card}>
+                <div>
+                  <div style={dataStyles.cardLabel}>{cat.label}</div>
+                  <div style={dataStyles.cardDesc}>{cat.description}</div>
+                </div>
+                <button
+                  style={dataStyles.clearBtn}
+                  disabled={clearing !== null}
+                  onClick={() => handleClear(cat.key)}
+                >
+                  {clearing === cat.key ? 'Clearing...' : 'Clear'}
+                </button>
+              </div>
+            ))}
+          </div>
+
+          <button
+            style={dataStyles.clearAllBtn}
+            disabled={clearing !== null}
+            onClick={() => handleClear('all')}
+          >
+            {clearing === 'all' ? 'Clearing...' : 'Clear All Data'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -196,5 +262,53 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontFamily: "'Outfit', sans-serif",
     alignSelf: 'flex-start',
+  },
+};
+
+const dataStyles: Record<string, React.CSSProperties> = {
+  card: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: '12px 16px',
+    borderRadius: 12,
+    border: '1px solid #eee',
+    background: '#fafafa',
+  },
+  cardLabel: {
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#333',
+    fontFamily: "'Outfit', sans-serif",
+  },
+  cardDesc: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 2,
+  },
+  clearBtn: {
+    padding: '6px 16px',
+    borderRadius: 8,
+    border: '1px solid #ddd',
+    background: '#fff',
+    fontSize: 13,
+    fontWeight: 600,
+    color: '#555',
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
+    whiteSpace: 'nowrap',
+  },
+  clearAllBtn: {
+    padding: '12px 28px',
+    borderRadius: 12,
+    border: 'none',
+    background: '#dc3545',
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
+    alignSelf: 'flex-start',
+    marginTop: 8,
   },
 };
