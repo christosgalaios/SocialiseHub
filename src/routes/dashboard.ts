@@ -492,5 +492,101 @@ Respond ONLY with the JSON array, no markdown.`;
     }
   });
 
+  /**
+   * POST /api/dashboard/digest
+   * Compose a weekly digest prompt summarising activity and action items.
+   */
+  router.post('/digest', (_req, res, next) => {
+    try {
+      const now = new Date();
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      // Events created this week
+      const recentlyCreated = db.prepare(`
+        SELECT title, start_time, venue, status, category
+        FROM events WHERE created_at > ? ORDER BY created_at DESC
+      `).all(weekAgo) as Array<{ title: string; start_time: string; venue: string | null; status: string; category: string | null }>;
+
+      // Events happening next week
+      const upcoming = db.prepare(`
+        SELECT title, start_time, venue, status, category, capacity
+        FROM events WHERE start_time > ? AND start_time < ? AND status != 'cancelled' AND status != 'archived'
+        ORDER BY start_time ASC
+      `).all(now.toISOString(), weekAhead) as Array<{
+        title: string; start_time: string; venue: string | null;
+        status: string; category: string | null; capacity: number | null;
+      }>;
+
+      // Events needing attention (low scores, missing info)
+      const needsAttention = db.prepare(`
+        SELECT e.title, e.id, es.overall as score
+        FROM events e
+        LEFT JOIN event_scores es ON es.event_id = e.id
+        WHERE e.start_time > ? AND e.status != 'cancelled' AND e.status != 'archived'
+          AND (es.overall IS NULL OR es.overall < 50
+               OR e.description IS NULL OR LENGTH(e.description) < 50
+               OR e.venue IS NULL OR e.venue = '')
+        ORDER BY e.start_time ASC
+        LIMIT 10
+      `).all(now.toISOString()) as Array<{ title: string; id: string; score: number | null }>;
+
+      // Recent notes
+      const recentNotes = db.prepare(`
+        SELECT en.content, en.author, en.created_at, e.title as event_title
+        FROM event_notes en
+        JOIN events e ON e.id = en.event_id
+        WHERE en.created_at > ?
+        ORDER BY en.created_at DESC
+        LIMIT 10
+      `).all(weekAgo) as Array<{ content: string; author: string; created_at: string; event_title: string }>;
+
+      // Overall stats
+      const totalEvents = (db.prepare('SELECT COUNT(*) as cnt FROM events WHERE status != \'archived\'').get() as { cnt: number }).cnt;
+      const draftCount = (db.prepare('SELECT COUNT(*) as cnt FROM events WHERE status = \'draft\'').get() as { cnt: number }).cnt;
+
+      const prompt = `You are the operations manager for Socialise, a Bristol-based social events company. Write a concise weekly digest.
+
+## This Week's Activity
+
+### Events Created (${recentlyCreated.length})
+${recentlyCreated.length === 0 ? 'No new events created this week.' : recentlyCreated.map(e =>
+  `- "${e.title}" | ${e.start_time.slice(0, 10)} | ${e.venue || 'no venue'} | ${e.status} | ${e.category || 'uncategorized'}`
+).join('\n')}
+
+### Upcoming Next 7 Days (${upcoming.length})
+${upcoming.length === 0 ? 'No events in the next 7 days.' : upcoming.map(e =>
+  `- "${e.title}" | ${e.start_time.slice(0, 10)} | ${e.venue || 'no venue'} | cap ${e.capacity ?? '?'} | ${e.status}`
+).join('\n')}
+
+### Needs Attention (${needsAttention.length})
+${needsAttention.length === 0 ? 'All events look good!' : needsAttention.map(e =>
+  `- "${e.title}" | score: ${e.score ?? 'unscored'}`
+).join('\n')}
+
+### Recent Notes (${recentNotes.length})
+${recentNotes.length === 0 ? 'No notes this week.' : recentNotes.map(n =>
+  `- [${n.author}] on "${n.event_title}": ${n.content.slice(0, 100)}${n.content.length > 100 ? '...' : ''}`
+).join('\n')}
+
+### Portfolio
+- Total active events: ${totalEvents}
+- Drafts pending: ${draftCount}
+
+## Your Task
+Write a brief weekly digest (3-5 paragraphs) covering:
+1. **Highlights** — What went well this week
+2. **Upcoming** — What's coming up and readiness status
+3. **Action Items** — Top 3-5 things to focus on
+4. **Risks** — Any events at risk of underperforming
+
+Keep it actionable and concise. No JSON, just plain text.`;
+
+      res.json({ prompt });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }

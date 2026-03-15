@@ -2515,4 +2515,27 @@ describe('App', () => {
     const res = await request(app).post('/api/events/batch/readiness').send({});
     expect(res.status).toBe(400);
   });
+
+  // ── Weekly Digest ───────────────────────────────────────
+
+  it('POST /api/dashboard/digest returns a prompt', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/dashboard/digest');
+    expect(res.status).toBe(200);
+    expect(typeof res.body.prompt).toBe('string');
+    expect(res.body.prompt).toContain('Socialise');
+    expect(res.body.prompt).toContain('weekly digest');
+  });
+
+  it('POST /api/dashboard/digest includes created events', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Digest Test Event',
+      description: 'Testing digest', start_time: '2030-06-01T19:00:00Z',
+      venue: 'Pub', price: 5, capacity: 20,
+    });
+    const res = await request(app).post('/api/dashboard/digest');
+    expect(res.status).toBe(200);
+    expect(res.body.prompt).toContain('Digest Test Event');
+  });
 });

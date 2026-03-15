@@ -335,6 +335,11 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   return body.data;
 }
 
+export async function getWeeklyDigestPrompt(): Promise<{ prompt: string }> {
+  const res = await fetch(`${BASE}/dashboard/digest`, { method: 'POST' });
+  return json(res);
+}
+
 // ── Sync ───────────────────────────────────────────────
 
 export async function syncPull(): Promise<{ pulled: number }> {
