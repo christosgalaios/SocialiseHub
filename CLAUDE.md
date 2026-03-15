@@ -93,7 +93,7 @@ npm run build:all          # Build server + electron + client
 ## Testing
 
 - **Framework:** Vitest
-- **Test count:** 707+ tests across 25 files
+- **Test count:** 724+ tests across 25 files
 - **Database:** Tests use in-memory SQLite (`:memory:`)
 - **HTTP:** Route tests use supertest
 
@@ -154,3 +154,10 @@ npx vitest --watch         # Watch mode
 - EventCard shows checklist progress badges and notes count when data is present
 - SyncLogPage and ServicesPage have consistent error banners with retry buttons
 - Sync error messages include platform context for easier debugging
+- Checklist reorder route registered before `:itemId` route to prevent Express param capture shadowing
+- Services disconnect cascade-deletes related data (notes, checklist, photos, scores, etc.) when removing synced events
+- All batch endpoints validate individual IDs are non-empty strings
+- Batch category validates max 100 chars, batch venue validates max 500 chars
+- Import/json sanitizes numeric fields (price, capacity, duration) to valid ranges and truncates strings
+- Notes author truncated to 100 chars, score suggestions validated as array
+- Quick-create and generator/save enforce title (200) and description (5000) length limits
