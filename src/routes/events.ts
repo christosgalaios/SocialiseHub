@@ -318,6 +318,9 @@ export function createEventsRouter(
       if (ids.length > 100) {
         return res.status(400).json({ error: 'Maximum 100 events per batch' });
       }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'All ids must be non-empty strings' });
+      }
 
       const results = ids.map(id => {
         const event = store.getById(id);
@@ -365,6 +368,9 @@ export function createEventsRouter(
       }
       if (ids.length > 100) {
         return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'All ids must be non-empty strings' });
       }
 
       const results: { id: string; success: boolean; error?: string }[] = [];

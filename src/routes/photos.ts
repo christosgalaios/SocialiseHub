@@ -154,6 +154,14 @@ export function createPhotosRouter(db: Database): Router {
       ).get(eventId);
       if (!eventRow) return res.status(404).json({ error: 'Event not found' });
 
+      // Check photo count limit
+      const countRow = db.prepare<[string], { cnt: number }>(
+        'SELECT COUNT(*) as cnt FROM event_photos WHERE event_id = ?'
+      ).get(eventId);
+      if (countRow && countRow.cnt >= 50) {
+        return res.status(400).json({ error: 'Maximum 50 photos per event' });
+      }
+
       const accessKey = process.env.UNSPLASH_ACCESS_KEY;
       if (!accessKey) return res.status(503).json({ error: 'UNSPLASH_ACCESS_KEY not configured' });
 

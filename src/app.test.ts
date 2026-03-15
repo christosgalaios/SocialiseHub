@@ -5847,4 +5847,24 @@ describe('App', () => {
     expect(res.status).toBe(200);
     expect(res.body.stored).toBe(1);
   });
+
+  // ── M132: Batch validation consistency ─────────────────
+
+  it('POST batch/readiness rejects non-string ids', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/batch/readiness').send({
+      ids: [123, null],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('non-empty strings');
+  });
+
+  it('POST batch/archive rejects non-string ids', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/batch/archive').send({
+      ids: [42],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('non-empty strings');
+  });
 });
