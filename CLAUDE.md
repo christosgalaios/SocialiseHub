@@ -93,7 +93,7 @@ npm run build:all          # Build server + electron + client
 ## Testing
 
 - **Framework:** Vitest
-- **Test count:** 730+ tests across 25 files
+- **Test count:** 750+ tests across 25 files
 - **Database:** Tests use in-memory SQLite (`:memory:`)
 - **HTTP:** Route tests use supertest
 
@@ -167,3 +167,12 @@ npx vitest --watch         # Watch mode
 - Per-event photo limit enforced at 50 photos (photo/auto endpoint, batch operations)
 - Generator ideas field sanitizes length to prevent excessively long values
 - Consistent ID type validation across all batch endpoints (readiness, archive now match status/category/venue pattern)
+- Dashboard includes HealthSection (event health scores 0-100, sorted worst-first) and PortfolioSection (category breakdown table, calendar gap warnings)
+- AnalyticsPage has 5 tabs: Insights, Data Explorer, Pricing, Venues, ROI — all wired to backend endpoints
+- PricingTab shows price range fill rates, revenue-per-attendee by platform
+- VenueTab shows venue overview with scores and per-venue/platform performance
+- ROITab shows top events leaderboard, monthly revenue trends, platform efficiency
+- EventsPage supports multi-select with batch operations toolbar (set status, set category, delete)
+- EventsPage has JSON import modal supporting paste or .json file upload with results summary
+- CalendarPage retry handler properly extracted to reusable load function (no stale cancelled flag)
+- Analytics test coverage: 36 tests including pricing/venue/ROI query validation (750 total)
