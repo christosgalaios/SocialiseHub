@@ -275,7 +275,7 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
       script: `(async () => {
         const allEvents = [];
         const seen = new Set();
-        const NODE_FIELDS = 'id title dateTime eventUrl description maxTickets venue { name } rsvps { totalCount } featuredEventPhoto { baseUrl } feeSettings { amount currency }';
+        const NODE_FIELDS = 'id title dateTime eventUrl description maxTickets venue { name } rsvps { totalCount } featuredEventPhoto { baseUrl } feeSettings { amount currency } eventHosts { name }';
 
         // Helper: fetch a page of events with given status
         async function fetchPage(status, cursor) {
@@ -322,7 +322,8 @@ export function meetupScrapeSteps(groupUrlname: string): AutomationStep[] {
             fee: node.feeSettings?.amount ?? null,
             description: node.description ?? null,
             imageUrl: node.featuredEventPhoto?.baseUrl ?? null,
-            organizerName: node.host?.name ?? null,
+            organizerName: Array.isArray(node.eventHosts) && node.eventHosts.length > 0
+              ? node.eventHosts.map(h => h.name).join(', ') : null,
           };
         }
 
