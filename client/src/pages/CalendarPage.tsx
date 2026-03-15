@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SocialiseEvent } from '@shared/types';
 import { getEvents } from '../api/events';
+import { ListSkeleton } from '../components/Skeleton';
 
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate();
@@ -117,7 +118,7 @@ export function CalendarPage() {
       )}
 
       {loading ? (
-        <p style={{ color: '#7a7a7a' }}>Loading...</p>
+        <ListSkeleton rows={5} />
       ) : error ? (
         <div style={styles.errorBanner}>
           {error}

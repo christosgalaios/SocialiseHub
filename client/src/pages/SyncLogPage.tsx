@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { SyncLogEntry } from '@shared/types';
 import { getSyncLog } from '../api/events';
 import { PLATFORM_COLORS } from '../lib/platforms';
+import { ListSkeleton } from '../components/Skeleton';
 
 function formatTime(dateStr: string): string {
   try {
@@ -69,7 +70,7 @@ export function SyncLogPage() {
       {error && <div style={styles.error}>{error}</div>}
 
       {loading ? (
-        <div style={styles.loading}>Loading sync log...</div>
+        <ListSkeleton rows={5} />
       ) : entries.length === 0 ? (
         <div style={styles.empty}>
           <p style={styles.emptyTitle}>No sync activity yet</p>

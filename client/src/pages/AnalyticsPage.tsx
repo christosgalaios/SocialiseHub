@@ -12,6 +12,7 @@ import { TimingHeatmap } from '../components/analytics/TimingHeatmap';
 import type { TimingDataPoint } from '../components/analytics/TimingHeatmap';
 import { InsightsPanel } from '../components/analytics/InsightsPanel';
 import { getAnalyticsSummary, getAnalyticsTrends } from '../api/events';
+import { ListSkeleton } from '../components/Skeleton';
 
 export function AnalyticsPage() {
   const [tab, setTab] = useState<'insights' | 'data'>('insights');
@@ -45,7 +46,7 @@ export function AnalyticsPage() {
   }, []);
 
   if (loading) {
-    return <div style={styles.loading}>Loading analytics...</div>;
+    return <ListSkeleton rows={4} />;
   }
 
   if (error) {
