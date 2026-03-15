@@ -72,7 +72,11 @@ export function DashboardPage() {
     }
   }, [showToast, load]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    load().then(() => { if (cancelled) return; });
+    return () => { cancelled = true; };
+  }, [load]);
 
   // Auto-sync on mount if >30min since last sync
   useEffect(() => {

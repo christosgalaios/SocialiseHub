@@ -16,16 +16,20 @@ function formatDate(iso: string): string {
 export function ConflictsSection() {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
+    let cancelled = false;
     getConflicts()
-      .then((res) => setConflicts(res.data))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .then((res) => { if (!cancelled) setConflicts(res.data); })
+      .catch(() => { if (!cancelled) setError(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   if (loading) return null;
+  if (error) return null;
   if (conflicts.length === 0) return null;
 
   return (

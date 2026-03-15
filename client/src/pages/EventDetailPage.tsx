@@ -114,15 +114,18 @@ export function EventDetailPage() {
   const [pullingPlatform, setPullingPlatform] = useState<string | null>(null);
 
   useEffect(() => {
-    // Always load services for platform selector
-    getServices().then(setServices).catch(() => {});
+    let cancelled = false;
+    getServices().then(data => { if (!cancelled) setServices(data); }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (!id) return;
+    let cancelled = false;
     setLoading(true);
     getEvent(id)
       .then((ev) => {
+        if (cancelled) return;
         setEvent(ev);
         setTitle(ev.title);
         setDescription(ev.description);
@@ -136,10 +139,11 @@ export function EventDetailPage() {
         setActualRevenue(ev.actual_revenue);
         setSelectedPlatforms(ev.platforms.map((p) => p.platform));
       })
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : 'Load failed'),
-      )
-      .finally(() => setLoading(false));
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Load failed');
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [id]);
 
   // Auto-trigger optimize if ?optimize=true or magic fill if ?magic=true
