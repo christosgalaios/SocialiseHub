@@ -227,6 +227,9 @@ export function createEventsRouter(
       if (!Array.isArray(ids) || ids.length === 0) {
         return res.status(400).json({ error: 'ids must be a non-empty array' });
       }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'All ids must be non-empty strings' });
+      }
       if (ids.length > 100) {
         return res.status(400).json({ error: 'Maximum 100 events per batch' });
       }
@@ -790,16 +793,21 @@ export function createEventsRouter(
           results.push({ index: i, success: false, error: 'start_time must be a valid date' });
           continue;
         }
+        // Sanitize numeric fields
+        const price = typeof item.price === 'number' && item.price >= 0 ? item.price : 0;
+        const capacity = typeof item.capacity === 'number' && item.capacity >= 1 && item.capacity <= 10000 ? item.capacity : 50;
+        const durationMinutes = typeof item.duration_minutes === 'number' && item.duration_minutes >= 1 && item.duration_minutes <= 1440 ? item.duration_minutes : 120;
+        const title = typeof item.title === 'string' ? item.title.slice(0, 200) : item.title;
         try {
           const event = store.create({
-            title: item.title,
-            description: item.description ?? '',
+            title,
+            description: item.description ? String(item.description).slice(0, 5000) : '',
             start_time: item.start_time,
-            venue: item.venue ?? '',
-            price: item.price ?? 0,
-            capacity: item.capacity ?? 50,
-            category: item.category,
-            duration_minutes: item.duration_minutes ?? 120,
+            venue: item.venue ? String(item.venue).slice(0, 500) : '',
+            price,
+            capacity,
+            category: item.category ? String(item.category).slice(0, 100) : undefined,
+            duration_minutes: durationMinutes,
           });
           results.push({ index: i, success: true, id: event.id });
         } catch (err) {

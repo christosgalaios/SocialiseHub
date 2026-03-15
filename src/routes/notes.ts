@@ -47,10 +47,12 @@ export function createNotesRouter(db: Database): Router {
         return res.status(400).json({ error: 'content must be 5000 characters or less' });
       }
 
+      const safeAuthor = typeof author === 'string' ? author.trim().slice(0, 100) : 'manager';
+
       const now = new Date().toISOString();
       const result = db.prepare(
         'INSERT INTO event_notes (event_id, content, author, created_at) VALUES (?, ?, ?, ?)'
-      ).run(req.params.id, content.trim(), author || 'manager', now);
+      ).run(req.params.id, content.trim(), safeAuthor || 'manager', now);
 
       const note = db.prepare<[number], NoteRow>(
         'SELECT * FROM event_notes WHERE id = ?'

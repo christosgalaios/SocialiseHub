@@ -101,6 +101,10 @@ export function createScoreRouter(db: Database, eventStore: SqliteEventStore): R
         return res.status(400).json({ error: 'overall must be a number' });
       }
 
+      if (suggestions !== undefined && !Array.isArray(suggestions)) {
+        return res.status(400).json({ error: 'suggestions must be an array' });
+      }
+
       const now = new Date().toISOString();
       db.prepare(`
         INSERT INTO event_scores (event_id, overall, breakdown_json, suggestions_json, scored_at)

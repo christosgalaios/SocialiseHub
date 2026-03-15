@@ -5619,4 +5619,68 @@ describe('App', () => {
     expect(res.body.data[0].checklistTotal).toBe(0);
     expect(res.body.data[0].checklistDone).toBe(0);
   });
+
+  // M125 tests
+  it('POST notes truncates long author to 100 chars', async () => {
+    const app = createTestApp();
+    const ev = await request(app).post('/api/events').send({
+      title: 'Author Test', description: 'D',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const longAuthor = 'a'.repeat(200);
+    const res = await request(app)
+      .post(`/api/events/${ev.body.data.id}/notes`)
+      .send({ content: 'test note', author: longAuthor });
+    expect(res.status).toBe(201);
+    expect(res.body.data.author.length).toBe(100);
+  });
+
+  it('POST score/save rejects non-array suggestions', async () => {
+    const app = createTestApp();
+    const ev = await request(app).post('/api/events').send({
+      title: 'Score Test', description: 'D',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app)
+      .post(`/api/events/${ev.body.data.id}/score/save`)
+      .send({ overall: 75, breakdown: {}, suggestions: 'not an array' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('suggestions must be an array');
+  });
+
+  it('POST import/json sanitizes numeric fields out of range', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/import/json').send({
+      events: [{
+        title: 'Import Test',
+        start_time: '2030-06-01T19:00:00Z',
+        price: -10,
+        capacity: 99999,
+        duration_minutes: 5000,
+      }],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.imported).toBe(1);
+    // Fetch the created event to verify sanitized values
+    const id = res.body.data[0].id;
+    const detail = await request(app).get(`/api/events/${id}`);
+    expect(detail.body.data.price).toBe(0);
+    expect(detail.body.data.capacity).toBe(50);
+    expect(detail.body.data.duration_minutes).toBe(120);
+  });
+
+  it('POST import/json truncates long title to 200 chars', async () => {
+    const app = createTestApp();
+    const longTitle = 'A'.repeat(300);
+    const res = await request(app).post('/api/events/import/json').send({
+      events: [{
+        title: longTitle,
+        start_time: '2030-06-01T19:00:00Z',
+      }],
+    });
+    expect(res.status).toBe(201);
+    const id = res.body.data[0].id;
+    const detail = await request(app).get(`/api/events/${id}`);
+    expect(detail.body.data.title.length).toBe(200);
+  });
 });
