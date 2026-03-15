@@ -95,31 +95,32 @@ export function createAnalyticsRouter(db: Database): Router {
       }
       const dateFilter = `WHERE ${whereParts.join(' AND ')}`;
 
-      // Attendance by month (line chart) — most recent 24 months
+      // Attendance by month (line chart) — deduplicated per event_id, most recent 24 months
       const attendanceByMonthRows = db
         .prepare(
           `SELECT * FROM (
-             SELECT strftime('%Y-%m', date) as month,
-                    SUM(COALESCE(attendance, 0)) as attendees,
-                    SUM(CASE WHEN attendance IS NOT NULL THEN 1 ELSE 0 END) as events_with_data
-             FROM platform_events
-             ${dateFilter}
-             GROUP BY month
+             SELECT month, SUM(max_att) as attendees, COUNT(*) as events_with_data FROM (
+               SELECT strftime('%Y-%m', date) as month, event_id, MAX(COALESCE(attendance, 0)) as max_att
+               FROM platform_events
+               ${dateFilter} AND event_id IS NOT NULL AND attendance IS NOT NULL
+               GROUP BY month, event_id
+             ) GROUP BY month
              ORDER BY month DESC
              LIMIT 24
            ) ORDER BY month ASC`,
         )
         .all(...dateParams) as { month: string; attendees: number; events_with_data: number }[];
 
-      // Revenue by month (bar chart) — most recent 24 months
+      // Revenue by month (bar chart) — deduplicated per event_id, most recent 24 months
       const revenueByMonthRows = db
         .prepare(
           `SELECT * FROM (
-             SELECT strftime('%Y-%m', date) as month,
-                    SUM(COALESCE(revenue, 0)) as revenue
-             FROM platform_events
-             ${dateFilter}
-             GROUP BY month
+             SELECT month, SUM(max_rev) as revenue FROM (
+               SELECT strftime('%Y-%m', date) as month, event_id, MAX(COALESCE(revenue, 0)) as max_rev
+               FROM platform_events
+               ${dateFilter} AND event_id IS NOT NULL
+               GROUP BY month, event_id
+             ) GROUP BY month
              ORDER BY month DESC
              LIMIT 24
            ) ORDER BY month ASC`,
