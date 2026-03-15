@@ -2968,6 +2968,113 @@ describe('App', () => {
     expect(res.body.total).toBe(1);
   });
 
+  // ── Recurrence ──────────────────────────────────────
+
+  it('POST /api/events/:id/recur creates weekly recurring events', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Weekly Quiz', description: 'D', start_time: '2030-01-07T19:00:00Z',
+      venue: 'The Pub', price: 5, capacity: 30,
+    });
+    const res = await request(app)
+      .post(`/api/events/${e.body.data.id}/recur`)
+      .send({ frequency: 'weekly', count: 3 });
+    expect(res.status).toBe(201);
+    expect(res.body.count).toBe(3);
+    expect(res.body.data).toHaveLength(3);
+    // Verify dates are 7 days apart from original
+    const dates = res.body.data.map((e: { start_time: string }) => e.start_time.slice(0, 10));
+    expect(dates).toEqual(['2030-01-14', '2030-01-21', '2030-01-28']);
+  });
+
+  it('POST /api/events/:id/recur creates monthly recurring events', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Monthly Social', description: 'D', start_time: '2030-03-15T19:00:00Z',
+      venue: 'V', price: 10, capacity: 50,
+    });
+    const res = await request(app)
+      .post(`/api/events/${e.body.data.id}/recur`)
+      .send({ frequency: 'monthly', count: 2 });
+    expect(res.status).toBe(201);
+    expect(res.body.count).toBe(2);
+    const dates = res.body.data.map((e: { start_time: string }) => e.start_time.slice(0, 10));
+    expect(dates).toEqual(['2030-04-15', '2030-05-15']);
+  });
+
+  it('POST /api/events/:id/recur returns 400 for invalid frequency', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Bad Freq', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app)
+      .post(`/api/events/${e.body.data.id}/recur`)
+      .send({ frequency: 'daily', count: 3 });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/events/:id/recur returns 400 for count > 52', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Too Many', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app)
+      .post(`/api/events/${e.body.data.id}/recur`)
+      .send({ frequency: 'weekly', count: 53 });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/events/:id/recur returns 404 for unknown event', async () => {
+    const app = createTestApp();
+    const res = await request(app)
+      .post('/api/events/nonexistent/recur')
+      .send({ frequency: 'weekly', count: 2 });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /api/events/:id/recur preserves event details', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Yoga Class', description: 'Relaxing yoga', start_time: '2030-02-01T10:00:00Z',
+      venue: 'Yoga Studio', price: 15, capacity: 20, category: 'wellness',
+    });
+    const res = await request(app)
+      .post(`/api/events/${e.body.data.id}/recur`)
+      .send({ frequency: 'weekly', count: 1 });
+    expect(res.status).toBe(201);
+    expect(res.body.data[0].title).toBe('Yoga Class');
+    expect(res.body.data[0].venue).toBe('Yoga Studio');
+    expect(res.body.data[0].price).toBe(15);
+    expect(res.body.data[0].capacity).toBe(20);
+    expect(res.body.data[0].category).toBe('wellness');
+    expect(res.body.data[0].status).toBe('draft');
+  });
+
+  // ── Publish ──────────────────────────────────────────
+
+  it('POST /api/events/:id/publish returns 400 for no platforms', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Pub Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app)
+      .post(`/api/events/${e.body.data.id}/publish`)
+      .send({ platforms: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('platforms');
+  });
+
+  it('POST /api/events/:id/publish returns 404 for unknown event', async () => {
+    const app = createTestApp();
+    const res = await request(app)
+      .post('/api/events/nonexistent/publish')
+      .send({ platforms: ['meetup'] });
+    expect(res.status).toBe(404);
+  });
+
   // ── Compare ──────────────────────────────────────────
 
   it('POST /api/events/compare returns side-by-side data for 2 events', async () => {
