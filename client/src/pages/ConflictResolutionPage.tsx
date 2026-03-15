@@ -327,6 +327,19 @@ export function ConflictResolutionPage() {
                     )}
                   </div>
 
+                  {/* Show which platforms match hub value */}
+                  {data.platforms && (() => {
+                    const conflictingPlatforms = new Set(conflict.platformValues.map(pv => pv.platform));
+                    const matchingPlatforms = data.platforms
+                      .filter(p => !conflictingPlatforms.has(p.platform))
+                      .map(p => p.platform);
+                    return matchingPlatforms.length > 0 ? (
+                      <div style={styles.matchInfo}>
+                        Matches: {matchingPlatforms.map(p => formatPlatformName(p)).join(', ')}
+                      </div>
+                    ) : null;
+                  })()}
+
                   {/* Editable hub value */}
                   <div style={styles.hubInputWrap}>
                     <label style={styles.inputLabel}>Hub value</label>
@@ -357,13 +370,17 @@ export function ConflictResolutionPage() {
                         <span style={styles.pvValue}>
                           {pv.value !== null && pv.value !== undefined ? String(pv.value) : '(empty)'}
                         </span>
-                        <button
-                          style={styles.useThisBtn}
-                          onClick={() => handleUseThis(conflict.field, pv.value)}
-                          disabled={pageState === 'syncing' || pageState === 'verifying'}
-                        >
-                          Use this
-                        </button>
+                        {pv.value != null && String(pv.value).trim() !== '' ? (
+                          <button
+                            style={styles.useThisBtn}
+                            onClick={() => handleUseThis(conflict.field, pv.value)}
+                            disabled={pageState === 'syncing' || pageState === 'verifying'}
+                          >
+                            Use this
+                          </button>
+                        ) : (
+                          <span style={{ fontSize: 11, color: '#dc2626', fontStyle: 'italic' }}>missing</span>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -521,6 +538,12 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     padding: '16px 20px',
     border: '1px solid #e5e7eb',
+  },
+  matchInfo: {
+    fontSize: 12,
+    color: '#16a34a',
+    fontWeight: 600,
+    marginBottom: 6,
   },
   conflictHeader: {
     display: 'flex',

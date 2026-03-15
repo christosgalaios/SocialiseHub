@@ -147,19 +147,48 @@ describe('GET /api/events/:id/conflicts', () => {
     expect(titleConflict.platformValues[0].externalUrl).toBe('https://meetup.com/event/1');
   });
 
-  it('ignores null platform fields (not a conflict)', async () => {
+  it('flags null platform field as conflict when hub has data', async () => {
     const { app, db, eventStore } = createTestApp();
     const event = eventStore.create({
       title: 'Hub Title',
       description: 'Description',
       start_time: '2030-06-01T19:00:00Z',
-      venue: 'Venue',
+      venue: 'Ashton Gate Stadium',
       price: 10,
       capacity: 50,
       duration_minutes: 120,
     });
 
-    // Platform event with null venue — should NOT conflict with hub venue
+    // Platform event with null venue — hub has venue, so this IS a conflict
+    insertPlatformEvent(db, {
+      event_id: event.id,
+      platform: 'eventbrite',
+      external_id: 'ext-2',
+      title: 'Hub Title',
+      venue: null,
+    });
+
+    const res = await request(app).get(`/api/events/${event.id}/conflicts`);
+    expect(res.status).toBe(200);
+    const venueConflict = res.body.conflicts.find((c: { field: string }) => c.field === 'venue');
+    expect(venueConflict).toBeDefined();
+    expect(venueConflict.hubValue).toBe('Ashton Gate Stadium');
+    expect(venueConflict.platformValues[0].value).toBeNull();
+  });
+
+  it('no conflict when both hub and platform are null', async () => {
+    const { app, db, eventStore } = createTestApp();
+    const event = eventStore.create({
+      title: 'Hub Title',
+      description: 'Description',
+      start_time: '2030-06-01T19:00:00Z',
+      venue: '',
+      price: 10,
+      capacity: 50,
+      duration_minutes: 120,
+    });
+
+    // Both hub and platform have no venue — not a conflict
     insertPlatformEvent(db, {
       event_id: event.id,
       platform: 'eventbrite',

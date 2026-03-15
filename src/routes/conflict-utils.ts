@@ -34,7 +34,20 @@ export function valuesMatch(
   b: string | number | null,
   type: 'string' | 'number',
 ): boolean {
-  if (a == null || b == null) return true; // null = not present on platform, not a conflict
-  if (type === 'number') return Number(a) === Number(b);
-  return normalizeString(String(a)) === normalizeString(String(b));
+  if (type === 'number') {
+    // For numbers, treat null/0 as equivalent (no data)
+    const na = a == null ? null : Number(a);
+    const nb = b == null ? null : Number(b);
+    if (na == null && nb == null) return true;
+    if (na == null || nb == null) return false;
+    return na === nb;
+  }
+  // For strings, normalize first (empty string → null)
+  const sa = normalizeString(a != null ? String(a) : null);
+  const sb = normalizeString(b != null ? String(b) : null);
+  // Both null/empty = match (neither has data)
+  if (sa == null && sb == null) return true;
+  // One has data, other doesn't = mismatch
+  if (sa == null || sb == null) return false;
+  return sa === sb;
 }
