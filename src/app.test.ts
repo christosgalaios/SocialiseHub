@@ -3730,6 +3730,24 @@ describe('App', () => {
     ]);
   });
 
+  it('GET /api/events?tag=X filters by tag', async () => {
+    const app = createTestApp();
+    const e1 = await request(app).post('/api/events').send({
+      title: 'Tagged Event', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const e2 = await request(app).post('/api/events').send({
+      title: 'Untagged Event', description: 'D', start_time: '2030-01-02T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    await request(app).put(`/api/events/${e1.body.data.id}/tags`).send({ tags: ['outdoor'] });
+
+    const res = await request(app).get('/api/events?tag=outdoor');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].title).toBe('Tagged Event');
+  });
+
   // ── Checklist ────────────────────────────────────────────
 
   it('GET /api/events/:id/checklist returns empty initially', async () => {

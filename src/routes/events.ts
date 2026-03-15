@@ -8,6 +8,7 @@ import { computeSyncHash } from '../data/sync-snapshot-store.js';
 import type { PlatformName, EventStatus } from '../shared/types.js';
 import { validateCreateEventInput, validateUpdateEventInput } from '../lib/validate.js';
 import { checkEventReadiness } from '../lib/event-readiness.js';
+import type { Database } from '../data/database.js';
 
 export function createEventsRouter(
   store: SqliteEventStore,
@@ -15,6 +16,7 @@ export function createEventsRouter(
   platformEventStore: PlatformEventStore,
   syncLogStore: SyncLogStore,
   snapshotStore: SyncSnapshotStore,
+  db?: Database,
 ): Router {
   const router = Router();
 
@@ -58,6 +60,17 @@ export function createEventsRouter(
       if (category) {
         const c = category.toLowerCase();
         events = events.filter(e => e.category?.toLowerCase() === c);
+      }
+
+      // Filter by tag
+      const tag = req.query.tag as string | undefined;
+      if (tag && db) {
+        const t = tag.toLowerCase();
+        const taggedIds = db.prepare(
+          'SELECT event_id FROM event_tags WHERE tag = ?'
+        ).all(t) as Array<{ event_id: string }>;
+        const taggedSet = new Set(taggedIds.map(r => r.event_id));
+        events = events.filter(e => taggedSet.has(e.id));
       }
 
       // Filter upcoming only
