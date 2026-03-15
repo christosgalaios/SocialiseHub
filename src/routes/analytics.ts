@@ -31,6 +31,19 @@ export function createAnalyticsRouter(db: Database): Router {
         ? Math.round((totalRevenue / totalAttendees) * 100) / 100
         : 0;
 
+      const totalOrganizersRow = db
+        .prepare('SELECT COUNT(DISTINCT organizer_name) as cnt FROM platform_events WHERE organizer_name IS NOT NULL AND organizer_name != \'\'')
+        .get() as { cnt: number };
+      const avgTicketPriceRow = db
+        .prepare('SELECT AVG(ticket_price) as avg FROM platform_events WHERE ticket_price > 0')
+        .get() as { avg: number | null };
+      const paidEventsRow = db
+        .prepare('SELECT COUNT(*) as cnt FROM platform_events WHERE ticket_price > 0')
+        .get() as { cnt: number };
+      const freeEventsRow = db
+        .prepare('SELECT COUNT(*) as cnt FROM platform_events WHERE ticket_price IS NULL OR ticket_price = 0')
+        .get() as { cnt: number };
+
       res.json({
         data: {
           total_events: totalEvents,
@@ -38,6 +51,10 @@ export function createAnalyticsRouter(db: Database): Router {
           total_revenue: totalRevenue,
           avg_fill_rate: fillRateRow.avg_fill != null ? Math.round(fillRateRow.avg_fill * 100) : 0,
           revenue_per_attendee: revenuePerAttendee,
+          total_organizers: totalOrganizersRow.cnt,
+          avg_ticket_price: avgTicketPriceRow.avg != null ? Math.round(avgTicketPriceRow.avg * 100) / 100 : 0,
+          paid_events_count: paidEventsRow.cnt,
+          free_events_count: freeEventsRow.cnt,
         },
       });
     } catch (err) {
@@ -482,6 +499,259 @@ Respond with ONLY the analysis text. No preamble, no introductory text.`;
             revenuePerHead: Math.round(p.revenue_per_head * 100) / 100,
           })),
         },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/analytics/organizers
+   * Organizer performance breakdown.
+   */
+  router.get('/organizers', (_req, res, next) => {
+    try {
+      const rows = db.prepare(`
+        SELECT organizer_name,
+          COUNT(*) as event_count,
+          SUM(COALESCE(attendance, 0)) as total_attendance,
+          AVG(CASE WHEN capacity > 0 THEN CAST(attendance AS REAL) / CAST(capacity AS REAL) ELSE NULL END) as avg_fill_rate,
+          SUM(COALESCE(revenue, 0)) as total_revenue,
+          AVG(COALESCE(attendance, 0)) as avg_attendance
+        FROM platform_events
+        WHERE organizer_name IS NOT NULL AND organizer_name != ''
+        GROUP BY organizer_name
+        ORDER BY total_attendance DESC
+      `).all() as Array<{
+        organizer_name: string;
+        event_count: number;
+        total_attendance: number;
+        avg_fill_rate: number | null;
+        total_revenue: number;
+        avg_attendance: number;
+      }>;
+
+      res.json({
+        data: rows.map(r => ({
+          organizerName: r.organizer_name,
+          eventCount: r.event_count,
+          totalAttendance: r.total_attendance,
+          avgFillRate: r.avg_fill_rate != null ? Math.round(r.avg_fill_rate * 100) : null,
+          totalRevenue: Math.round(r.total_revenue * 100) / 100,
+          avgAttendance: Math.round(r.avg_attendance),
+        })),
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/analytics/categories
+   * Category performance (JOIN events table).
+   */
+  router.get('/categories', (_req, res, next) => {
+    try {
+      const rows = db.prepare(`
+        SELECT e.category,
+          COUNT(DISTINCT pe.id) as event_count,
+          SUM(COALESCE(pe.attendance, 0)) as total_attendance,
+          AVG(CASE WHEN pe.capacity > 0 THEN CAST(pe.attendance AS REAL) / CAST(pe.capacity AS REAL) ELSE NULL END) as avg_fill_rate,
+          SUM(COALESCE(pe.revenue, 0)) as total_revenue,
+          AVG(COALESCE(pe.ticket_price, 0)) as avg_price
+        FROM platform_events pe
+        JOIN events e ON pe.event_id = e.id
+        WHERE e.category IS NOT NULL AND e.category != ''
+        GROUP BY e.category
+        ORDER BY total_attendance DESC
+      `).all() as Array<{
+        category: string;
+        event_count: number;
+        total_attendance: number;
+        avg_fill_rate: number | null;
+        total_revenue: number;
+        avg_price: number;
+      }>;
+
+      res.json({
+        data: rows.map(r => ({
+          category: r.category,
+          eventCount: r.event_count,
+          totalAttendance: r.total_attendance,
+          avgFillRate: r.avg_fill_rate != null ? Math.round(r.avg_fill_rate * 100) : null,
+          totalRevenue: Math.round(r.total_revenue * 100) / 100,
+          avgPrice: Math.round(r.avg_price * 100) / 100,
+        })),
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/analytics/drill-down?month=YYYY-MM
+   * Returns individual events for a given month, for chart click-through.
+   */
+  router.get('/drill-down', (req, res, next) => {
+    try {
+      const { month } = req.query as { month?: string };
+      if (!month || !/^\d{4}-\d{2}$/.test(month)) {
+        res.status(400).json({ error: 'month query param required in YYYY-MM format' });
+        return;
+      }
+
+      const rows = db.prepare(`
+        SELECT pe.title, pe.date, pe.attendance, pe.capacity, pe.revenue, pe.ticket_price, pe.platform, pe.organizer_name, pe.venue, pe.external_url,
+          e.category
+        FROM platform_events pe
+        LEFT JOIN events e ON pe.event_id = e.id
+        WHERE strftime('%Y-%m', pe.date) = ?
+        ORDER BY pe.attendance DESC
+      `).all(month) as Array<{
+        title: string;
+        date: string | null;
+        attendance: number | null;
+        capacity: number | null;
+        revenue: number | null;
+        ticket_price: number | null;
+        platform: string;
+        organizer_name: string | null;
+        venue: string | null;
+        external_url: string | null;
+        category: string | null;
+      }>;
+
+      res.json({ data: rows });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/analytics/day-of-week
+   * Day-of-week breakdown with Monday=0.
+   */
+  router.get('/day-of-week', (_req, res, next) => {
+    try {
+      const rows = db.prepare(`
+        SELECT
+          CASE CAST(strftime('%w', date) AS INTEGER)
+            WHEN 0 THEN 6
+            WHEN 1 THEN 0
+            WHEN 2 THEN 1
+            WHEN 3 THEN 2
+            WHEN 4 THEN 3
+            WHEN 5 THEN 4
+            WHEN 6 THEN 5
+          END as day_index,
+          COUNT(*) as event_count,
+          SUM(COALESCE(attendance, 0)) as total_attendance,
+          AVG(COALESCE(attendance, 0)) as avg_attendance,
+          SUM(COALESCE(revenue, 0)) as total_revenue
+        FROM platform_events
+        WHERE date IS NOT NULL
+        GROUP BY day_index
+        ORDER BY day_index
+      `).all() as Array<{
+        day_index: number;
+        event_count: number;
+        total_attendance: number;
+        avg_attendance: number;
+        total_revenue: number;
+      }>;
+
+      res.json({ data: rows });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/analytics/top-events
+   * Top events by attendance.
+   */
+  router.get('/top-events', (_req, res, next) => {
+    try {
+      const rows = db.prepare(`
+        SELECT pe.title, pe.date, pe.attendance, pe.capacity, pe.revenue, pe.ticket_price, pe.platform, pe.organizer_name, pe.venue, pe.external_url,
+          e.category,
+          CASE WHEN pe.capacity > 0 THEN CAST(pe.attendance AS REAL) / CAST(pe.capacity AS REAL) ELSE NULL END as fill_rate
+        FROM platform_events pe
+        LEFT JOIN events e ON pe.event_id = e.id
+        WHERE pe.attendance IS NOT NULL AND pe.attendance > 0
+        ORDER BY pe.attendance DESC
+        LIMIT 20
+      `).all() as Array<{
+        title: string;
+        date: string | null;
+        attendance: number;
+        capacity: number | null;
+        revenue: number | null;
+        ticket_price: number | null;
+        platform: string;
+        organizer_name: string | null;
+        venue: string | null;
+        external_url: string | null;
+        category: string | null;
+        fill_rate: number | null;
+      }>;
+
+      res.json({
+        data: rows.map(r => ({
+          ...r,
+          fill_rate: r.fill_rate != null ? Math.round(r.fill_rate * 100) : null,
+        })),
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/analytics/pricing-effectiveness
+   * How ticket price correlates with fill rate and attendance.
+   */
+  router.get('/pricing-effectiveness', (_req, res, next) => {
+    try {
+      const rows = db.prepare(`
+        SELECT
+          CASE
+            WHEN ticket_price IS NULL OR ticket_price = 0 THEN 'Free'
+            WHEN ticket_price <= 5 THEN '£1-5'
+            WHEN ticket_price <= 10 THEN '£6-10'
+            WHEN ticket_price <= 20 THEN '£11-20'
+            ELSE '£20+'
+          END as price_bucket,
+          COUNT(*) as event_count,
+          AVG(COALESCE(attendance, 0)) as avg_attendance,
+          AVG(CASE WHEN capacity > 0 THEN CAST(attendance AS REAL) / CAST(capacity AS REAL) ELSE NULL END) as avg_fill_rate,
+          SUM(COALESCE(revenue, 0)) as total_revenue
+        FROM platform_events
+        WHERE date IS NOT NULL
+        GROUP BY price_bucket
+        ORDER BY CASE price_bucket
+          WHEN 'Free' THEN 0
+          WHEN '£1-5' THEN 1
+          WHEN '£6-10' THEN 2
+          WHEN '£11-20' THEN 3
+          ELSE 4
+        END
+      `).all() as Array<{
+        price_bucket: string;
+        event_count: number;
+        avg_attendance: number;
+        avg_fill_rate: number | null;
+        total_revenue: number;
+      }>;
+
+      res.json({
+        data: rows.map(r => ({
+          priceBucket: r.price_bucket,
+          eventCount: r.event_count,
+          avgAttendance: Math.round(r.avg_attendance),
+          avgFillRate: r.avg_fill_rate != null ? Math.round(r.avg_fill_rate * 100) : null,
+          totalRevenue: Math.round(r.total_revenue * 100) / 100,
+        })),
       });
     } catch (err) {
       next(err);

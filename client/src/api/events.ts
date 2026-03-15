@@ -655,9 +655,24 @@ export async function getAnalyticsSummary(): Promise<{
   total_attendees: number;
   total_revenue: number;
   avg_fill_rate: number;
+  revenue_per_attendee: number;
+  total_organizers: number;
+  avg_ticket_price: number;
+  paid_events_count: number;
+  free_events_count: number;
 }> {
   const res = await fetch(`${BASE}/analytics/summary`);
-  const body = await json<{ data: { total_events: number; total_attendees: number; total_revenue: number; avg_fill_rate: number } }>(res);
+  const body = await json<{ data: {
+    total_events: number;
+    total_attendees: number;
+    total_revenue: number;
+    avg_fill_rate: number;
+    revenue_per_attendee: number;
+    total_organizers: number;
+    avg_ticket_price: number;
+    paid_events_count: number;
+    free_events_count: number;
+  } }>(res);
   return body.data;
 }
 
@@ -718,6 +733,105 @@ export async function getRoiAnalysis(): Promise<{
 }> {
   const res = await fetch(`${BASE}/analytics/roi`);
   const body = await json<{ data: Awaited<ReturnType<typeof getRoiAnalysis>> }>(res);
+  return body.data;
+}
+
+export interface OrganizerAnalytics {
+  organizerName: string;
+  eventCount: number;
+  totalAttendance: number;
+  avgFillRate: number | null;
+  totalRevenue: number;
+  avgAttendance: number;
+}
+
+export async function getAnalyticsOrganizers(): Promise<OrganizerAnalytics[]> {
+  const res = await fetch(`${BASE}/analytics/organizers`);
+  const body = await json<{ data: OrganizerAnalytics[] }>(res);
+  return body.data;
+}
+
+export interface CategoryAnalytics {
+  category: string;
+  eventCount: number;
+  totalAttendance: number;
+  avgFillRate: number | null;
+  totalRevenue: number;
+  avgPrice: number;
+}
+
+export async function getAnalyticsCategories(): Promise<CategoryAnalytics[]> {
+  const res = await fetch(`${BASE}/analytics/categories`);
+  const body = await json<{ data: CategoryAnalytics[] }>(res);
+  return body.data;
+}
+
+export interface DrillDownEvent {
+  title: string;
+  date: string | null;
+  attendance: number | null;
+  capacity: number | null;
+  revenue: number | null;
+  ticket_price: number | null;
+  platform: string;
+  organizer_name: string | null;
+  venue: string | null;
+  external_url: string | null;
+  category: string | null;
+}
+
+export async function getAnalyticsDrillDown(month: string): Promise<DrillDownEvent[]> {
+  const res = await fetch(`${BASE}/analytics/drill-down?month=${encodeURIComponent(month)}`);
+  const body = await json<{ data: DrillDownEvent[] }>(res);
+  return body.data;
+}
+
+export interface DayOfWeekAnalytics {
+  day_index: number;
+  event_count: number;
+  total_attendance: number;
+  avg_attendance: number;
+  total_revenue: number;
+}
+
+export async function getAnalyticsDayOfWeek(): Promise<DayOfWeekAnalytics[]> {
+  const res = await fetch(`${BASE}/analytics/day-of-week`);
+  const body = await json<{ data: DayOfWeekAnalytics[] }>(res);
+  return body.data;
+}
+
+export interface TopEvent {
+  title: string;
+  date: string | null;
+  attendance: number;
+  capacity: number | null;
+  revenue: number | null;
+  ticket_price: number | null;
+  platform: string;
+  organizer_name: string | null;
+  venue: string | null;
+  external_url: string | null;
+  category: string | null;
+  fill_rate: number | null;
+}
+
+export async function getAnalyticsTopEvents(): Promise<TopEvent[]> {
+  const res = await fetch(`${BASE}/analytics/top-events`);
+  const body = await json<{ data: TopEvent[] }>(res);
+  return body.data;
+}
+
+export interface PricingEffectivenessItem {
+  priceBucket: string;
+  eventCount: number;
+  avgAttendance: number;
+  avgFillRate: number | null;
+  totalRevenue: number;
+}
+
+export async function getAnalyticsPricingEffectiveness(): Promise<PricingEffectivenessItem[]> {
+  const res = await fetch(`${BASE}/analytics/pricing-effectiveness`);
+  const body = await json<{ data: PricingEffectivenessItem[] }>(res);
   return body.data;
 }
 
