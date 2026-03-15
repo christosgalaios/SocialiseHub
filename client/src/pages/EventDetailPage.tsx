@@ -42,7 +42,7 @@ import { useToast } from '../context/ToastContext';
 import { ListSkeleton } from '../components/Skeleton';
 import { loadSettings } from '../lib/settings';
 import { checkEventReadiness, isReadyToPublish } from '../../../src/lib/event-readiness';
-import { getEventConflicts } from '../api/conflicts';
+import { getEventConflicts, FieldConflict } from '../api/conflicts';
 
 function toDatetimeLocal(isoStr?: string): string {
   if (!isoStr) return '';
@@ -71,6 +71,8 @@ export function EventDetailPage() {
   const [publishResults, setPublishResults] = useState<PublishResult[] | null>(null);
   const [conflictCount, setConflictCount] = useState(0);
   const [conflictPlatforms, setConflictPlatforms] = useState<string[]>([]);
+  const [conflictDetails, setConflictDetails] = useState<FieldConflict[]>([]);
+  const [activePreviewPlatform, setActivePreviewPlatform] = useState<string | null>(null);
 
   // Form state
   const [title, setTitle] = useState('');
@@ -176,6 +178,7 @@ export function EventDetailPage() {
         .then(res => {
           if (!cancelled) {
             setConflictCount(res.conflicts.length);
+            setConflictDetails(res.conflicts);
             const platforms = [...new Set(res.conflicts.flatMap(c => c.platformValues.map(p => p.platform)))];
             setConflictPlatforms(platforms);
           }
@@ -663,14 +666,66 @@ export function EventDetailPage() {
         {event && <StatusBadge status={event.status} />}
       </div>
 
+      {/* Platform preview tabs — open platform pages in right panel */}
+      {event && event.platforms.length > 0 && (
+        <div style={styles.previewTabs}>
+          <span style={{ fontSize: 12, color: '#888', fontWeight: 600, marginRight: 8 }}>Preview:</span>
+          {event.platforms.map((ps) => {
+            const color = PLATFORM_COLORS[ps.platform] ?? '#888';
+            const isActive = activePreviewPlatform === ps.platform;
+            return (
+              <button
+                key={ps.platform}
+                disabled={!ps.externalUrl}
+                title={ps.externalUrl ? `View ${ps.platform} listing` : `Not published on ${ps.platform}`}
+                style={{
+                  ...styles.previewTab,
+                  borderColor: isActive ? color : 'transparent',
+                  color: isActive ? color : ps.externalUrl ? '#555' : '#ccc',
+                  background: isActive ? `${color}11` : 'transparent',
+                  cursor: ps.externalUrl ? 'pointer' : 'default',
+                  opacity: ps.externalUrl ? 1 : 0.4,
+                }}
+                onClick={() => {
+                  if (!ps.externalUrl) return;
+                  setActivePreviewPlatform(ps.platform);
+                  const api = (window as unknown as { electronAPI?: { switchPanelTab: (t: string) => Promise<void>; openInAutomationPanel: (url: string) => Promise<void> } }).electronAPI;
+                  if (api?.openInAutomationPanel) {
+                    api.switchPanelTab('automation');
+                    api.openInAutomationPanel(ps.externalUrl);
+                  } else {
+                    window.open(ps.externalUrl, '_blank');
+                  }
+                }}
+              >
+                <span style={{ width: 20, height: 20, borderRadius: 6, background: color, color: '#fff', fontSize: 11, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {ps.platform.charAt(0).toUpperCase()}
+                </span>
+                <span style={{ textTransform: 'capitalize' }}>{ps.platform}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
       {error && <div style={styles.error}>{error}</div>}
 
       {conflictCount > 0 && !isNew && (
         <div style={styles.conflictBanner}>
-          <span>{conflictCount} field conflict{conflictCount !== 1 ? 's' : ''} across {conflictPlatforms.join(', ')}</span>
-          <button onClick={() => nav(`/conflicts/${id}`)} style={styles.conflictResolveBtn}>
-            Resolve
-          </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: conflictDetails.length ? 8 : 0 }}>
+            <span style={{ fontWeight: 600 }}>{conflictCount} field conflict{conflictCount !== 1 ? 's' : ''} across {conflictPlatforms.join(', ')}</span>
+            <button onClick={() => nav(`/conflicts/${id}`)} style={styles.conflictResolveBtn}>
+              Resolve
+            </button>
+          </div>
+          {conflictDetails.map(c => (
+            <div key={c.field} style={{ fontSize: 13, padding: '4px 0', borderTop: '1px solid #f59e0b33' }}>
+              <strong style={{ textTransform: 'capitalize' }}>{c.field}</strong>: Hub = <em>{c.hubValue ?? '(empty)'}</em>
+              {c.platformValues.map(pv => (
+                <span key={pv.platform}> · {pv.platform} = <em>{pv.value ?? '(empty)'}</em></span>
+              ))}
+            </div>
+          ))}
         </div>
       )}
 
@@ -1222,7 +1277,26 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: 16,
-    marginBottom: 28,
+    marginBottom: 12,
+  },
+  previewTabs: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 16,
+    padding: '8px 0',
+  },
+  previewTab: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 6,
+    padding: '6px 12px',
+    borderRadius: 8,
+    border: '2px solid transparent',
+    fontSize: 13,
+    fontWeight: 600,
+    fontFamily: "'Outfit', sans-serif",
+    transition: 'all 0.15s',
   },
   title: {
     fontFamily: "'Outfit', sans-serif",

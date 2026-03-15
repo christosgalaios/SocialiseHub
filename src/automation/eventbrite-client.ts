@@ -67,13 +67,22 @@ export class EventbriteAutomationClient implements PlatformClient {
       return [];
     }
     const events = parsed;
-    return events.map((e: Record<string, unknown>) => ({
+    return events.map((e: Record<string, unknown>) => {
+      // Normalize date to ISO 8601
+      let dateStr = String(e.date ?? '');
+      if (dateStr) {
+        try {
+          const parsed = new Date(dateStr);
+          if (!isNaN(parsed.getTime())) dateStr = parsed.toISOString();
+        } catch { /* keep original */ }
+      }
+      return {
       id: '',
       platform: 'eventbrite' as const,
       externalId: String(e.externalId ?? ''),
       title: String(e.title ?? ''),
       externalUrl: String(e.url ?? ''),
-      date: String(e.date ?? ''),
+      date: dateStr,
       venue: String(e.venue ?? ''),
       status: (e.status === 'past' ? 'past' : 'active') as 'active' | 'past',
       syncedAt: new Date().toISOString(),
@@ -82,6 +91,7 @@ export class EventbriteAutomationClient implements PlatformClient {
       revenue: typeof e.revenue === 'number' ? e.revenue : undefined,
       ticketPrice: typeof e.ticketPrice === 'number' ? e.ticketPrice : undefined,
       description: typeof e.description === 'string' ? e.description : undefined,
-    }));
+    };
+    });
   }
 }

@@ -55,6 +55,7 @@ export function App() {
   const [claudeOpen, setClaudeOpen] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
+  const [devToolsOpen, setDevToolsOpen] = useState(false);
   const [dragging, setDragging] = useState(false);
   const dragStartX = useRef(0);
   const dragStartWidth = useRef(0);
@@ -134,6 +135,10 @@ export function App() {
             {!collapsed && <span style={styles.logoText}>SocialiseHub</span>}
           </div>
 
+          <div style={{ padding: collapsed ? '0 8px 8px' : '0 12px 8px' }}>
+            <SyncStatus collapsed={collapsed} />
+          </div>
+
           <div style={{ ...styles.navLinks, padding: collapsed ? '12px 8px' : '12px 12px' }}>
             {primaryNav.map((item) => (
               <NavLink
@@ -174,41 +179,62 @@ export function App() {
           </div>
 
           <div style={{ ...styles.sidebarFooter, padding: collapsed ? '16px 8px' : '16px 24px' }}>
-            {/* Sync status */}
-            <SyncStatus collapsed={collapsed} />
-
-            {/* Terminal toggle */}
+            {/* Dev tools — sandwiched behind a toggle */}
             {isElectron && (
-              <button
-                style={{
-                  ...styles.toggleBtn,
-                  ...styles.terminalToggle,
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  padding: collapsed ? '10px 0' : '10px 14px',
-                }}
-                onClick={() => setTerminalOpen((o) => !o)}
-                title={terminalOpen ? 'Hide console' : 'Show console'}
-              >
-                <span style={{ fontSize: 14, fontFamily: 'monospace', fontWeight: 800 }}>{'>_'}</span>
-                {!collapsed && <span>{terminalOpen ? 'Hide Console' : 'Console'}</span>}
-              </button>
-            )}
+              <>
+                <button
+                  style={{
+                    ...styles.devToolsToggle,
+                    justifyContent: collapsed ? 'center' : 'flex-start',
+                    padding: collapsed ? '6px 0' : '6px 14px',
+                  }}
+                  onClick={() => setDevToolsOpen((o) => !o)}
+                  title={devToolsOpen ? 'Hide dev tools' : 'Show dev tools'}
+                >
+                  {collapsed ? (
+                    <span style={{ fontSize: 12, color: '#555' }}>{devToolsOpen ? '▾' : '▸'}</span>
+                  ) : (
+                    <>
+                      <span style={{ fontSize: 11, color: '#555' }}>{devToolsOpen ? '▾' : '▸'}</span>
+                      <span>Dev Tools</span>
+                    </>
+                  )}
+                </button>
 
-            {/* Claude toggle */}
-            {isElectron && (
-              <button
-                style={{
-                  ...styles.toggleBtn,
-                  ...styles.claudeToggle,
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  padding: collapsed ? '10px 0' : '10px 14px',
-                }}
-                onClick={handleToggleClaude}
-                title={claudeOpen ? 'Hide Claude panel' : 'Show Claude panel'}
-              >
-                <span style={{ fontSize: 15 }}>🤖</span>
-                {!collapsed && <span>{claudeOpen ? 'Hide Claude' : 'Claude'}</span>}
-              </button>
+                {devToolsOpen && (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <button
+                      style={{
+                        ...styles.toggleBtn,
+                        ...styles.terminalToggle,
+                        justifyContent: collapsed ? 'center' : 'flex-start',
+                        padding: collapsed ? '8px 0' : '8px 14px',
+                        fontSize: 12,
+                      }}
+                      onClick={() => setTerminalOpen((o) => !o)}
+                      title={terminalOpen ? 'Hide console' : 'Show console'}
+                    >
+                      <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 800 }}>{'>_'}</span>
+                      {!collapsed && <span>{terminalOpen ? 'Hide Console' : 'Console'}</span>}
+                    </button>
+
+                    <button
+                      style={{
+                        ...styles.toggleBtn,
+                        ...styles.claudeToggle,
+                        justifyContent: collapsed ? 'center' : 'flex-start',
+                        padding: collapsed ? '8px 0' : '8px 14px',
+                        fontSize: 12,
+                      }}
+                      onClick={handleToggleClaude}
+                      title={claudeOpen ? 'Hide Claude panel' : 'Show Claude panel'}
+                    >
+                      <span style={{ fontSize: 13 }}>🤖</span>
+                      {!collapsed && <span>{claudeOpen ? 'Hide Claude' : 'Claude'}</span>}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
 
             <button
@@ -275,10 +301,11 @@ export function App() {
 const styles: Record<string, React.CSSProperties> = {
   layout: {
     display: 'flex',
-    minHeight: '100vh',
+    height: '100vh',
     background: '#FAFAF6',
     color: '#1a1a2e',
     margin: 0,
+    overflow: 'hidden',
   },
   sidebar: {
     background: '#080810',
@@ -290,6 +317,8 @@ const styles: Record<string, React.CSSProperties> = {
     transition: 'width 0.2s ease',
     overflow: 'hidden',
     height: '100vh',
+    position: 'sticky',
+    top: 0,
   },
   logo: {
     display: 'flex',
@@ -378,6 +407,23 @@ const styles: Record<string, React.CSSProperties> = {
   terminalToggle: {
     background: 'rgba(45,95,93,0.15)',
     color: '#5dafaf',
+  },
+  devToolsToggle: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    background: 'none',
+    border: 'none',
+    borderRadius: 8,
+    color: '#555',
+    fontSize: 11,
+    fontWeight: 600,
+    cursor: 'pointer',
+    width: '100%',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.5px',
+    whiteSpace: 'nowrap' as const,
+    fontFamily: "'Outfit', sans-serif",
   },
   collapseBtn: {
     background: 'none',

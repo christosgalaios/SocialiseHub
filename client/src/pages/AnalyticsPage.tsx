@@ -216,8 +216,9 @@ function DrillDownPanel({
                 <th style={{ ...tableStyles.th, color: '#aaa', textAlign: 'left' }}>Title</th>
                 <th style={{ ...tableStyles.th, color: '#aaa', textAlign: 'left' }}>Date</th>
                 <th style={{ ...tableStyles.th, color: '#aaa', textAlign: 'right' }}>Attendance</th>
+                <th style={{ ...tableStyles.th, color: '#aaa', textAlign: 'right' }}>Price</th>
+                <th style={{ ...tableStyles.th, color: '#aaa', textAlign: 'right' }}>Revenue</th>
                 <th style={{ ...tableStyles.th, color: '#aaa', textAlign: 'left' }}>Venue</th>
-                <th style={{ ...tableStyles.th, color: '#aaa', textAlign: 'left' }}>Organizer</th>
                 <th style={{ ...tableStyles.th, color: '#aaa', textAlign: 'left' }}>Platform</th>
               </tr>
             </thead>
@@ -238,8 +239,13 @@ function DrillDownPanel({
                   <td style={{ ...tableStyles.td, textAlign: 'right', color: '#fff', fontWeight: 600 }}>
                     {ev.attendance != null ? ev.attendance.toLocaleString() : '—'}
                   </td>
+                  <td style={{ ...tableStyles.td, textAlign: 'right', color: '#aaa' }}>
+                    {ev.ticket_price != null && ev.ticket_price > 0 ? formatCurrency(ev.ticket_price) : 'Free'}
+                  </td>
+                  <td style={{ ...tableStyles.td, textAlign: 'right', color: '#22c55e', fontWeight: 600 }}>
+                    {ev.revenue != null && ev.revenue > 0 ? formatCurrency(ev.revenue) : '—'}
+                  </td>
                   <td style={{ ...tableStyles.td, color: '#aaa', maxWidth: 140 }}>{ev.venue ?? '—'}</td>
-                  <td style={{ ...tableStyles.td, color: '#aaa' }}>{ev.organizer_name ?? '—'}</td>
                   <td style={{ ...tableStyles.td }}>
                     <PlatformBadge platform={ev.platform} dark />
                   </td>
@@ -567,6 +573,19 @@ export function AnalyticsPage() {
     setSelectedMonth((prev) => (prev === month ? null : month));
   };
 
+  const handleCardClick = (card: string) => {
+    const cardToTab: Record<string, TabId> = {
+      events: 'overview',
+      attendees: 'data',
+      revenue: 'data',
+      fillRate: 'data',
+      pricing: 'performance',
+      organizers: 'performance',
+    };
+    const target = cardToTab[card] ?? 'overview';
+    setTab(target);
+  };
+
   if (loading) {
     return <ListSkeleton rows={4} />;
   }
@@ -590,8 +609,8 @@ export function AnalyticsPage() {
         <p style={styles.subtitle}>Event performance insights across all platforms</p>
       </div>
 
-      {/* Summary cards — always visible */}
-      {summary && <SummaryCards summary={summary} />}
+      {/* Summary cards — always visible, clickable to drill down */}
+      {summary && <SummaryCards summary={summary} onCardClick={handleCardClick} />}
 
       {/* Tab bar */}
       <div style={styles.tabBar}>
@@ -692,7 +711,11 @@ export function AnalyticsPage() {
             </div>
             <div style={styles.chartCard}>
               <div style={styles.chartTitle}>Revenue Over Time</div>
-              <RevenueChart data={revenueData} />
+              <RevenueChart
+                data={revenueData}
+                onMonthClick={handleMonthClick}
+                selectedMonth={selectedMonth}
+              />
             </div>
           </div>
 

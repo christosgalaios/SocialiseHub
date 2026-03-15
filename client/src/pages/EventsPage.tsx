@@ -22,6 +22,8 @@ export function EventsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [tagFilter, setTagFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [platformFilter, setPlatformFilter] = useState<string[]>([]);
+  const [venueFilter, setVenueFilter] = useState('');
   const [sortBy, setSortBy] = useState('start_time');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [availableTags, setAvailableTags] = useState<Array<{ tag: string; count: number }>>([]);
@@ -198,14 +200,23 @@ export function EventsPage() {
     past: events.filter((e) => isPast(e)).length,
   };
 
-  // Derive unique categories from loaded events
+  // Derive unique filter options from loaded events
   const categories = [...new Set(events.map((e) => e.category).filter(Boolean))].sort();
+  const venues = [...new Set(events.map((e) => e.venue).filter(Boolean))].sort();
+  const allPlatforms = [...new Set(events.flatMap((e) => e.platforms.map((p) => p.platform)))].sort();
+
+  const hasActiveFilters = !!(searchQuery || tagFilter || categoryFilter || platformFilter.length || venueFilter);
 
   const filtered = events.filter((e) => {
     if (activeTab === 'draft' && e.status !== 'draft') return false;
     if (activeTab === 'published' && (e.status !== 'published' || isPast(e))) return false;
     if (activeTab === 'past' && !isPast(e)) return false;
     if (categoryFilter && e.category !== categoryFilter) return false;
+    if (venueFilter && e.venue !== venueFilter) return false;
+    if (platformFilter.length > 0) {
+      const eventPlatforms = e.platforms.map((p) => p.platform);
+      if (!platformFilter.every((pf) => eventPlatforms.includes(pf as 'meetup' | 'eventbrite' | 'headfirst'))) return false;
+    }
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       if (!e.title.toLowerCase().includes(q) &&
@@ -295,58 +306,118 @@ export function EventsPage() {
         ))}
       </div>
 
-      <div style={styles.searchRow}>
-        <input
-          style={styles.searchInput}
-          type="text"
-          placeholder="Search events by title, description, or venue..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-        />
-        {categories.length > 0 && (
+      <div style={styles.filterBar}>
+        <div style={styles.searchRow}>
+          <input
+            style={styles.searchInput}
+            type="text"
+            placeholder="Search events..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
           <select
             style={styles.tagSelect}
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            value={`${sortBy}:${sortOrder}`}
+            onChange={(e) => {
+              const [field, ord] = e.target.value.split(':');
+              setSortBy(field);
+              setSortOrder(ord as 'asc' | 'desc');
+            }}
           >
-            <option value="">All categories</option>
-            {categories.map((c) => (
-              <option key={c} value={c}>{c}</option>
-            ))}
+            <option value="start_time:desc">Date (newest)</option>
+            <option value="start_time:asc">Date (oldest)</option>
+            <option value="title:asc">Title (A-Z)</option>
+            <option value="title:desc">Title (Z-A)</option>
+            <option value="created_at:desc">Created (newest)</option>
+            <option value="price:desc">Price (high-low)</option>
+            <option value="capacity:desc">Capacity (high-low)</option>
           </select>
-        )}
-        {availableTags.length > 0 && (
-          <select
-            style={styles.tagSelect}
-            value={tagFilter}
-            onChange={(e) => setTagFilter(e.target.value)}
-          >
-            <option value="">All tags</option>
-            {availableTags.map((t) => (
-              <option key={t.tag} value={t.tag}>{t.tag} ({t.count})</option>
-            ))}
-          </select>
-        )}
-        <select
-          style={styles.tagSelect}
-          value={`${sortBy}:${sortOrder}`}
-          onChange={(e) => {
-            const [field, ord] = e.target.value.split(':');
-            setSortBy(field);
-            setSortOrder(ord as 'asc' | 'desc');
-          }}
-        >
-          <option value="start_time:desc">Date (newest)</option>
-          <option value="start_time:asc">Date (oldest)</option>
-          <option value="title:asc">Title (A-Z)</option>
-          <option value="title:desc">Title (Z-A)</option>
-          <option value="created_at:desc">Created (newest)</option>
-          <option value="price:desc">Price (high-low)</option>
-          <option value="capacity:desc">Capacity (high-low)</option>
-        </select>
-        {(searchQuery || tagFilter || categoryFilter) && (
-          <button style={styles.clearBtn} onClick={() => { setSearchQuery(''); setTagFilter(''); setCategoryFilter(''); }}>Clear</button>
-        )}
+          {hasActiveFilters && (
+            <button style={styles.clearBtn} onClick={() => { setSearchQuery(''); setTagFilter(''); setCategoryFilter(''); setPlatformFilter([]); setVenueFilter(''); }}>
+              Clear all
+            </button>
+          )}
+        </div>
+
+        <div style={styles.filterRow}>
+          {/* Platform toggles */}
+          {allPlatforms.length > 0 && (
+            <div style={styles.filterGroup}>
+              <span style={styles.filterLabel}>Platform:</span>
+              {allPlatforms.map((p) => {
+                const active = platformFilter.includes(p);
+                const color = p === 'meetup' ? '#f65858' : p === 'eventbrite' ? '#f05537' : '#2563eb';
+                return (
+                  <button
+                    key={p}
+                    style={{
+                      ...styles.filterChip,
+                      background: active ? `${color}18` : 'transparent',
+                      borderColor: active ? color : '#ddd',
+                      color: active ? color : '#666',
+                    }}
+                    onClick={() => setPlatformFilter((prev) =>
+                      prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p]
+                    )}
+                  >
+                    {p.charAt(0).toUpperCase() + p.slice(1)}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {/* Category filter */}
+          {categories.length > 0 && (
+            <div style={styles.filterGroup}>
+              <span style={styles.filterLabel}>Category:</span>
+              <select
+                style={styles.tagSelect}
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+              >
+                <option value="">All</option>
+                {categories.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Venue filter */}
+          {venues.length > 1 && (
+            <div style={styles.filterGroup}>
+              <span style={styles.filterLabel}>Venue:</span>
+              <select
+                style={styles.tagSelect}
+                value={venueFilter}
+                onChange={(e) => setVenueFilter(e.target.value)}
+              >
+                <option value="">All</option>
+                {venues.map((v) => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Tags filter */}
+          {availableTags.length > 0 && (
+            <div style={styles.filterGroup}>
+              <span style={styles.filterLabel}>Tag:</span>
+              <select
+                style={styles.tagSelect}
+                value={tagFilter}
+                onChange={(e) => setTagFilter(e.target.value)}
+              >
+                <option value="">All</option>
+                {availableTags.map((t) => (
+                  <option key={t.tag} value={t.tag}>{t.tag} ({t.count})</option>
+                ))}
+              </select>
+            </div>
+          )}
+        </div>
       </div>
 
       {error && (
@@ -405,11 +476,44 @@ export function EventsPage() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  filterBar: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: 8,
+    marginBottom: 16,
+  },
+  filterRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 16,
+    flexWrap: 'wrap',
+  },
+  filterGroup: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 6,
+  },
+  filterLabel: {
+    fontSize: 12,
+    fontWeight: 600,
+    color: '#888',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.3px',
+  },
+  filterChip: {
+    padding: '4px 10px',
+    borderRadius: 6,
+    border: '1px solid #ddd',
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
+    transition: 'all 0.15s',
+  },
   searchRow: {
     display: 'flex',
     alignItems: 'center',
     gap: 8,
-    marginBottom: 16,
   },
   searchInput: {
     flex: 1,

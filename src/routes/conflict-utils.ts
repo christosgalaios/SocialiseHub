@@ -35,11 +35,10 @@ export function valuesMatch(
   type: 'string' | 'number',
 ): boolean {
   if (type === 'number') {
-    // For numbers, treat null/0 as equivalent (no data)
-    const na = a == null ? null : Number(a);
-    const nb = b == null ? null : Number(b);
-    if (na == null && nb == null) return true;
-    if (na == null || nb == null) return false;
+    // For numbers, treat null/undefined/empty/0 as equivalent (all mean "free" or "no data")
+    const na = (a == null || a === '') ? 0 : Number(a);
+    const nb = (b == null || b === '') ? 0 : Number(b);
+    if (isNaN(na) && isNaN(nb)) return true;
     return na === nb;
   }
   // For strings, normalize first (empty string → null)

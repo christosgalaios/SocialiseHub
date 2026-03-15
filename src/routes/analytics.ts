@@ -649,7 +649,7 @@ Respond with ONLY the analysis text. No preamble, no introductory text.`;
           AVG(COALESCE(attendance, 0)) as avg_attendance,
           SUM(COALESCE(revenue, 0)) as total_revenue
         FROM platform_events
-        WHERE date IS NOT NULL
+        WHERE date IS NOT NULL AND date != '' AND strftime('%w', date) IS NOT NULL
         GROUP BY 1
         ORDER BY 1
       `).all() as Array<{
