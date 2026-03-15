@@ -776,7 +776,9 @@ Be direct. No preamble.`;
    */
   router.get('/conflicts', (_req, res, next) => {
     try {
-      const events = eventStore.getAll().filter(e => e.status !== 'archived');
+      const events = eventStore.getAll().filter(e =>
+        e.status !== 'archived' && e.start_time && !isNaN(new Date(e.start_time).getTime())
+      );
 
       // Sort by start_time
       const sorted = [...events].sort((a, b) => a.start_time.localeCompare(b.start_time));
