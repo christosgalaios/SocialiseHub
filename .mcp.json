@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "socialise-hub": {
+      "command": "node",
+      "args": ["mcp/server.js"],
+      "env": {
+        "SOCIALISE_HUB_URL": "http://localhost:3000"
+      }
+    }
+  }
+}

@@ -261,18 +261,36 @@ export function ConflictResolutionPage() {
         </div>
       )}
 
-      {/* Platform badges */}
+      {/* Platform badges — clickable to open in right panel */}
       {data && data.platforms.length > 0 && (
         <div style={styles.platformRow}>
-          {data.platforms.map((p) => (
-            <div key={p.platform} style={styles.platformBadge}>
-              <span style={styles.platformDot} />
-              <span style={styles.platformName}>{formatPlatformName(p.platform)}</span>
-              <span style={styles.platformSync}>
-                Last synced {formatDate(p.lastSyncedAt)}
-              </span>
-            </div>
-          ))}
+          {data.platforms.map((p) => {
+            const url = p.externalUrl;
+            return (
+              <button
+                key={p.platform}
+                style={{ ...styles.platformBadge, cursor: url ? 'pointer' : 'default', opacity: url ? 1 : 0.6 }}
+                title={url ? `View on ${formatPlatformName(p.platform)}` : 'No external URL'}
+                onClick={() => {
+                  if (!url) return;
+                  const api = (window as unknown as { electronAPI?: { switchPanelTab: (t: string) => Promise<void>; openInAutomationPanel: (u: string) => Promise<void> } }).electronAPI;
+                  if (api?.openInAutomationPanel) {
+                    api.switchPanelTab('automation');
+                    api.openInAutomationPanel(url);
+                  } else {
+                    window.open(url, '_blank');
+                  }
+                }}
+              >
+                <span style={styles.platformDot} />
+                <span style={styles.platformName}>{formatPlatformName(p.platform)}</span>
+                <span style={styles.platformSync}>
+                  Last synced {formatDate(p.lastSyncedAt)}
+                </span>
+                {url && <span style={{ fontSize: 11, color: '#3b82f6', marginLeft: 4 }}>View →</span>}
+              </button>
+            );
+          })}
         </div>
       )}
 

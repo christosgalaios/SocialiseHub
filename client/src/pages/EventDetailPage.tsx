@@ -11,6 +11,7 @@ import {
   getEvent,
   createEvent,
   updateEvent,
+  deleteEvent,
   publishEvent,
   getServices,
   createTemplate,
@@ -592,6 +593,18 @@ export function EventDetailPage() {
     }
   };
 
+  const handleDelete = async () => {
+    if (!id || !event) return;
+    if (!confirm(`Delete "${event.title}"? This cannot be undone.`)) return;
+    try {
+      await deleteEvent(id);
+      showToast('Event deleted', 'success');
+      nav('/events');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Failed to delete', 'error');
+    }
+  };
+
   // Build a SocialiseEvent-like object from current form state for readiness checking
   const currentFormEvent = {
     id: id ?? '',
@@ -664,6 +677,11 @@ export function EventDetailPage() {
           {isNew ? 'Create Event' : event?.title ?? 'Event'}
         </h1>
         {event && <StatusBadge status={event.status} />}
+        {event && !isNew && (
+          <button onClick={handleDelete} style={styles.deleteBtn} title="Delete event">
+            Delete
+          </button>
+        )}
       </div>
 
       {/* Platform preview tabs — open platform pages in right panel */}
@@ -1278,6 +1296,18 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     gap: 16,
     marginBottom: 12,
+  },
+  deleteBtn: {
+    marginLeft: 'auto',
+    padding: '6px 14px',
+    borderRadius: 8,
+    border: '1px solid #fecaca',
+    background: '#fff',
+    color: '#dc2626',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    transition: 'all 0.15s',
   },
   previewTabs: {
     display: 'flex',
