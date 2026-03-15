@@ -25,6 +25,7 @@ import { createNotesRouter } from './routes/notes.js';
 import { createTimelineRouter } from './routes/timeline.js';
 import { createTagsRouter } from './routes/tags.js';
 import { createChecklistRouter } from './routes/checklist.js';
+import { createDataRouter } from './routes/data.js';
 import { SyncSnapshotStore } from './data/sync-snapshot-store.js';
 import { TemplateStore } from './data/template-store.js';
 import { MarketAnalyzer } from './agents/market-analyzer.js';
@@ -106,6 +107,7 @@ export function createApp(deps?: AppDeps): express.Express {
   app.use('/api/events', createTagsRouter(db));
   app.use('/api/tags', createTagsRouter(db));
   app.use('/api/events', createChecklistRouter(db));
+  app.use('/api/data', createDataRouter(db));
   app.use('/data', express.static(join(process.cwd(), 'data')));
   // 404 for unknown API routes (before SPA fallback)
   app.all('/api/{*path}', (_req: Request, res: Response) => {
