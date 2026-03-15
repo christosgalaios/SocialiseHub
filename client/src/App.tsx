@@ -285,17 +285,18 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#e0e0e0',
     display: 'flex',
     flexDirection: 'column',
-    padding: '28px 0',
+    padding: '20px 0',
     flexShrink: 0,
     transition: 'width 0.2s ease',
     overflow: 'hidden',
+    height: '100vh',
   },
   logo: {
     display: 'flex',
     alignItems: 'center',
     gap: 12,
     borderBottom: '1px solid rgba(255,255,255,0.06)',
-    marginBottom: 12,
+    marginBottom: 8,
   },
   logoIcon: {
     width: 36,
@@ -324,8 +325,9 @@ const styles: Record<string, React.CSSProperties> = {
   navLinks: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 4,
+    gap: 2,
     flex: 1,
+    overflow: 'hidden',
   },
   navLink: {
     display: 'flex',

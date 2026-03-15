@@ -652,8 +652,8 @@ export function EventDetailPage() {
 
   return (
     <div>
-      <button onClick={() => nav('/')} style={styles.back}>
-        ← Back to Dashboard
+      <button onClick={() => window.history.length > 1 ? nav(-1) : nav('/')} style={styles.back}>
+        ← Back
       </button>
 
       <div style={styles.header}>
@@ -780,39 +780,27 @@ export function EventDetailPage() {
           </label>
         </div>
 
-        {!isNew && (
+        {!isNew && (actualAttendance != null || actualRevenue != null) && (
           <div style={styles.row}>
-            <label style={styles.field}>
-              <span style={styles.label}>Actual Attendance</span>
-              <input
-                style={styles.input}
-                type="number"
-                min="0"
-                value={actualAttendance ?? ''}
-                onChange={(e) => setActualAttendance(e.target.value ? Number(e.target.value) : undefined)}
-                placeholder="After event"
-              />
-            </label>
-
-            <label style={styles.field}>
-              <span style={styles.label}>Actual Revenue</span>
-              <input
-                style={styles.input}
-                type="number"
-                min="0"
-                step="0.01"
-                value={actualRevenue ?? ''}
-                onChange={(e) => setActualRevenue(e.target.value ? Number(e.target.value) : undefined)}
-                placeholder="After event"
-              />
-            </label>
+            {actualAttendance != null && (
+              <div style={styles.field}>
+                <span style={styles.label}>Actual Attendance</span>
+                <span style={{ fontSize: 14, color: '#080810' }}>{actualAttendance}</span>
+              </div>
+            )}
+            {actualRevenue != null && (
+              <div style={styles.field}>
+                <span style={styles.label}>Actual Revenue</span>
+                <span style={{ fontSize: 14, color: '#080810' }}>£{actualRevenue.toFixed(2)}</span>
+              </div>
+            )}
           </div>
         )}
 
         <label style={styles.field}>
           <span style={styles.label}>Description</span>
           <textarea
-            style={{ ...styles.input, minHeight: 100, resize: 'vertical' as const }}
+            style={{ ...styles.input, minHeight: 250, resize: 'vertical' as const }}
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Describe your event..."
