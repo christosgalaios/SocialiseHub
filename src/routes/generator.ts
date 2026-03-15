@@ -85,6 +85,12 @@ export function createGeneratorRouter(
       if (!title || !description) {
         return res.status(400).json({ error: 'Title and description are required' });
       }
+      if (title.length > 200) {
+        return res.status(400).json({ error: 'title must be 200 characters or fewer' });
+      }
+      if (description.length > 5000) {
+        return res.status(400).json({ error: 'description must be 5000 characters or fewer' });
+      }
 
       if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
         return res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });

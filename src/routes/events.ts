@@ -752,6 +752,12 @@ export function createEventsRouter(
       if (!title || typeof title !== 'string' || title.trim().length === 0) {
         return res.status(400).json({ error: 'title is required' });
       }
+      if (title.length > 200) {
+        return res.status(400).json({ error: 'title must be 200 characters or fewer' });
+      }
+      if (category && typeof category === 'string' && category.length > 100) {
+        return res.status(400).json({ error: 'category must be 100 characters or fewer' });
+      }
 
       // Auto-generate sensible defaults
       const nextWeek = new Date();

@@ -5773,4 +5773,23 @@ describe('App', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('non-empty strings');
   });
+
+  it('POST quick-create rejects overly long title', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/quick-create').send({
+      title: 'X'.repeat(201),
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('200 characters');
+  });
+
+  it('POST generator/save rejects overly long title', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/generator/save').send({
+      title: 'Y'.repeat(201),
+      description: 'Valid description',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('200 characters');
+  });
 });
