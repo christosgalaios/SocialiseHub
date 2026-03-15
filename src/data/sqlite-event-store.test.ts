@@ -199,4 +199,45 @@ describe('SqliteEventStore', () => {
       expect(result).toBeUndefined();
     });
   });
+
+  it('update returns undefined for non-existent event', () => {
+    const result = store.update('non-existent', { title: 'X' });
+    expect(result).toBeUndefined();
+  });
+
+  it('updateStatus changes event status', () => {
+    const created = store.create(validInput);
+    expect(created.status).toBe('draft');
+
+    const updated = store.updateStatus(created.id, 'published');
+    expect(updated?.status).toBe('published');
+
+    const cancelled = store.updateStatus(created.id, 'cancelled');
+    expect(cancelled?.status).toBe('cancelled');
+  });
+
+  it('updateStatus returns undefined for non-existent event', () => {
+    const result = store.updateStatus('non-existent', 'published');
+    expect(result).toBeUndefined();
+  });
+
+  it('update ignores non-updatable fields', () => {
+    const created = store.create(validInput);
+    // Passing 'status' directly through update (not in UPDATABLE_FIELDS)
+    const updated = store.update(created.id, { status: 'published' } as any);
+    // Status should NOT change through update() — only through updateStatus()
+    expect(updated?.status).toBe('draft');
+  });
+
+  it('create with minimal input uses defaults', () => {
+    const event = store.create({
+      title: 'Minimal',
+      start_time: '2030-01-01T19:00:00Z',
+    } as any);
+    expect(event.title).toBe('Minimal');
+    expect(event.duration_minutes).toBe(120); // default
+    expect(event.price).toBe(0); // default
+    expect(event.status).toBe('draft');
+    expect(event.sync_status).toBe('local_only');
+  });
 });
