@@ -897,4 +897,172 @@ describe('App', () => {
     expect(res.status).toBe(503);
     expect(res.body.error).toContain('UNSPLASH_ACCESS_KEY');
   });
+
+  // ── Sync Push Validation ────────────────────────────────
+
+  it('POST /api/sync/push returns 400 without eventId', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/sync/push').send({ platform: 'meetup' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('eventId');
+  });
+
+  it('POST /api/sync/push returns 400 without platform', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/sync/push').send({ eventId: 'some-id' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('platform');
+  });
+
+  it('POST /api/sync/push returns 400 for invalid platform', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/sync/push').send({ eventId: 'some-id', platform: 'twitter' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Invalid platform');
+  });
+
+  it('POST /api/sync/push returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/sync/push').send({ eventId: 'nonexistent', platform: 'meetup' });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /api/sync/push returns 400 if event is not modified', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Not Modified', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).post('/api/sync/push').send({
+      eventId: created.body.data.id, platform: 'meetup',
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('local_only');
+  });
+
+  // ── Sync Push-All Validation ────────────────────────────
+
+  it('POST /api/sync/push-all returns 400 without eventId', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/sync/push-all').send({});
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('eventId');
+  });
+
+  it('POST /api/sync/push-all returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/sync/push-all').send({ eventId: 'nonexistent' });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /api/sync/push-all returns 400 if no platform events linked', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'No Links', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).post('/api/sync/push-all').send({ eventId: created.body.data.id });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('No platform events');
+  });
+
+  // ── Sync Pull-Event Validation ──────────────────────────
+
+  it('POST /api/sync/pull-event returns 400 without eventId', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/sync/pull-event').send({ platform: 'meetup' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('eventId');
+  });
+
+  it('POST /api/sync/pull-event returns 400 without platform', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/sync/pull-event').send({ eventId: 'some-id' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('platform');
+  });
+
+  it('POST /api/sync/pull-event returns 400 for invalid platform', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/sync/pull-event').send({ eventId: 'x', platform: 'twitter' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('Invalid platform');
+  });
+
+  it('POST /api/sync/pull-event returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/sync/pull-event').send({ eventId: 'nonexistent', platform: 'meetup' });
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /api/sync/pull-event returns 404 if no platform event for that platform', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'No PE', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).post('/api/sync/pull-event').send({
+      eventId: created.body.data.id, platform: 'meetup',
+    });
+    expect(res.status).toBe(404);
+    expect(res.body.error).toContain('No platform event');
+  });
+
+  // ── Publish Validation ──────────────────────────────────
+
+  it('POST /api/events/:id/publish returns 400 without platforms', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Pub Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).post(`/api/events/${created.body.data.id}/publish`).send({});
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('No platforms');
+  });
+
+  it('POST /api/events/:id/publish returns 400 for empty platforms array', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Pub Test 2', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).post(`/api/events/${created.body.data.id}/publish`).send({ platforms: [] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('No platforms');
+  });
+
+  it('POST /api/events/:id/publish returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/nonexistent/publish').send({ platforms: ['meetup'] });
+    expect(res.status).toBe(404);
+  });
+
+  // ── Sync Log ────────────────────────────────────────────
+
+  it('GET /api/sync/log returns empty log initially', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/sync/log');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.total).toBe(0);
+  });
+
+  it('GET /api/sync/log?limit=5 respects limit parameter', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/sync/log?limit=5');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+  });
+
+  // ── Sync Pull (no connected services) ───────────────────
+
+  it('POST /api/sync/pull returns zero pulled when no services connected', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/sync/pull');
+    expect(res.status).toBe(200);
+    expect(res.body.data.pulled).toBe(0);
+    expect(res.body.data.updated).toBe(0);
+    expect(res.body.data.conflicts).toEqual([]);
+  });
 });

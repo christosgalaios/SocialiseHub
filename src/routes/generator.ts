@@ -175,14 +175,18 @@ export function createGeneratorRouter(
 
       ideaStore.markUsed(id);
 
+      // Validate suggestedDate if present — must be YYYY-MM-DD
+      const validDate = idea.suggestedDate && /^\d{4}-\d{2}-\d{2}$/.test(idea.suggestedDate)
+        ? idea.suggestedDate : undefined;
+
       const event = eventStore.create({
         title: idea.title,
         description: idea.shortDescription
           ? (idea.category ? `[${idea.category}] ${idea.shortDescription}` : idea.shortDescription)
           : '',
         venue: '',
-        start_time: idea.suggestedDate
-          ? `${idea.suggestedDate}T19:00:00+00:00`
+        start_time: validDate
+          ? `${validDate}T19:00:00+00:00`
           : new Date().toISOString(),
         duration_minutes: 120,
         price: 0,
