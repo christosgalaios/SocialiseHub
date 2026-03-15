@@ -7,6 +7,7 @@ import { UpcomingSection } from '../components/dashboard/UpcomingSection';
 import { PerformanceSection } from '../components/dashboard/PerformanceSection';
 import { SuggestionsSection } from '../components/dashboard/SuggestionsSection';
 import { WeekSection } from '../components/dashboard/WeekSection';
+import { ConflictsSection } from '../components/dashboard/ConflictsSection';
 import { useToast } from '../context/ToastContext';
 import { ListSkeleton } from '../components/Skeleton';
 
@@ -116,6 +117,7 @@ export function DashboardPage() {
       {/* Content */}
       {!loading && !error && data && (
         <div style={styles.sections}>
+          <ConflictsSection />
           <WeekSection />
           <AttentionSection items={data.attentionItems} totalCount={data.attentionTotalCount} />
           <UpcomingSection events={data.upcomingEvents} />

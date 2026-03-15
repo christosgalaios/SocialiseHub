@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SocialiseEvent, Template, QueuedIdea } from '@shared/types';
-import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushAllEvents, getNextIdea, generateIdeasPrompt, storeIdeas, acceptIdea, getAllTags } from '../api/events';
+import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushAllEvents, getNextIdea, generateIdeasPrompt, storeIdeas, acceptIdea, getAllTags, getEventsCsvExportUrl } from '../api/events';
 import { EventCard } from '../components/EventCard';
 import { GridSkeleton } from '../components/Skeleton';
 import { useToast } from '../context/ToastContext';
@@ -217,7 +217,14 @@ export function EventsPage() {
             {filtered.length} event{filtered.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <a
+            href={getEventsCsvExportUrl()}
+            download
+            style={styles.exportBtn}
+          >
+            Export CSV
+          </a>
           {templates.length > 0 && (
             <div style={{ position: 'relative' }}>
               <button
@@ -438,6 +445,18 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#080810',
     borderBottom: '1px solid #f0eeeb',
     transition: 'background 0.1s',
+  },
+  exportBtn: {
+    padding: '10px 16px',
+    borderRadius: 12,
+    border: '1.5px solid #e8e6e1',
+    background: '#fff',
+    color: '#7a7a7a',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
+    textDecoration: 'none',
   },
   createBtn: {
     padding: '12px 24px',
