@@ -228,6 +228,11 @@ function runMigrations(db: Database): void {
     }
     db.pragma('user_version = 15');
   }
+  if (currentVersion < 16) {
+    try { db.exec("ALTER TABLE platform_events ADD COLUMN organizer_name TEXT"); } catch { /* column exists */ }
+    try { db.exec("ALTER TABLE events ADD COLUMN organizer_name TEXT"); } catch { /* column exists */ }
+    db.pragma('user_version = 16');
+  }
 }
 
 function createSchema(db: Database): void {

@@ -21,6 +21,7 @@ interface PlatformEventRow {
   ticket_price: number | null;
   description: string | null;
   image_urls: string | null;
+  organizer_name: string | null;
 }
 
 function safeJsonParse<T>(value: string, fallback: T): T {
@@ -51,6 +52,7 @@ function rowToEvent(row: PlatformEventRow): PlatformEvent {
     ticketPrice: row.ticket_price ?? undefined,
     description: row.description ?? undefined,
     imageUrls: row.image_urls ? safeJsonParse<string[]>(row.image_urls, []) : undefined,
+    organizerName: row.organizer_name ?? undefined,
   };
 }
 
@@ -72,7 +74,7 @@ export class PlatformEventStore {
            SET event_id = ?, external_url = ?, title = ?, date = ?, venue = ?,
                status = ?, raw_data = ?, synced_at = ?, published_at = ?,
                attendance = ?, capacity = ?, revenue = ?, ticket_price = ?,
-               description = ?, image_urls = ?
+               description = ?, image_urls = ?, organizer_name = ?
            WHERE platform = ? AND external_id = ?`,
         )
         .run(
@@ -91,6 +93,7 @@ export class PlatformEventStore {
           input.ticketPrice ?? null,
           input.description ?? null,
           input.imageUrls ? JSON.stringify(input.imageUrls) : null,
+          input.organizerName ?? null,
           input.platform,
           input.externalId,
         );
@@ -109,8 +112,8 @@ export class PlatformEventStore {
         `INSERT INTO platform_events
            (id, event_id, platform, external_id, external_url, title, date, venue,
             status, raw_data, synced_at, published_at, attendance, capacity, revenue, ticket_price,
-            description, image_urls)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            description, image_urls, organizer_name)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         id,
@@ -131,6 +134,7 @@ export class PlatformEventStore {
         input.ticketPrice ?? null,
         input.description ?? null,
         input.imageUrls ? JSON.stringify(input.imageUrls) : null,
+        input.organizerName ?? null,
       );
 
     const inserted = this.db

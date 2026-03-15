@@ -173,6 +173,7 @@ export interface PlatformEvent {
   ticketPrice?: number;
   description?: string;
   imageUrls?: string[];
+  organizerName?: string;
 }
 
 export interface PlatformPublishResult {

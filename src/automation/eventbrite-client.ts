@@ -74,9 +74,14 @@ export class EventbriteAutomationClient implements PlatformClient {
       title: String(e.title ?? ''),
       externalUrl: String(e.url ?? ''),
       date: String(e.date ?? ''),
-      venue: '',
+      venue: String(e.venue ?? ''),
       status: (e.status === 'past' ? 'past' : 'active') as 'active' | 'past',
       syncedAt: new Date().toISOString(),
+      attendance: typeof e.attendance === 'number' ? e.attendance : undefined,
+      capacity: typeof e.capacity === 'number' ? e.capacity : undefined,
+      revenue: typeof e.revenue === 'number' ? e.revenue : undefined,
+      ticketPrice: typeof e.ticketPrice === 'number' ? e.ticketPrice : undefined,
+      description: typeof e.description === 'string' ? e.description : undefined,
     }));
   }
 }

@@ -101,8 +101,11 @@ export class MeetupAutomationClient implements PlatformClient {
         attendance: typeof e.going === 'number' ? e.going : undefined,
         capacity: typeof e.maxTickets === 'number' ? e.maxTickets : undefined,
         ticketPrice: typeof e.fee === 'number' ? e.fee : undefined,
+        revenue: (typeof e.fee === 'number' && typeof e.going === 'number' && e.fee > 0)
+          ? e.fee * e.going : undefined,
         description: typeof e.description === 'string' ? e.description : undefined,
         imageUrls: typeof e.imageUrl === 'string' ? [e.imageUrl] : [],
+        organizerName: typeof e.organizerName === 'string' ? e.organizerName : undefined,
       };
     });
   }
