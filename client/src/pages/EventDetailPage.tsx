@@ -37,6 +37,7 @@ import type { ScoreBreakdown, ScoreSuggestion } from '../components/ScorePanel';
 import { PLATFORM_COLORS } from '../lib/platforms';
 import { EventTags } from '../components/EventTags';
 import { EventChecklist } from '../components/EventChecklist';
+import { ActivityTimeline } from '../components/ActivityTimeline';
 import { useToast } from '../context/ToastContext';
 import { ListSkeleton } from '../components/Skeleton';
 import { loadSettings } from '../lib/settings';
@@ -887,6 +888,9 @@ export function EventDetailPage() {
           onRescore={() => setScoreData(null)}
         />
       )}
+
+      {/* Activity timeline */}
+      {!isNew && id && <ActivityTimeline eventId={id} />}
 
       {/* Publish results panel */}
       {publishResults && publishResults.length > 0 && (

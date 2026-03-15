@@ -5774,6 +5774,28 @@ describe('App', () => {
     expect(res.body.error).toContain('non-empty strings');
   });
 
+  it('GET /api/events/:id/timeline includes creation and notes', async () => {
+    const app = createTestApp();
+    const ev = await request(app).post('/api/events').send({
+      title: 'Timeline Test', description: 'D',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const id = ev.body.data.id;
+    await request(app).post(`/api/events/${id}/notes`).send({ content: 'First note', author: 'mgr' });
+    const res = await request(app).get(`/api/events/${id}/timeline`);
+    expect(res.status).toBe(200);
+    expect(res.body.total).toBeGreaterThanOrEqual(2);
+    const types = res.body.data.map((e: { type: string }) => e.type);
+    expect(types).toContain('created');
+    expect(types).toContain('note');
+  });
+
+  it('GET /api/events/:id/timeline returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/events/nonexistent/timeline');
+    expect(res.status).toBe(404);
+  });
+
   it('POST quick-create rejects overly long title', async () => {
     const app = createTestApp();
     const res = await request(app).post('/api/events/quick-create').send({
