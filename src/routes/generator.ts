@@ -86,6 +86,10 @@ export function createGeneratorRouter(
         return res.status(400).json({ error: 'Title and description are required' });
       }
 
+      if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
+      }
+
       const event = eventStore.create({
         title,
         description: category ? `[${category}] ${description}` : description,
@@ -145,6 +149,10 @@ export function createGeneratorRouter(
       if (!Array.isArray(ideas) || ideas.length === 0) {
         return res.status(400).json({ error: 'ideas must be a non-empty array' });
       }
+      const invalid = ideas.some((idea) => !idea || typeof idea.title !== 'string' || !idea.title.trim());
+      if (invalid) {
+        return res.status(400).json({ error: 'Each idea must have a non-empty title' });
+      }
       ideaStore.insertBatch(ideas);
       res.json({ stored: ideas.length });
     } catch (err) {
@@ -161,6 +169,7 @@ export function createGeneratorRouter(
     try {
       if (!ideaStore) return res.status(503).json({ error: 'Idea store not available' });
       const id = Number(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid idea id' });
       const idea = ideaStore.getById(id);
       if (!idea) return res.status(404).json({ error: 'Idea not found' });
 
