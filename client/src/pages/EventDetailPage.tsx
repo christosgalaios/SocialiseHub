@@ -602,11 +602,13 @@ export function EventDetailPage() {
           )}
         </div>
 
-        <PlatformSelector
-          selected={selectedPlatforms}
-          onChange={setSelectedPlatforms}
-          services={services}
-        />
+        {!isNew && (
+          <PlatformSelector
+            selected={selectedPlatforms}
+            onChange={setSelectedPlatforms}
+            services={services}
+          />
+        )}
 
         <div style={styles.formActions}>
           <button type="submit" disabled={saving} style={styles.saveBtn}>
