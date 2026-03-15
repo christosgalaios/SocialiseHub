@@ -2586,6 +2586,49 @@ describe('App', () => {
     expect(res.body.prompt).toContain('Digest Test Event');
   });
 
+  // ── Health ──────────────────────────────────────────
+
+  it('GET /api/dashboard/health returns health scores for events', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Well Prepared Event', description: 'A'.repeat(250),
+      start_time: '2030-06-01T19:00:00Z', venue: 'Great Venue', price: 10,
+      capacity: 50, category: 'social',
+    });
+    await request(app).post('/api/events').send({
+      title: 'Bare', description: 'X',
+      start_time: '2030-07-01T19:00:00Z', venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get('/api/dashboard/health');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.summary.total).toBe(2);
+    expect(res.body.summary.averageHealth).toBeGreaterThan(0);
+    // Well-prepared event should score higher than bare one
+    const scores = res.body.data.map((e: { health: number }) => e.health);
+    expect(scores[0]).toBeLessThanOrEqual(scores[1]); // sorted worst first
+  });
+
+  it('GET /api/dashboard/health returns empty for no events', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/dashboard/health');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.summary).toEqual({ total: 0, averageHealth: 0, healthy: 0, needsWork: 0 });
+  });
+
+  it('GET /api/dashboard/health excludes archived events', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Archived Health', description: 'Test',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    await request(app).post('/api/events/batch/archive').send({ ids: [e.body.data.id] });
+    const res = await request(app).get('/api/dashboard/health');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(0);
+  });
+
   // ── Quick Create ────────────────────────────────────────
 
   it('POST /api/events/quick-create creates event with defaults', async () => {

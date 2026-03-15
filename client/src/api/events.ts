@@ -387,6 +387,27 @@ export async function getWeeklyDigestPrompt(): Promise<{ prompt: string }> {
   return json(res);
 }
 
+export interface EventHealthItem {
+  id: string;
+  title: string;
+  status: string;
+  date: string | null;
+  health: number;
+  factors: string[];
+  photoCount: number;
+  platformCount: number;
+  noteCount: number;
+  hasScore: boolean;
+}
+
+export async function getEventHealth(): Promise<{
+  data: EventHealthItem[];
+  summary: { total: number; averageHealth: number; healthy: number; needsWork: number };
+}> {
+  const res = await fetch(`${BASE}/dashboard/health`);
+  return json(res);
+}
+
 // ── Sync ───────────────────────────────────────────────
 
 export async function syncPull(): Promise<{ pulled: number }> {

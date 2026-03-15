@@ -588,5 +588,103 @@ Keep it actionable and concise. No JSON, just plain text.`;
     }
   });
 
+  /**
+   * GET /api/dashboard/health
+   * Computes a health score (0-100) for each non-archived event.
+   * Aggregates readiness checks, photo count, score, notes, and platform coverage.
+   */
+  router.get('/health', (_req, res, next) => {
+    try {
+      const events = eventStore.getAll().filter(e => e.status !== 'archived');
+      const now = new Date();
+
+      const healthData = events.map(e => {
+        let score = 0;
+        const factors: string[] = [];
+
+        // Title quality (0-10)
+        if (e.title && e.title.length >= 5) { score += 5; }
+        if (e.title && e.title.length >= 15) { score += 5; factors.push('good_title'); }
+
+        // Description quality (0-15)
+        if (e.description && e.description.length >= 20) { score += 5; }
+        if (e.description && e.description.length >= 100) { score += 5; }
+        if (e.description && e.description.length >= 250) { score += 5; factors.push('rich_description'); }
+
+        // Date set and in future (0-10)
+        if (e.start_time) { score += 5; }
+        if (e.start_time && new Date(e.start_time) > now) { score += 5; factors.push('future_date'); }
+
+        // Venue (0-10)
+        if (e.venue && e.venue.length > 0) { score += 10; factors.push('has_venue'); }
+
+        // Price & capacity (0-10)
+        if (e.price !== undefined && e.price !== null) score += 5;
+        if (e.capacity && e.capacity > 0) { score += 5; factors.push('has_capacity'); }
+
+        // Category set (0-5)
+        if (e.category) { score += 5; factors.push('has_category'); }
+
+        // Photo count (0-15)
+        const photoCount = (db.prepare(
+          'SELECT COUNT(*) as cnt FROM event_photos WHERE event_id = ?'
+        ).get(e.id) as { cnt: number }).cnt;
+        if (photoCount >= 1) score += 5;
+        if (photoCount >= 3) score += 5;
+        if (photoCount >= 5) { score += 5; factors.push('rich_photos'); }
+
+        // Platform coverage (0-15)
+        const platformCount = e.platforms.length;
+        if (platformCount >= 1) score += 5;
+        if (platformCount >= 2) score += 5;
+        if (platformCount >= 3) { score += 5; factors.push('full_coverage'); }
+
+        // Notes present (0-5)
+        const noteCount = (db.prepare(
+          'SELECT COUNT(*) as cnt FROM event_notes WHERE event_id = ?'
+        ).get(e.id) as { cnt: number }).cnt;
+        if (noteCount >= 1) { score += 5; factors.push('has_notes'); }
+
+        // Event score exists (0-5)
+        const eventScore = db.prepare(
+          'SELECT overall FROM event_scores WHERE event_id = ?'
+        ).get(e.id) as { overall: number } | undefined;
+        if (eventScore) { score += 5; factors.push('scored'); }
+
+        return {
+          id: e.id,
+          title: e.title,
+          status: e.status,
+          date: e.start_time?.slice(0, 10) ?? null,
+          health: Math.min(score, 100),
+          factors,
+          photoCount,
+          platformCount,
+          noteCount,
+          hasScore: !!eventScore,
+        };
+      });
+
+      // Sort by health ascending (worst first)
+      healthData.sort((a, b) => a.health - b.health);
+
+      const avg = healthData.length > 0
+        ? Math.round(healthData.reduce((s, e) => s + e.health, 0) / healthData.length)
+        : 0;
+
+      res.json({
+        data: healthData,
+        summary: {
+          total: healthData.length,
+          averageHealth: avg,
+          healthy: healthData.filter(e => e.health >= 70).length,
+          needsWork: healthData.filter(e => e.health < 50).length,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }
