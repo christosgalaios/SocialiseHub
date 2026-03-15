@@ -21,6 +21,7 @@ export function EventsPage() {
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [tagFilter, setTagFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
   const [availableTags, setAvailableTags] = useState<Array<{ tag: string; count: number }>>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -186,10 +187,14 @@ export function EventsPage() {
     past: events.filter((e) => isPast(e)).length,
   };
 
+  // Derive unique categories from loaded events
+  const categories = [...new Set(events.map((e) => e.category).filter(Boolean))].sort();
+
   const filtered = events.filter((e) => {
     if (activeTab === 'draft' && e.status !== 'draft') return false;
     if (activeTab === 'published' && (e.status !== 'published' || isPast(e))) return false;
     if (activeTab === 'past' && !isPast(e)) return false;
+    if (categoryFilter && e.category !== categoryFilter) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
       if (!e.title.toLowerCase().includes(q) &&
@@ -287,6 +292,18 @@ export function EventsPage() {
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
         />
+        {categories.length > 0 && (
+          <select
+            style={styles.tagSelect}
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+          >
+            <option value="">All categories</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        )}
         {availableTags.length > 0 && (
           <select
             style={styles.tagSelect}
@@ -299,8 +316,8 @@ export function EventsPage() {
             ))}
           </select>
         )}
-        {(searchQuery || tagFilter) && (
-          <button style={styles.clearBtn} onClick={() => { setSearchQuery(''); setTagFilter(''); }}>Clear</button>
+        {(searchQuery || tagFilter || categoryFilter) && (
+          <button style={styles.clearBtn} onClick={() => { setSearchQuery(''); setTagFilter(''); setCategoryFilter(''); }}>Clear</button>
         )}
       </div>
 
