@@ -128,22 +128,18 @@ export function SuggestionsSection() {
                   style={styles.actionBtn}
                   onClick={() => {
                     const params = new URLSearchParams();
-                    if ((s as DashboardSuggestion & { actionTitle?: string; actionDate?: string }).actionTitle) {
-                      params.set('title', (s as DashboardSuggestion & { actionTitle?: string }).actionTitle!);
-                    }
-                    if ((s as DashboardSuggestion & { actionDate?: string }).actionDate) {
-                      params.set('date', (s as DashboardSuggestion & { actionDate?: string }).actionDate!);
-                    }
+                    if (s.actionTitle) params.set('title', s.actionTitle);
+                    if (s.actionDate) params.set('date', s.actionDate);
                     navigate(`/events/new?${params.toString()}`);
                   }}
                 >
                   Create Event
                 </button>
               )}
-              {s.action === 'navigate' && (s as DashboardSuggestion & { actionUrl?: string }).actionUrl && (
+              {s.action === 'navigate' && s.actionUrl && (
                 <button
                   style={styles.actionBtn}
-                  onClick={() => navigate((s as DashboardSuggestion & { actionUrl?: string }).actionUrl!)}
+                  onClick={() => navigate(s.actionUrl!)}
                 >
                   Go
                 </button>

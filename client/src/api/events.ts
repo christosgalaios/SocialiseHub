@@ -524,7 +524,7 @@ export async function pushAllEvents(eventId: string): Promise<{ results: Array<{
   return json(res);
 }
 
-export async function pullEvent(eventId: string, platform: string): Promise<any> {
+export async function pullEvent(eventId: string, platform: string): Promise<{ success: boolean; message?: string }> {
   const res = await fetch(`${BASE}/sync/pull-event`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },

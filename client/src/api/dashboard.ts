@@ -47,6 +47,9 @@ export interface DashboardSuggestion {
   body: string;
   priority: 'high' | 'medium' | 'low';
   action?: string;
+  actionTitle?: string;
+  actionDate?: string;
+  actionUrl?: string;
 }
 
 export async function getAttentionItems(): Promise<{ items: AttentionItem[]; count: number }> {
