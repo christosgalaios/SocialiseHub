@@ -23,6 +23,14 @@ interface PlatformEventRow {
   image_urls: string | null;
 }
 
+function safeJsonParse<T>(value: string, fallback: T): T {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 function rowToEvent(row: PlatformEventRow): PlatformEvent {
   return {
     id: row.id,
@@ -42,7 +50,7 @@ function rowToEvent(row: PlatformEventRow): PlatformEvent {
     revenue: row.revenue ?? undefined,
     ticketPrice: row.ticket_price ?? undefined,
     description: row.description ?? undefined,
-    imageUrls: row.image_urls ? (JSON.parse(row.image_urls) as string[]) : undefined,
+    imageUrls: row.image_urls ? safeJsonParse<string[]>(row.image_urls, []) : undefined,
   };
 }
 

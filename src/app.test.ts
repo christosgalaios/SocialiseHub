@@ -412,6 +412,15 @@ describe('App', () => {
     expect(res.status).toBe(400);
   });
 
+  it('PATCH /api/events/batch/status returns 400 for non-string ids', async () => {
+    const app = createTestApp();
+    const res = await request(app)
+      .patch('/api/events/batch/status')
+      .send({ ids: [null, 123], status: 'draft' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('non-empty string');
+  });
+
   it('PATCH /api/events/batch/status returns 400 for invalid status', async () => {
     const app = createTestApp();
     const res = await request(app).patch('/api/events/batch/status').send({ ids: ['x'], status: 'bogus' });

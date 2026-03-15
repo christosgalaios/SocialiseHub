@@ -231,7 +231,9 @@ export function createPhotosRouter(db: Database): Router {
       // Delete file from disk
       const filePath = join(process.cwd(), photo.photo_path.replace(/^\/data\//, 'data/'));
       if (existsSync(filePath)) {
-        try { unlinkSync(filePath); } catch { /* ignore fs errors */ }
+        try { unlinkSync(filePath); } catch (err) {
+          console.warn(`Failed to delete photo file ${filePath}:`, err);
+        }
       }
 
       db.prepare('DELETE FROM event_photos WHERE id = ?').run(photo.id);

@@ -84,6 +84,9 @@ export function createEventsRouter(
       if (ids.length > 100) {
         return res.status(400).json({ error: 'Maximum 100 events per batch' });
       }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'Each id must be a non-empty string' });
+      }
       const validStatuses = ['draft', 'published', 'cancelled'];
       if (!status || !validStatuses.includes(status)) {
         return res.status(400).json({ error: `status must be one of: ${validStatuses.join(', ')}` });
@@ -114,6 +117,9 @@ export function createEventsRouter(
       }
       if (ids.length > 100) {
         return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'Each id must be a non-empty string' });
       }
 
       const results: { id: string; success: boolean; error?: string }[] = [];

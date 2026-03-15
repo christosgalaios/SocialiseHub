@@ -179,11 +179,10 @@ export class SqliteEventStore {
 
     if (Object.keys(safe).length === 0) return existing;
 
-    const columnMap: Record<string, string> = {};
     const now = new Date().toISOString();
 
     const setClauses = Object.keys(safe)
-      .map((k) => `${columnMap[k] ?? k} = ?`)
+      .map((k) => `${k} = ?`)
       .join(', ');
 
     // Auto-flip sync_status from 'synced' to 'modified' when a synced event is edited
