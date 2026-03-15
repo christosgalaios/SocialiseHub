@@ -7,6 +7,7 @@ import type { SyncSnapshotStore } from '../data/sync-snapshot-store.js';
 import { computeSyncHash } from '../data/sync-snapshot-store.js';
 import type { PlatformName } from '../shared/types.js';
 import { validateCreateEventInput, validateUpdateEventInput } from '../lib/validate.js';
+import { checkEventReadiness } from '../lib/event-readiness.js';
 
 export function createEventsRouter(
   store: SqliteEventStore,
@@ -107,6 +108,9 @@ export function createEventsRouter(
         return res.status(404).json({ error: 'Event not found' });
       }
 
+      const readiness = checkEventReadiness(event);
+      const requiredMissing = readiness.filter(c => c.severity === 'required' && !c.passed);
+
       const results = await publishService.publish(event, platforms);
 
       // Record results in platform event store and sync log
@@ -172,7 +176,12 @@ export function createEventsRouter(
         }
       }
 
-      res.json({ data: results });
+      res.json({
+        data: results,
+        warnings: requiredMissing.length > 0
+          ? requiredMissing.map(c => `Missing ${c.label.toLowerCase()}`)
+          : undefined,
+      });
     } catch (err) {
       next(err);
     }

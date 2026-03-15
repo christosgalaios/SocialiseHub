@@ -30,6 +30,7 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
           e.start_time,
           e.venue,
           e.capacity,
+          e.sync_status,
           COUNT(DISTINCT ep.id) as photo_count,
           es.overall as score
         FROM events e
@@ -45,6 +46,7 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
         start_time: string;
         venue: string | null;
         capacity: number | null;
+        sync_status: string | null;
         photo_count: number;
         score: number | null;
       }>;
@@ -145,6 +147,19 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
             problem: 'no_capacity',
             problemLabel: 'No capacity set',
             urgency: 'low',
+            platforms,
+            date: ev.start_time,
+          });
+        }
+
+        // Unsaved changes (modified but not pushed)
+        if (ev.sync_status === 'modified') {
+          items.push({
+            eventId: ev.id,
+            eventTitle: ev.title,
+            problem: 'unsaved_changes',
+            problemLabel: 'Has unsaved changes',
+            urgency: 'medium',
             platforms,
             date: ev.start_time,
           });

@@ -90,6 +90,26 @@ npm run test:run           # Run tests once
 npm run build:all          # Build server + electron + client
 ```
 
+## Testing
+
+- **Framework:** Vitest
+- **Test count:** 263+ tests across 24 files
+- **Database:** Tests use in-memory SQLite (`:memory:`)
+- **HTTP:** Route tests use supertest
+
+### Test Coverage
+- All data stores (events, platform events, services, templates, sync log, ideas)
+- All API routes (events, sync, dashboard, analytics, generator, templates)
+- Core libraries (validation, event readiness)
+- Automation clients and engine
+
+### Running Tests
+```bash
+npm run test:run           # Run all tests once
+npx vitest run <file>      # Run specific test file
+npx vitest --watch         # Watch mode
+```
+
 ## Key Implementation Details
 
 - Meetup connect stores `groupUrlname` in service extra data — used by sync/publish/scrape
@@ -102,3 +122,9 @@ npm run build:all          # Build server + electron + client
 - cleanStale includes safety checks: skips if pull is empty or would remove >50% of rows
 - Analytics queries use parameterized queries to prevent SQL injection
 - Database tests run in-memory with better-sqlite3 in Node.js (not just Electron)
+- Event creation validates: date format, end_time > start_time, duration (1-1440), title length (max 200), capacity (1-10000)
+- Event updates use `validateUpdateEventInput` (validates only fields present in the input)
+- Dashboard attention items flag: missing description, no photos, low score, title mismatch, no venue, no capacity, unsaved changes
+- Sync dedup uses normalized title matching with 60% length ratio requirement
+- `cleanStale` skips cleanup if fresh pull returned 0 events or would remove >50% of existing events
+- Platform image URLs are surfaced to event `image_url` during sync
