@@ -11,11 +11,14 @@ import type { FillByTypeData } from '../components/analytics/EventTypeChart';
 import { TimingHeatmap } from '../components/analytics/TimingHeatmap';
 import type { TimingDataPoint } from '../components/analytics/TimingHeatmap';
 import { InsightsPanel } from '../components/analytics/InsightsPanel';
+import { PricingTab } from '../components/analytics/PricingTab';
+import { VenueTab } from '../components/analytics/VenueTab';
+import { ROITab } from '../components/analytics/ROITab';
 import { getAnalyticsSummary, getAnalyticsTrends } from '../api/events';
 import { ListSkeleton } from '../components/Skeleton';
 
 export function AnalyticsPage() {
-  const [tab, setTab] = useState<'insights' | 'data'>('insights');
+  const [tab, setTab] = useState<'insights' | 'data' | 'pricing' | 'venues' | 'roi'>('insights');
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
   const [attendanceData, setAttendanceData] = useState<AttendanceDataPoint[]>([]);
   const [revenueData, setRevenueData] = useState<RevenueDataPoint[]>([]);
@@ -76,22 +79,25 @@ export function AnalyticsPage() {
 
       {/* Tab bar */}
       <div style={styles.tabBar}>
-        <button
-          style={tab === 'insights' ? styles.tabActive : styles.tab}
-          onClick={() => setTab('insights')}
-        >
-          Insights & Actions
-        </button>
-        <button
-          style={tab === 'data' ? styles.tabActive : styles.tab}
-          onClick={() => setTab('data')}
-        >
-          Data Explorer
-        </button>
+        {([
+          ['insights', 'Insights'],
+          ['data', 'Data Explorer'],
+          ['pricing', 'Pricing'],
+          ['venues', 'Venues'],
+          ['roi', 'ROI'],
+        ] as const).map(([key, label]) => (
+          <button
+            key={key}
+            style={tab === key ? styles.tabActive : styles.tab}
+            onClick={() => setTab(key)}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* Tab content */}
-      {tab === 'insights' ? (
+      {tab === 'insights' && (
         <div style={styles.tabContent}>
           <InsightsPanel />
 
@@ -131,7 +137,8 @@ export function AnalyticsPage() {
             )}
           </div>
         </div>
-      ) : (
+      )}
+      {tab === 'data' && (
         <div style={styles.tabContent}>
           <div style={styles.chartGrid}>
             <div style={styles.chartCard}>
@@ -156,6 +163,9 @@ export function AnalyticsPage() {
           </div>
         </div>
       )}
+      {tab === 'pricing' && <PricingTab />}
+      {tab === 'venues' && <VenueTab />}
+      {tab === 'roi' && <ROITab />}
     </div>
   );
 }
