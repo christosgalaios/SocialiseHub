@@ -250,11 +250,12 @@ const styles: Record<string, React.CSSProperties> = {
   },
   calendar: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(7, 1fr)',
+    gridTemplateColumns: 'repeat(7, minmax(100px, 1fr))',
     border: '1px solid #e8e6e1',
     borderRadius: 16,
     overflow: 'hidden',
     background: '#fff',
+    minWidth: 700,
   },
   dayHeader: {
     padding: '10px 0',
@@ -333,6 +334,8 @@ const styles: Record<string, React.CSSProperties> = {
     border: '1px solid #e8e6e1',
     boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
     minWidth: 220,
+    maxHeight: 300,
+    overflowY: 'auto' as const,
     padding: 4,
   },
   popoverItem: {

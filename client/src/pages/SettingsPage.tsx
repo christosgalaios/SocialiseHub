@@ -68,85 +68,11 @@ export function SettingsPage() {
     <div>
       <div style={styles.header}>
         <h1 style={styles.title}>Settings</h1>
-        <p style={styles.subtitle}>Configure defaults for new events</p>
+        <p style={styles.subtitle}>Data management</p>
       </div>
 
       <div style={styles.form}>
         <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>Organization</h3>
-          <label style={styles.field}>
-            <span style={styles.label}>Organization Name</span>
-            <input
-              style={styles.input}
-              value={settings.organizationName}
-              onChange={(e) => setSettings((s) => ({ ...s, organizationName: e.target.value }))}
-              placeholder="e.g. Socialise Events"
-            />
-          </label>
-        </div>
-
-        <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>Default Platforms</h3>
-          <p style={styles.hint}>Pre-selected when creating new events</p>
-          <div style={styles.checkboxGroup}>
-            {PLATFORMS.map((p) => (
-              <label key={p.key} style={styles.checkbox}>
-                <input
-                  type="checkbox"
-                  checked={settings.defaultPlatforms.includes(p.key)}
-                  onChange={() => togglePlatform(p.key)}
-                />
-                <span>{p.label}</span>
-              </label>
-            ))}
-          </div>
-        </div>
-
-        <div style={styles.section}>
-          <h3 style={styles.sectionTitle}>Event Defaults</h3>
-          <div style={styles.grid}>
-            <label style={styles.field}>
-              <span style={styles.label}>Duration (minutes)</span>
-              <select
-                style={styles.input}
-                value={settings.defaultDuration}
-                onChange={(e) => setSettings((s) => ({ ...s, defaultDuration: Number(e.target.value) }))}
-              >
-                {DURATIONS.map((d) => (
-                  <option key={d} value={d}>{d} min</option>
-                ))}
-              </select>
-            </label>
-
-            <label style={styles.field}>
-              <span style={styles.label}>Default Price (£)</span>
-              <input
-                style={styles.input}
-                type="number"
-                min="0"
-                step="0.01"
-                value={settings.defaultPrice}
-                onChange={(e) => setSettings((s) => ({ ...s, defaultPrice: Number(e.target.value) }))}
-              />
-            </label>
-
-            <label style={styles.field}>
-              <span style={styles.label}>Default Venue</span>
-              <input
-                style={styles.input}
-                value={settings.defaultVenue}
-                onChange={(e) => setSettings((s) => ({ ...s, defaultVenue: e.target.value }))}
-                placeholder="e.g. The Lanes, Bristol"
-              />
-            </label>
-          </div>
-        </div>
-
-        <button style={styles.saveBtn} onClick={handleSave}>
-          Save Settings
-        </button>
-
-        <div style={{ ...styles.section, paddingTop: 32, borderTop: '1px solid #eee' }}>
           <h3 style={styles.sectionTitle}>Data Management</h3>
           <p style={styles.hint}>Clear local data to start fresh. These actions cannot be undone.</p>
 

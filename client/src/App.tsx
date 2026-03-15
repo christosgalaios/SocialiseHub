@@ -36,9 +36,8 @@ const isElectron = !!electronAPI?.isElectron;
 const primaryNav = [
   { to: '/', label: 'Dashboard', icon: '📊' },
   { to: '/events', label: 'Events', icon: '📅' },
-  { to: '/calendar', label: 'Calendar', icon: '🗓' },
+  { to: '/calendar', label: 'Calendar', icon: '📆' },
   { to: '/analytics', label: 'Analytics', icon: '📈' },
-  { to: '/templates', label: 'Templates', icon: '📄' },
   { to: '/generator', label: 'Generator', icon: '💡' },
 ];
 
@@ -260,7 +259,7 @@ export function App() {
               <Route path="/events/:id" element={<EventDetailPage />} />
               <Route path="/calendar" element={<CalendarPage />} />
               <Route path="/analytics" element={<AnalyticsPage />} />
-              <Route path="/templates" element={<TemplatesPage />} />
+              {/* Templates removed — not needed */}
               <Route path="/generator" element={<EventGeneratorPage />} />
               <Route path="/services" element={<ServicesPage />} />
               <Route path="/sync-log" element={<SyncLogPage />} />

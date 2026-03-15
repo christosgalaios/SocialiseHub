@@ -4,6 +4,7 @@ import { PhotoGrid } from './PhotoGrid';
 import { PhotoSearchModal } from './PhotoSearchModal';
 import {
   getEventPhotos,
+  getEventPlatforms,
   uploadEventPhoto,
   reorderPhotos,
   deletePhoto,
@@ -18,6 +19,7 @@ interface OptimizePanelProps {
 
 export function OptimizePanel({ eventId, eventTitle }: OptimizePanelProps) {
   const [photos, setPhotos] = useState<EventPhoto[]>([]);
+  const [platformPhotos, setPlatformPhotos] = useState<EventPhoto[]>([]);
   const [photosLoaded, setPhotosLoaded] = useState(false);
   const [showSearch, setShowSearch] = useState(false);
   const [genPrompt, setGenPrompt] = useState<string | null>(null);
@@ -28,13 +30,37 @@ export function OptimizePanel({ eventId, eventTitle }: OptimizePanelProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const folderInputRef = useRef<HTMLInputElement>(null);
 
-  // Lazy load photos
+  // Lazy load photos + platform photos
   const ensurePhotos = async (signal?: { cancelled: boolean }) => {
     if (!photosLoaded) {
       try {
-        const loaded = await getEventPhotos(eventId);
+        const [loaded, platformEvents] = await Promise.all([
+          getEventPhotos(eventId),
+          getEventPlatforms(eventId),
+        ]);
         if (signal?.cancelled) return;
         setPhotos(loaded);
+
+        // Create virtual photo entries from platform image URLs
+        const platPhotos: EventPhoto[] = [];
+        let virtualId = -1;
+        for (const pe of platformEvents) {
+          if (!pe.imageUrls?.length) continue;
+          for (const url of pe.imageUrls) {
+            if (!url || !url.startsWith('http')) continue;
+            // Skip if we already have this as a local photo
+            if (loaded.some(lp => lp.source === `platform:${url}`)) continue;
+            platPhotos.push({
+              id: virtualId--,
+              eventId,
+              url,
+              source: pe.platform,
+              position: 999 + platPhotos.length,
+              isCover: false,
+            });
+          }
+        }
+        setPlatformPhotos(platPhotos);
         setPhotosLoaded(true);
       } catch {
         if (!signal?.cancelled) setError('Failed to load photos');
@@ -135,7 +161,11 @@ export function OptimizePanel({ eventId, eventTitle }: OptimizePanelProps) {
 
       {error && <div style={styles.error}>{error}</div>}
 
-      <PhotoGrid photos={photos} onDelete={handleDeletePhoto} onReorder={handleReorder} />
+      <PhotoGrid
+        photos={[...photos, ...platformPhotos]}
+        onDelete={handleDeletePhoto}
+        onReorder={handleReorder}
+      />
 
       {/* Drop zone */}
       <div

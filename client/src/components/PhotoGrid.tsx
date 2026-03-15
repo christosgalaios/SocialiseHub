@@ -25,49 +25,74 @@ export function PhotoGrid({ photos, onDelete, onReorder }: PhotoGridProps) {
 
   const handleDrop = (dropIndex: number) => {
     if (dragIndex === null || dragIndex === dropIndex) return;
-    const newOrder = [...photos.map((p) => p.id)];
-    const [moved] = newOrder.splice(dragIndex, 1);
-    newOrder.splice(dropIndex, 0, moved);
+    // Only reorder local photos (positive IDs)
+    const localPhotos = photos.filter(p => p.id > 0);
+    const newOrder = [...localPhotos.map((p) => p.id)];
+    // Find the real indices within local photos
+    const localDragIdx = localPhotos.findIndex(p => p.id === photos[dragIndex!]?.id);
+    const localDropIdx = localPhotos.findIndex(p => p.id === photos[dropIndex]?.id);
+    if (localDragIdx === -1 || localDropIdx === -1) return;
+    const [moved] = newOrder.splice(localDragIdx, 1);
+    newOrder.splice(localDropIdx, 0, moved);
     onReorder(newOrder);
     setDragIndex(null);
   };
 
+  const platformColors: Record<string, string> = {
+    meetup: '#f65858',
+    eventbrite: '#f05537',
+    headfirst: '#2563eb',
+  };
+
   return (
     <div style={styles.grid}>
-      {photos.map((photo, index) => (
-        <div
-          key={photo.id}
-          style={{
-            ...styles.photoItem,
-            opacity: dragIndex === index ? 0.5 : 1,
-            border: dragIndex === index ? '2px dashed #a855f7' : '2px solid transparent',
-          }}
-          draggable
-          onDragStart={() => handleDragStart(index)}
-          onDragOver={(e) => e.preventDefault()}
-          onDrop={() => handleDrop(index)}
-        >
-          <img
-            src={photo.url}
-            alt={`Event photo ${index + 1}`}
-            style={styles.photo}
-            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-          />
-          {photo.isCover && (
-            <span style={styles.coverBadge}>Cover</span>
-          )}
-          <div style={styles.overlay}>
-            <button
-              style={styles.deleteBtn}
-              onClick={() => onDelete(photo.id)}
-              title="Delete photo"
-            >
-              ✕
-            </button>
+      {photos.map((photo, index) => {
+        const isPlatform = photo.id < 0;
+        return (
+          <div
+            key={photo.id}
+            style={{
+              ...styles.photoItem,
+              opacity: dragIndex === index ? 0.5 : 1,
+              border: dragIndex === index ? '2px dashed #a855f7' : isPlatform ? `2px solid ${platformColors[photo.source] ?? '#888'}44` : '2px solid transparent',
+              cursor: isPlatform ? 'default' : 'grab',
+            }}
+            draggable={!isPlatform}
+            onDragStart={!isPlatform ? () => handleDragStart(index) : undefined}
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={!isPlatform ? () => handleDrop(index) : undefined}
+          >
+            <img
+              src={photo.url}
+              alt={`Event photo ${index + 1}`}
+              style={styles.photo}
+              crossOrigin="anonymous"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+            {photo.isCover && (
+              <span style={styles.coverBadge}>Cover</span>
+            )}
+            {!isPlatform && (
+              <div style={styles.overlay}>
+                <button
+                  style={styles.deleteBtn}
+                  onClick={() => onDelete(photo.id)}
+                  title="Delete photo"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+            <div style={{
+              ...styles.sourceLabel,
+              background: isPlatform ? (platformColors[photo.source] ?? 'rgba(0,0,0,0.5)') + 'cc' : 'rgba(0,0,0,0.5)',
+              color: '#fff',
+            }}>
+              {isPlatform ? `${photo.source} (live)` : photo.source}
+            </div>
           </div>
-          <div style={styles.sourceLabel}>{photo.source}</div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

@@ -252,30 +252,7 @@ export function EventsPage() {
           >
             Export CSV
           </a>
-          {templates.length > 0 && (
-            <div style={{ position: 'relative' }}>
-              <button
-                style={styles.templateBtn}
-                onClick={() => setShowTemplatePicker(!showTemplatePicker)}
-              >
-                From Template
-              </button>
-              {showTemplatePicker && (
-                <div style={styles.templateDropdown}>
-                  {templates.map((t) => (
-                    <button
-                      key={t.id}
-                      style={styles.templateItem}
-                      onClick={() => handleCreateFromTemplate(t.id)}
-                    >
-                      <span style={{ fontWeight: 600 }}>{t.name}</span>
-                      <span style={{ fontSize: 12, color: '#7a7a7a' }}>{t.title}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          {/* Templates removed */}
           <button style={styles.createBtn} onClick={() => nav('/events/new')}>
             + New Event
           </button>

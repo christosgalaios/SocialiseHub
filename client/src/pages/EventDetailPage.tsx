@@ -907,30 +907,7 @@ export function EventDetailPage() {
           </span>
         </label>
 
-        {/* Photos */}
-        <div style={styles.field}>
-          <label style={styles.label}>Photos</label>
-          {id && !isNew ? (
-            <OptimizePanel eventId={id} eventTitle={title} />
-          ) : (
-            <p style={{ color: '#999', fontSize: 13 }}>Save the event first to add photos</p>
-          )}
-        </div>
-
-        {!isNew && (
-          <PlatformSelector
-            selected={selectedPlatforms}
-            onChange={setSelectedPlatforms}
-            services={services}
-          />
-        )}
-
-        {/* Platform Details */}
-        <div style={styles.sectionDivider}>
-          <span style={styles.sectionLabel}>Platform Details</span>
-        </div>
-
-        {/* Summary */}
+        {/* Short Description — right under main description */}
         <label style={styles.field}>
           <span style={styles.label}>Short Description</span>
           <textarea
@@ -948,6 +925,30 @@ export function EventDetailPage() {
             {shortDescription.length}/300
           </span>
         </label>
+
+        {/* Photos */}
+        <div style={styles.field}>
+          <label style={styles.label}>Photos</label>
+          {id && !isNew ? (
+            <OptimizePanel eventId={id} eventTitle={title} />
+          ) : (
+            <p style={{ color: '#999', fontSize: 13 }}>Save the event first to add photos</p>
+          )}
+        </div>
+
+        {!isNew && (
+          <PlatformSelector
+            selected={selectedPlatforms}
+            onChange={setSelectedPlatforms}
+            services={services}
+            platformStatuses={event?.platforms}
+          />
+        )}
+
+        {/* Platform Details */}
+        <div style={styles.sectionDivider}>
+          <span style={styles.sectionLabel}>Platform Details</span>
+        </div>
 
         {/* Timing */}
         <div style={styles.row}>
