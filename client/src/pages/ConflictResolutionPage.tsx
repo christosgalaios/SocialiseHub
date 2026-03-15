@@ -7,6 +7,7 @@ import {
 } from '../api/conflicts';
 import type { ConflictResponse, FieldConflict } from '../api/conflicts';
 import type { PlatformName } from '../../../src/shared/types';
+import { PLATFORM_ORDER } from '../lib/platforms';
 
 const FIELD_LABELS: Record<string, string> = {
   title: 'Title',
@@ -264,7 +265,7 @@ export function ConflictResolutionPage() {
       {/* Platform badges — clickable to open in right panel */}
       {data && data.platforms.length > 0 && (
         <div style={styles.platformRow}>
-          {data.platforms.map((p) => {
+          {[...data.platforms].sort((a, b) => PLATFORM_ORDER.indexOf(a.platform) - PLATFORM_ORDER.indexOf(b.platform)).map((p) => {
             const url = p.externalUrl;
             return (
               <button

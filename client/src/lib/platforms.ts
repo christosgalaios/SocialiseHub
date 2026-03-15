@@ -1,4 +1,8 @@
 /** Canonical platform metadata shared across frontend components. */
+
+/** Canonical display order: Meetup → Headfirst → Eventbrite */
+export const PLATFORM_ORDER: string[] = ['meetup', 'headfirst', 'eventbrite'];
+
 export const PLATFORM_COLORS: Record<string, string> = {
   meetup: '#f65858',
   eventbrite: '#f05537',

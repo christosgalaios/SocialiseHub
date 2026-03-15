@@ -35,7 +35,7 @@ import { ReadinessChecklist } from '../components/ReadinessChecklist';
 import { OptimizePanel } from '../components/OptimizePanel';
 import { ScorePanel } from '../components/ScorePanel';
 import type { ScoreBreakdown, ScoreSuggestion } from '../components/ScorePanel';
-import { PLATFORM_COLORS } from '../lib/platforms';
+import { PLATFORM_COLORS, PLATFORM_ORDER } from '../lib/platforms';
 import { EventTags } from '../components/EventTags';
 import { EventChecklist } from '../components/EventChecklist';
 import { ActivityTimeline } from '../components/ActivityTimeline';
@@ -684,29 +684,32 @@ export function EventDetailPage() {
         )}
       </div>
 
-      {/* Platform preview tabs — open platform pages in right panel */}
-      {event && event.platforms.length > 0 && (
+      {/* Platform preview tabs — always show all 3 in canonical order */}
+      {event && !isNew && (
         <div style={styles.previewTabs}>
           <span style={{ fontSize: 12, color: '#888', fontWeight: 600, marginRight: 8 }}>Preview:</span>
-          {event.platforms.map((ps) => {
-            const color = PLATFORM_COLORS[ps.platform] ?? '#888';
-            const isActive = activePreviewPlatform === ps.platform;
+          {PLATFORM_ORDER.map((platform) => {
+            const ps = event.platforms.find((p) => p.platform === platform);
+            const hasUrl = !!ps?.externalUrl;
+            const isPublished = !!ps?.published;
+            const color = PLATFORM_COLORS[platform] ?? '#888';
+            const isActive = activePreviewPlatform === platform;
             return (
               <button
-                key={ps.platform}
-                disabled={!ps.externalUrl}
-                title={ps.externalUrl ? `View ${ps.platform} listing` : `Not published on ${ps.platform}`}
+                key={platform}
+                disabled={!hasUrl}
+                title={hasUrl ? `View ${platform} listing` : isPublished ? `Published but no URL yet` : `Not on ${platform}`}
                 style={{
                   ...styles.previewTab,
                   borderColor: isActive ? color : 'transparent',
-                  color: isActive ? color : ps.externalUrl ? '#555' : '#ccc',
+                  color: isActive ? color : hasUrl ? '#555' : '#ccc',
                   background: isActive ? `${color}11` : 'transparent',
-                  cursor: ps.externalUrl ? 'pointer' : 'default',
-                  opacity: ps.externalUrl ? 1 : 0.4,
+                  cursor: hasUrl ? 'pointer' : 'default',
+                  opacity: hasUrl ? 1 : 0.35,
                 }}
                 onClick={() => {
-                  if (!ps.externalUrl) return;
-                  setActivePreviewPlatform(ps.platform);
+                  if (!hasUrl || !ps?.externalUrl) return;
+                  setActivePreviewPlatform(platform);
                   const api = (window as unknown as { electronAPI?: { switchPanelTab: (t: string) => Promise<void>; openInAutomationPanel: (url: string) => Promise<void> } }).electronAPI;
                   if (api?.openInAutomationPanel) {
                     api.switchPanelTab('automation');
@@ -716,10 +719,11 @@ export function EventDetailPage() {
                   }
                 }}
               >
-                <span style={{ width: 20, height: 20, borderRadius: 6, background: color, color: '#fff', fontSize: 11, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {ps.platform.charAt(0).toUpperCase()}
+                <span style={{ width: 20, height: 20, borderRadius: 6, background: hasUrl ? color : '#ccc', color: '#fff', fontSize: 11, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {platform.charAt(0).toUpperCase()}
                 </span>
-                <span style={{ textTransform: 'capitalize' }}>{ps.platform}</span>
+                <span style={{ textTransform: 'capitalize' }}>{platform}</span>
+                {!isPublished && <span style={{ fontSize: 10, color: '#bbb' }}>--</span>}
               </button>
             );
           })}
@@ -1242,7 +1246,7 @@ export function EventDetailPage() {
         <div style={styles.publishSection}>
           <h2 style={styles.sectionTitle}>Platform Status</h2>
           <div>
-            {event.platforms.map((ps) => (
+            {[...event.platforms].sort((a, b) => PLATFORM_ORDER.indexOf(a.platform) - PLATFORM_ORDER.indexOf(b.platform)).map((ps) => (
               <PlatformSyncRow
                 key={ps.platform}
                 platform={ps.platform}

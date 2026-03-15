@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { getConflicts } from '../../api/dashboard';
 import type { Conflict } from '../../api/dashboard';
+import { PLATFORM_ORDER } from '../../lib/platforms';
 
 export function ConflictsSection() {
   const [conflicts, setConflicts] = useState<Conflict[]>([]);
@@ -42,7 +43,7 @@ export function ConflictsSection() {
             </div>
             <div style={styles.cardBottom}>
               <div style={styles.platforms}>
-                {c.platforms.map((p) => (
+                {[...c.platforms].sort((a, b) => PLATFORM_ORDER.indexOf(a) - PLATFORM_ORDER.indexOf(b)).map((p) => (
                   <span key={p} style={styles.platformBadge}>{p}</span>
                 ))}
               </div>
