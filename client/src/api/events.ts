@@ -925,6 +925,11 @@ export async function deleteChecklistItem(eventId: string, itemId: number): Prom
   await json<{ success: boolean }>(res);
 }
 
+export async function generateChecklist(eventId: string): Promise<{ data: ChecklistItem[]; total: number; done: number }> {
+  const res = await fetch(`${BASE}/events/${eventId}/checklist/generate`, { method: 'POST' });
+  return json(res);
+}
+
 export async function reorderChecklist(eventId: string, order: number[]): Promise<ChecklistItem[]> {
   const res = await fetch(`${BASE}/events/${eventId}/checklist/reorder`, {
     method: 'PATCH',

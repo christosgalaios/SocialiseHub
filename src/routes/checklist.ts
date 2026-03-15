@@ -184,5 +184,84 @@ export function createChecklistRouter(db: Database): Router {
     }
   });
 
+  /**
+   * POST /api/events/:id/checklist/generate
+   * Generate default checklist items based on event properties.
+   * Won't add items if checklist already has items.
+   */
+  router.post('/:id/checklist/generate', (req, res, next) => {
+    try {
+      const eventId = req.params.id;
+
+      // Check event exists
+      const event = db.prepare(
+        'SELECT id, title, venue, price, capacity, start_time FROM events WHERE id = ?'
+      ).get(eventId) as { id: string; title: string; venue: string | null; price: number; capacity: number | null; start_time: string } | undefined;
+      if (!event) return res.status(404).json({ error: 'Event not found' });
+
+      // Check existing items
+      const existing = db.prepare(
+        'SELECT COUNT(*) as cnt FROM event_checklist WHERE event_id = ?'
+      ).get(eventId) as { cnt: number };
+      if (existing.cnt > 0) {
+        return res.status(400).json({ error: 'Event already has checklist items' });
+      }
+
+      // Generate default items based on event properties
+      const items: string[] = [
+        'Finalize event description',
+        'Add event photos',
+        'Set ticket price and capacity',
+      ];
+
+      if (!event.venue || event.venue.trim() === '') {
+        items.push('Confirm venue');
+      } else {
+        items.push('Confirm venue booking');
+      }
+
+      if (event.price > 0) {
+        items.push('Set up payment collection');
+      }
+
+      if (event.capacity && event.capacity > 20) {
+        items.push('Arrange staffing');
+      }
+
+      items.push('Publish to platforms');
+      items.push('Send promotional posts');
+      items.push('Day-of: check venue setup');
+      items.push('Post-event: record attendance and feedback');
+
+      const now = new Date().toISOString();
+      const insert = db.prepare(
+        'INSERT INTO event_checklist (event_id, label, sort_order, created_at) VALUES (?, ?, ?, ?)'
+      );
+
+      const addAll = db.transaction(() => {
+        for (let i = 0; i < items.length; i++) {
+          insert.run(eventId, items[i], i, now);
+        }
+      });
+      addAll();
+
+      // Return the created checklist
+      const rows = db.prepare(
+        'SELECT * FROM event_checklist WHERE event_id = ? ORDER BY sort_order ASC'
+      ).all(eventId) as Array<{
+        id: number; event_id: string; label: string; completed: number;
+        sort_order: number; created_at: string; completed_at: string | null;
+      }>;
+
+      res.status(201).json({
+        data: rows.map(rowToDto),
+        total: rows.length,
+        done: 0,
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }

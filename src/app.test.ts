@@ -4000,6 +4000,41 @@ describe('App', () => {
     expect(res.body.data[2].sortOrder).toBe(2);
   });
 
+  it('POST /api/events/:id/checklist/generate creates default items', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Generate Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'Bristol Pub', price: 10, capacity: 30,
+    });
+    const res = await request(app).post(`/api/events/${e.body.data.id}/checklist/generate`);
+    expect(res.status).toBe(201);
+    expect(res.body.data.length).toBeGreaterThanOrEqual(7);
+    expect(res.body.done).toBe(0);
+    // Should include payment item since price > 0
+    expect(res.body.data.some((i: { label: string }) => i.label.includes('payment'))).toBe(true);
+    // Should include staffing since capacity > 20
+    expect(res.body.data.some((i: { label: string }) => i.label.includes('staffing'))).toBe(true);
+  });
+
+  it('POST /api/events/:id/checklist/generate returns 400 if items exist', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Existing Items', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'Already here' });
+    const res = await request(app).post(`/api/events/${id}/checklist/generate`);
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('already has');
+  });
+
+  it('POST /api/events/:id/checklist/generate returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/nonexistent/checklist/generate');
+    expect(res.status).toBe(404);
+  });
+
   it('deleting an event cleans up its checklist', async () => {
     const { app, db } = createTestAppWithDb();
     const e = await request(app).post('/api/events').send({
