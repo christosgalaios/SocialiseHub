@@ -27,6 +27,7 @@ export function EventsPage() {
   const [sortBy, setSortBy] = useState('start_time');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [availableTags, setAvailableTags] = useState<Array<{ tag: string; count: number }>>([]);
+  const [conflictCounts, setConflictCounts] = useState<Record<string, number>>({});
   const [showIdeaModal, setShowIdeaModal] = useState(false);
   const [currentIdea, setCurrentIdea] = useState<QueuedIdea | null>(null);
   const [ideaLoading, setIdeaLoading] = useState(false);
@@ -68,6 +69,21 @@ export function EventsPage() {
     getAllTags().then(data => { if (!cancelled) setAvailableTags(data); }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/dashboard/conflicts')
+      .then(r => r.json())
+      .then(data => {
+        const counts: Record<string, number> = {};
+        for (const c of (data.data ?? data ?? [])) {
+          counts[c.eventId] = c.conflictCount;
+        }
+        if (!cancelled) setConflictCounts(counts);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [events]);
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this event?')) return;
@@ -423,6 +439,7 @@ export function EventsPage() {
               onDelete={handleDelete}
               onDuplicate={handleDuplicate}
               onPush={handlePush}
+              conflictCount={conflictCounts[event.id]}
             />
           ))}
         </div>

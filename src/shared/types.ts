@@ -31,7 +31,7 @@ export interface SocialiseEvent {
   imageUrl?: string;
   category?: string;
   status: EventStatus;
-  sync_status?: 'synced' | 'modified' | 'local_only';
+  sync_status?: 'synced' | 'modified' | 'local_only' | 'platform_changed';
   actual_attendance?: number;
   actual_revenue?: number;
   short_description?: string;

@@ -9,12 +9,14 @@ export function EventCard({
   onDuplicate,
   onPush,
   onOptimize,
+  conflictCount,
 }: {
   event: SocialiseEvent;
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
   onPush?: (id: string) => void;
   onOptimize?: (id: string) => void;
+  conflictCount?: number;
 }) {
   const nav = useNavigate();
 
@@ -42,6 +44,14 @@ export function EventCard({
             )}
             {event.sync_status === 'modified' && (
               <span style={styles.syncDotOrange} title="Needs push" />
+            )}
+            {event.sync_status === 'platform_changed' && (
+              <span style={styles.syncDotRed} title="Platform has newer version" />
+            )}
+            {conflictCount != null && conflictCount > 0 && (
+              <span style={styles.conflictBadge} title={`${conflictCount} field conflict${conflictCount !== 1 ? 's' : ''}`}>
+                {conflictCount}
+              </span>
             )}
             {onOptimize && (
               <button
@@ -236,6 +246,23 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '50%',
     background: '#f97316',
     flexShrink: 0,
+  },
+  syncDotRed: {
+    width: 8,
+    height: 8,
+    borderRadius: '50%',
+    background: '#dc2626',
+    display: 'inline-block',
+    marginLeft: 6,
+  },
+  conflictBadge: {
+    background: '#f59e0b',
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 700,
+    padding: '1px 5px',
+    borderRadius: 4,
+    marginLeft: 4,
   },
   pushBtn: {
     fontSize: 12,
