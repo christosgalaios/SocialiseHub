@@ -360,5 +360,122 @@ Respond with ONLY the analysis text. No preamble, no introductory text.`;
     }
   });
 
+  /**
+   * GET /api/analytics/roi
+   * Revenue efficiency analysis — which events/platforms generate the best return.
+   */
+  router.get('/roi', (_req, res, next) => {
+    try {
+      // Top performing events by revenue per capacity
+      const topEvents = db.prepare(`
+        SELECT
+          title,
+          platform,
+          date,
+          revenue,
+          attendance,
+          capacity,
+          ticket_price,
+          CASE WHEN capacity > 0 THEN CAST(attendance AS REAL) / capacity ELSE NULL END as fill_rate,
+          CASE WHEN attendance > 0 THEN CAST(revenue AS REAL) / attendance ELSE 0 END as revenue_per_head
+        FROM platform_events
+        WHERE revenue IS NOT NULL AND revenue > 0
+          AND attendance IS NOT NULL AND attendance > 0
+        ORDER BY revenue DESC
+        LIMIT 10
+      `).all() as Array<{
+        title: string;
+        platform: string;
+        date: string | null;
+        revenue: number;
+        attendance: number;
+        capacity: number | null;
+        ticket_price: number | null;
+        fill_rate: number | null;
+        revenue_per_head: number;
+      }>;
+
+      // Monthly revenue trend with growth rates
+      const monthlyRevenue = db.prepare(`
+        SELECT
+          strftime('%Y-%m', date) as month,
+          SUM(revenue) as revenue,
+          SUM(attendance) as attendees,
+          COUNT(*) as event_count,
+          CASE WHEN SUM(attendance) > 0
+            THEN CAST(SUM(revenue) AS REAL) / SUM(attendance)
+            ELSE 0
+          END as revenue_per_head
+        FROM platform_events
+        WHERE date IS NOT NULL AND revenue IS NOT NULL
+        GROUP BY month
+        ORDER BY month ASC
+        LIMIT 24
+      `).all() as Array<{
+        month: string;
+        revenue: number;
+        attendees: number;
+        event_count: number;
+        revenue_per_head: number;
+      }>;
+
+      // Platform efficiency
+      const platformEfficiency = db.prepare(`
+        SELECT
+          platform,
+          COUNT(*) as event_count,
+          SUM(revenue) as total_revenue,
+          SUM(attendance) as total_attendees,
+          AVG(revenue) as avg_revenue,
+          CASE WHEN SUM(attendance) > 0
+            THEN CAST(SUM(revenue) AS REAL) / SUM(attendance)
+            ELSE 0
+          END as revenue_per_head
+        FROM platform_events
+        WHERE revenue IS NOT NULL AND attendance IS NOT NULL AND attendance > 0
+        GROUP BY platform
+        ORDER BY total_revenue DESC
+      `).all() as Array<{
+        platform: string;
+        event_count: number;
+        total_revenue: number;
+        total_attendees: number;
+        avg_revenue: number;
+        revenue_per_head: number;
+      }>;
+
+      res.json({
+        data: {
+          topEvents: topEvents.map(e => ({
+            title: e.title,
+            platform: e.platform,
+            date: e.date?.slice(0, 10) ?? null,
+            revenue: Math.round(e.revenue * 100) / 100,
+            attendance: e.attendance,
+            fillRate: e.fill_rate != null ? Math.round(e.fill_rate * 100) : null,
+            revenuePerHead: Math.round(e.revenue_per_head * 100) / 100,
+          })),
+          monthlyRevenue: monthlyRevenue.map(m => ({
+            month: m.month,
+            revenue: Math.round(m.revenue * 100) / 100,
+            attendees: m.attendees,
+            eventCount: m.event_count,
+            revenuePerHead: Math.round(m.revenue_per_head * 100) / 100,
+          })),
+          platformEfficiency: platformEfficiency.map(p => ({
+            platform: p.platform,
+            eventCount: p.event_count,
+            totalRevenue: Math.round(p.total_revenue * 100) / 100,
+            totalAttendees: p.total_attendees,
+            avgRevenue: Math.round(p.avg_revenue * 100) / 100,
+            revenuePerHead: Math.round(p.revenue_per_head * 100) / 100,
+          })),
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   return router;
 }

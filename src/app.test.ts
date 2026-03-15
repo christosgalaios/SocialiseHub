@@ -2907,6 +2907,36 @@ describe('App', () => {
     expect(res.body.data.priceRanges.length).toBeGreaterThanOrEqual(1);
   });
 
+  // ── ROI Analytics ───────────────────────────────────────
+
+  it('GET /api/analytics/roi returns empty arrays when no data', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/analytics/roi');
+    expect(res.status).toBe(200);
+    expect(res.body.data.topEvents).toEqual([]);
+    expect(res.body.data.monthlyRevenue).toEqual([]);
+    expect(res.body.data.platformEfficiency).toEqual([]);
+  });
+
+  it('GET /api/analytics/roi returns top events by revenue', async () => {
+    const { app, db } = createTestAppWithDb();
+    const now = new Date().toISOString();
+    db.prepare(`INSERT INTO platform_events (id, platform, external_id, title, date, status, synced_at, revenue, attendance, capacity, ticket_price)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      'pe-roi-1', 'meetup', 'ext-r1', 'Big Earner', now, 'active', now, 500, 50, 60, 10
+    );
+    db.prepare(`INSERT INTO platform_events (id, platform, external_id, title, date, status, synced_at, revenue, attendance, capacity, ticket_price)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      'pe-roi-2', 'eventbrite', 'ext-r2', 'Small Event', now, 'active', now, 100, 10, 20, 10
+    );
+    const res = await request(app).get('/api/analytics/roi');
+    expect(res.status).toBe(200);
+    expect(res.body.data.topEvents).toHaveLength(2);
+    expect(res.body.data.topEvents[0].title).toBe('Big Earner');
+    expect(res.body.data.topEvents[0].revenuePerHead).toBe(10);
+    expect(res.body.data.platformEfficiency.length).toBeGreaterThanOrEqual(1);
+  });
+
   // ── Venue Analytics ─────────────────────────────────────
 
   it('GET /api/analytics/venues returns venue data', async () => {

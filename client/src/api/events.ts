@@ -665,6 +665,26 @@ export async function getVenueAnalytics(): Promise<{
   return body.data;
 }
 
+export async function getRoiAnalysis(): Promise<{
+  topEvents: Array<{
+    title: string; platform: string; date: string | null;
+    revenue: number; attendance: number; fillRate: number | null;
+    revenuePerHead: number;
+  }>;
+  monthlyRevenue: Array<{
+    month: string; revenue: number; attendees: number;
+    eventCount: number; revenuePerHead: number;
+  }>;
+  platformEfficiency: Array<{
+    platform: string; eventCount: number; totalRevenue: number;
+    totalAttendees: number; avgRevenue: number; revenuePerHead: number;
+  }>;
+}> {
+  const res = await fetch(`${BASE}/analytics/roi`);
+  const body = await json<{ data: Awaited<ReturnType<typeof getRoiAnalysis>> }>(res);
+  return body.data;
+}
+
 // ── Magic / Idea Queue ─────────────────────────────────
 
 export async function getNextIdea(): Promise<{ idea: QueuedIdea | null; remaining: number }> {
