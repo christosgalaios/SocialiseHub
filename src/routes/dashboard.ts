@@ -9,7 +9,7 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
    * GET /api/dashboard/attention
    * Find events with problems needing attention.
    */
-  router.get('/attention', (_req, res, next) => {
+  router.get('/attention', (req, res, next) => {
     try {
       const items: Array<{
         eventId: string;
@@ -30,6 +30,7 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
           e.start_time,
           e.venue,
           e.capacity,
+          e.sync_status,
           COUNT(DISTINCT ep.id) as photo_count,
           es.overall as score
         FROM events e
@@ -45,6 +46,7 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
         start_time: string;
         venue: string | null;
         capacity: number | null;
+        sync_status: string | null;
         photo_count: number;
         score: number | null;
       }>;
@@ -66,6 +68,13 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
       }
 
       const now = new Date();
+
+      // Batch-load checklist stats to avoid N+1 queries
+      const checklistStats = new Map<string, { total: number; done: number }>();
+      const checklistRows = db.prepare(
+        'SELECT event_id, COUNT(*) as total, SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as done FROM event_checklist GROUP BY event_id',
+      ).all() as Array<{ event_id: string; total: number; done: number }>;
+      for (const r of checklistRows) checklistStats.set(r.event_id, { total: r.total, done: r.done });
 
       for (const ev of events) {
         const platformInfo = platformsByEvent[ev.id] ?? { platforms: [], titles: new Set() };
@@ -149,6 +158,39 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
             date: ev.start_time,
           });
         }
+
+        // Incomplete checklist items for upcoming events (within 14 days)
+        if (isUpcoming) {
+          const daysOut = (new Date(ev.start_time).getTime() - now.getTime()) / 86400000;
+          if (daysOut <= 14) {
+            const cs = checklistStats.get(ev.id);
+            if (cs && cs.total > 0 && cs.done < cs.total) {
+              const remaining = cs.total - cs.done;
+              items.push({
+                eventId: ev.id,
+                eventTitle: ev.title,
+                problem: 'incomplete_checklist',
+                problemLabel: `${remaining} checklist item${remaining > 1 ? 's' : ''} incomplete`,
+                urgency: daysOut <= 3 ? 'high' : 'medium',
+                platforms,
+                date: ev.start_time,
+              });
+            }
+          }
+        }
+
+        // Unsaved changes (modified but not pushed)
+        if (ev.sync_status === 'modified') {
+          items.push({
+            eventId: ev.id,
+            eventTitle: ev.title,
+            problem: 'unsaved_changes',
+            problemLabel: 'Has unsaved changes',
+            urgency: 'medium',
+            platforms,
+            date: ev.start_time,
+          });
+        }
       }
 
       // Group problems per event — show one card per event with all its problems
@@ -177,7 +219,7 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
           const urgencyOrder = { high: 0, medium: 1, low: 2 };
           return (urgencyOrder[a.urgency] ?? 2) - (urgencyOrder[b.urgency] ?? 2);
         })
-        .slice(0, 10); // Max 10 events on dashboard
+        .slice(0, Math.min(Math.max(parseInt(String(req.query.limit)) || 10, 1), 50));
 
       res.json({ items: groupedItems, count: Object.keys(grouped).length });
     } catch (err) {
@@ -189,8 +231,9 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
    * GET /api/dashboard/upcoming
    * Next 5 upcoming events with readiness score.
    */
-  router.get('/upcoming', (_req, res, next) => {
+  router.get('/upcoming', (req, res, next) => {
     try {
+      const limit = Math.min(Math.max(parseInt(String(req.query.limit)) || 5, 1), 50);
       const events = db.prepare(`
         SELECT
           e.id,
@@ -207,8 +250,8 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
           AND e.status != 'cancelled'
         GROUP BY e.id
         ORDER BY e.start_time ASC
-        LIMIT 5
-      `).all() as Array<{
+        LIMIT ?
+      `).all(limit) as Array<{
         id: string;
         title: string;
         description: string | null;
@@ -468,8 +511,482 @@ Respond ONLY with the JSON array, no markdown.`;
         return res.json({ suggestions: null });
       }
 
-      const suggestions = JSON.parse(row.suggestions_json);
+      let suggestions;
+      try { suggestions = JSON.parse(row.suggestions_json); }
+      catch { return res.json({ suggestions: null }); }
       res.json({ suggestions, generatedAt: row.generated_at });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * POST /api/dashboard/digest
+   * Compose a weekly digest prompt summarising activity and action items.
+   */
+  router.post('/digest', (_req, res, next) => {
+    try {
+      const now = new Date();
+      const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const weekAhead = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      // Events created this week
+      const recentlyCreated = db.prepare(`
+        SELECT title, start_time, venue, status, category
+        FROM events WHERE created_at > ? ORDER BY created_at DESC
+      `).all(weekAgo) as Array<{ title: string; start_time: string; venue: string | null; status: string; category: string | null }>;
+
+      // Events happening next week
+      const upcoming = db.prepare(`
+        SELECT title, start_time, venue, status, category, capacity
+        FROM events WHERE start_time > ? AND start_time < ? AND status != 'cancelled' AND status != 'archived'
+        ORDER BY start_time ASC
+      `).all(now.toISOString(), weekAhead) as Array<{
+        title: string; start_time: string; venue: string | null;
+        status: string; category: string | null; capacity: number | null;
+      }>;
+
+      // Events needing attention (low scores, missing info)
+      const needsAttention = db.prepare(`
+        SELECT e.title, e.id, es.overall as score
+        FROM events e
+        LEFT JOIN event_scores es ON es.event_id = e.id
+        WHERE e.start_time > ? AND e.status != 'cancelled' AND e.status != 'archived'
+          AND (es.overall IS NULL OR es.overall < 50
+               OR e.description IS NULL OR LENGTH(e.description) < 50
+               OR e.venue IS NULL OR e.venue = '')
+        ORDER BY e.start_time ASC
+        LIMIT 10
+      `).all(now.toISOString()) as Array<{ title: string; id: string; score: number | null }>;
+
+      // Recent notes
+      const recentNotes = db.prepare(`
+        SELECT en.content, en.author, en.created_at, e.title as event_title
+        FROM event_notes en
+        JOIN events e ON e.id = en.event_id
+        WHERE en.created_at > ?
+        ORDER BY en.created_at DESC
+        LIMIT 10
+      `).all(weekAgo) as Array<{ content: string; author: string; created_at: string; event_title: string }>;
+
+      // Overall stats
+      const totalEvents = (db.prepare('SELECT COUNT(*) as cnt FROM events WHERE status != \'archived\'').get() as { cnt: number }).cnt;
+      const draftCount = (db.prepare('SELECT COUNT(*) as cnt FROM events WHERE status = \'draft\'').get() as { cnt: number }).cnt;
+
+      const prompt = `You are the operations manager for Socialise, a Bristol-based social events company. Write a concise weekly digest.
+
+## This Week's Activity
+
+### Events Created (${recentlyCreated.length})
+${recentlyCreated.length === 0 ? 'No new events created this week.' : recentlyCreated.map(e =>
+  `- "${e.title}" | ${e.start_time.slice(0, 10)} | ${e.venue || 'no venue'} | ${e.status} | ${e.category || 'uncategorized'}`
+).join('\n')}
+
+### Upcoming Next 7 Days (${upcoming.length})
+${upcoming.length === 0 ? 'No events in the next 7 days.' : upcoming.map(e =>
+  `- "${e.title}" | ${e.start_time.slice(0, 10)} | ${e.venue || 'no venue'} | cap ${e.capacity ?? '?'} | ${e.status}`
+).join('\n')}
+
+### Needs Attention (${needsAttention.length})
+${needsAttention.length === 0 ? 'All events look good!' : needsAttention.map(e =>
+  `- "${e.title}" | score: ${e.score ?? 'unscored'}`
+).join('\n')}
+
+### Recent Notes (${recentNotes.length})
+${recentNotes.length === 0 ? 'No notes this week.' : recentNotes.map(n =>
+  `- [${n.author}] on "${n.event_title}": ${n.content.slice(0, 100)}${n.content.length > 100 ? '...' : ''}`
+).join('\n')}
+
+### Portfolio
+- Total active events: ${totalEvents}
+- Drafts pending: ${draftCount}
+
+## Your Task
+Write a brief weekly digest (3-5 paragraphs) covering:
+1. **Highlights** — What went well this week
+2. **Upcoming** — What's coming up and readiness status
+3. **Action Items** — Top 3-5 things to focus on
+4. **Risks** — Any events at risk of underperforming
+
+Keep it actionable and concise. No JSON, just plain text.`;
+
+      res.json({ prompt });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * POST /api/dashboard/action-plan
+   * Compose an AI prompt analysing the full event portfolio with
+   * health scores, conflicts, gaps, and venue diversity to produce
+   * a prioritised action plan.
+   */
+  router.post('/action-plan', (_req, res, next) => {
+    try {
+      const events = eventStore.getAll().filter(e => e.status !== 'archived');
+      const now = new Date();
+
+      // Categorise events
+      const drafts = events.filter(e => e.status === 'draft');
+      const published = events.filter(e => e.status === 'published');
+      const upcoming = events.filter(e => new Date(e.start_time) > now);
+      const thisMonth = events.filter(e => {
+        const d = new Date(e.start_time);
+        return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+      });
+
+      // Health data
+      const healthData = events.map(e => {
+        let score = 0;
+        if (e.title && e.title.length >= 5) score += 10;
+        if (e.description && e.description.length >= 100) score += 15;
+        if (e.venue && e.venue.length > 0) score += 10;
+        if (e.price !== undefined) score += 5;
+        if (e.capacity && e.capacity > 0) score += 5;
+        if (e.category) score += 5;
+        if (new Date(e.start_time) > now) score += 10;
+        score += Math.min(e.platforms.length * 10, 30);
+        return { title: e.title, health: Math.min(score, 100), status: e.status };
+      });
+      const lowHealth = healthData.filter(h => h.health < 50);
+
+      // Venue diversity
+      const venues = new Set(events.map(e => e.venue).filter(Boolean));
+      const categories = new Set(events.map(e => e.category).filter(Boolean));
+
+      const prompt = `You are a strategic advisor for Socialise, a Bristol-based events company for young professionals.
+
+## Current Portfolio Snapshot (${now.toISOString().slice(0, 10)})
+- Total active events: ${events.length} (${drafts.length} drafts, ${published.length} published)
+- Upcoming events: ${upcoming.length}
+- Events this month: ${thisMonth.length}
+- Unique venues: ${venues.size}
+- Categories in use: ${[...categories].join(', ') || 'none set'}
+
+## Events Needing Attention
+${lowHealth.length > 0
+  ? lowHealth.map(h => `- "${h.title}" — health ${h.health}/100 [${h.status}]`).join('\n')
+  : '- All events are in good health'}
+
+## Draft Events (need publishing)
+${drafts.length > 0
+  ? drafts.slice(0, 10).map(e => `- "${e.title}" (${e.start_time.slice(0, 10)}) at ${e.venue || 'no venue'}`).join('\n')
+  : '- No drafts pending'}
+
+## Upcoming Events
+${upcoming.slice(0, 10).map(e => {
+  const days = Math.ceil((new Date(e.start_time).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+  return `- "${e.title}" in ${days} days (${e.start_time.slice(0, 10)}) — ${e.platforms.length} platform(s)`;
+}).join('\n') || '- No upcoming events'}
+
+## What I Need
+Produce a prioritised action plan with 5-7 items. For each item:
+1. **Priority** (P1/P2/P3)
+2. **Action** — What specifically to do
+3. **Why** — Business impact
+4. **Timeline** — When to do it
+
+Focus on revenue impact, audience growth, and operational efficiency.
+Be direct. No preamble.`;
+
+      res.json({ prompt });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/dashboard/portfolio
+   * Category-level breakdown of events for portfolio management.
+   */
+  router.get('/portfolio', (_req, res, next) => {
+    try {
+      const events = eventStore.getAll().filter(e => e.status !== 'archived');
+      const now = new Date();
+
+      // Group by category
+      const byCategory: Record<string, {
+        count: number; upcoming: number; draft: number;
+        published: number; avgPrice: number; totalCapacity: number;
+        venues: Set<string>;
+      }> = {};
+
+      for (const e of events) {
+        const cat = e.category || 'uncategorized';
+        if (!byCategory[cat]) {
+          byCategory[cat] = { count: 0, upcoming: 0, draft: 0, published: 0, avgPrice: 0, totalCapacity: 0, venues: new Set() };
+        }
+        const g = byCategory[cat];
+        g.count++;
+        if (new Date(e.start_time) > now) g.upcoming++;
+        if (e.status === 'draft') g.draft++;
+        if (e.status === 'published') g.published++;
+        g.avgPrice += e.price;
+        g.totalCapacity += e.capacity;
+        if (e.venue) g.venues.add(e.venue);
+      }
+
+      const categories = Object.entries(byCategory).map(([category, g]) => ({
+        category,
+        count: g.count,
+        upcoming: g.upcoming,
+        draft: g.draft,
+        published: g.published,
+        avgPrice: g.count > 0 ? Math.round((g.avgPrice / g.count) * 100) / 100 : 0,
+        totalCapacity: g.totalCapacity,
+        venueCount: g.venues.size,
+      })).sort((a, b) => b.count - a.count);
+
+      // Calendar gaps: find weeks in the next 8 weeks with no events
+      const gaps: string[] = [];
+      for (let w = 0; w < 8; w++) {
+        const weekStart = new Date(now);
+        weekStart.setDate(weekStart.getDate() + (w * 7) - weekStart.getDay() + 1); // Monday
+        const weekEnd = new Date(weekStart);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        const hasEvent = events.some(e => {
+          const d = new Date(e.start_time);
+          return d >= weekStart && d <= weekEnd;
+        });
+        if (!hasEvent) {
+          gaps.push(weekStart.toISOString().slice(0, 10));
+        }
+      }
+
+      res.json({
+        data: {
+          categories,
+          summary: {
+            totalEvents: events.length,
+            totalCategories: categories.length,
+            upcomingEvents: events.filter(e => new Date(e.start_time) > now).length,
+            calendarGaps: gaps,
+          },
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/dashboard/conflicts
+   * Detects events scheduled at the same time or overlapping times.
+   */
+  router.get('/conflicts', (_req, res, next) => {
+    try {
+      const events = eventStore.getAll().filter(e => e.status !== 'archived');
+
+      // Sort by start_time
+      const sorted = [...events].sort((a, b) => a.start_time.localeCompare(b.start_time));
+
+      const conflicts: Array<{
+        events: Array<{ id: string; title: string; start_time: string; venue: string }>;
+        reason: string;
+      }> = [];
+
+      for (let i = 0; i < sorted.length; i++) {
+        for (let j = i + 1; j < sorted.length; j++) {
+          const a = sorted[i];
+          const b = sorted[j];
+
+          const aStart = new Date(a.start_time).getTime();
+          const bStart = new Date(b.start_time).getTime();
+          const aDuration = (a.duration_minutes || 120) * 60 * 1000;
+          const aEnd = aStart + aDuration;
+
+          if (bStart >= aEnd) break; // No more overlaps possible for this event
+
+          // Same time or overlapping
+          const reason = aStart === bStart
+            ? 'same_start_time'
+            : 'overlapping';
+
+          conflicts.push({
+            events: [
+              { id: a.id, title: a.title, start_time: a.start_time, venue: a.venue },
+              { id: b.id, title: b.title, start_time: b.start_time, venue: b.venue },
+            ],
+            reason,
+          });
+        }
+      }
+
+      res.json({ data: conflicts, total: conflicts.length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/dashboard/health
+   * Computes a health score (0-100) for each non-archived event.
+   * Aggregates readiness checks, photo count, score, notes, and platform coverage.
+   */
+  router.get('/health', (_req, res, next) => {
+    try {
+      const events = eventStore.getAll().filter(e => e.status !== 'archived');
+      const now = new Date();
+
+      // Batch-load counts to avoid N+1 queries
+      const photoCounts = new Map<string, number>();
+      const photoRows = db.prepare(
+        'SELECT event_id, COUNT(*) as cnt FROM event_photos GROUP BY event_id',
+      ).all() as Array<{ event_id: string; cnt: number }>;
+      for (const r of photoRows) photoCounts.set(r.event_id, r.cnt);
+
+      const noteCounts = new Map<string, number>();
+      const noteRows = db.prepare(
+        'SELECT event_id, COUNT(*) as cnt FROM event_notes GROUP BY event_id',
+      ).all() as Array<{ event_id: string; cnt: number }>;
+      for (const r of noteRows) noteCounts.set(r.event_id, r.cnt);
+
+      const scoredEvents = new Set<string>();
+      const scoreRows = db.prepare(
+        'SELECT event_id FROM event_scores',
+      ).all() as Array<{ event_id: string }>;
+      for (const r of scoreRows) scoredEvents.add(r.event_id);
+
+      const healthData = events.map(e => {
+        let score = 0;
+        const factors: string[] = [];
+
+        // Title quality (0-10)
+        if (e.title && e.title.length >= 5) { score += 5; }
+        if (e.title && e.title.length >= 15) { score += 5; factors.push('good_title'); }
+
+        // Description quality (0-15)
+        if (e.description && e.description.length >= 20) { score += 5; }
+        if (e.description && e.description.length >= 100) { score += 5; }
+        if (e.description && e.description.length >= 250) { score += 5; factors.push('rich_description'); }
+
+        // Date set and in future (0-10)
+        if (e.start_time) { score += 5; }
+        if (e.start_time && new Date(e.start_time) > now) { score += 5; factors.push('future_date'); }
+
+        // Venue (0-10)
+        if (e.venue && e.venue.length > 0) { score += 10; factors.push('has_venue'); }
+
+        // Price & capacity (0-10)
+        if (e.price !== undefined && e.price !== null) score += 5;
+        if (e.capacity && e.capacity > 0) { score += 5; factors.push('has_capacity'); }
+
+        // Category set (0-5)
+        if (e.category) { score += 5; factors.push('has_category'); }
+
+        // Photo count (0-15)
+        const photoCount = photoCounts.get(e.id) ?? 0;
+        if (photoCount >= 1) score += 5;
+        if (photoCount >= 3) score += 5;
+        if (photoCount >= 5) { score += 5; factors.push('rich_photos'); }
+
+        // Platform coverage (0-15)
+        const platformCount = e.platforms.length;
+        if (platformCount >= 1) score += 5;
+        if (platformCount >= 2) score += 5;
+        if (platformCount >= 3) { score += 5; factors.push('full_coverage'); }
+
+        // Notes present (0-5)
+        const noteCount = noteCounts.get(e.id) ?? 0;
+        if (noteCount >= 1) { score += 5; factors.push('has_notes'); }
+
+        // Event score exists (0-5)
+        const hasScore = scoredEvents.has(e.id);
+        if (hasScore) { score += 5; factors.push('scored'); }
+
+        return {
+          id: e.id,
+          title: e.title,
+          status: e.status,
+          date: e.start_time?.slice(0, 10) ?? null,
+          health: Math.min(score, 100),
+          factors,
+          photoCount,
+          platformCount,
+          noteCount,
+          hasScore,
+        };
+      });
+
+      // Sort by health ascending (worst first)
+      healthData.sort((a, b) => a.health - b.health);
+
+      const avg = healthData.length > 0
+        ? Math.round(healthData.reduce((s, e) => s + e.health, 0) / healthData.length)
+        : 0;
+
+      res.json({
+        data: healthData,
+        summary: {
+          total: healthData.length,
+          averageHealth: avg,
+          healthy: healthData.filter(e => e.health >= 70).length,
+          needsWork: healthData.filter(e => e.health < 50).length,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/dashboard/week
+   * Events for the next 7 days grouped by day, with checklist progress.
+   */
+  router.get('/week', (_req, res, next) => {
+    try {
+      const now = new Date();
+      const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const endOfWeek = new Date(startOfToday.getTime() + 7 * 86400000);
+
+      const events = db.prepare(`
+        SELECT e.id, e.title, e.start_time, e.venue, e.status, e.capacity, e.price
+        FROM events e
+        WHERE e.start_time >= ? AND e.start_time < ?
+          AND e.status != 'cancelled' AND e.status != 'archived'
+        ORDER BY e.start_time ASC
+      `).all(startOfToday.toISOString(), endOfWeek.toISOString()) as Array<{
+        id: string; title: string; start_time: string; venue: string | null;
+        status: string; capacity: number | null; price: number;
+      }>;
+
+      // Batch-load checklist stats to avoid N+1 queries
+      const weekChecklistStats = new Map<string, { total: number; done: number }>();
+      const weekChecklistRows = db.prepare(
+        'SELECT event_id, COUNT(*) as total, SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as done FROM event_checklist GROUP BY event_id',
+      ).all() as Array<{ event_id: string; total: number; done: number }>;
+      for (const r of weekChecklistRows) weekChecklistStats.set(r.event_id, { total: r.total, done: r.done });
+
+      const days: Record<string, Array<{
+        id: string; title: string; startTime: string; venue: string | null;
+        status: string; capacity: number | null; price: number;
+        checklist: { total: number; done: number } | null;
+      }>> = {};
+
+      for (const e of events) {
+        const dayKey = e.start_time.split('T')[0];
+        if (!days[dayKey]) days[dayKey] = [];
+
+        const cs = weekChecklistStats.get(e.id);
+        days[dayKey].push({
+          id: e.id,
+          title: e.title,
+          startTime: e.start_time,
+          venue: e.venue,
+          status: e.status,
+          capacity: e.capacity,
+          price: e.price,
+          checklist: cs && cs.total > 0 ? { total: cs.total, done: cs.done } : null,
+        });
+      }
+
+      res.json({
+        data: days,
+        totalEvents: events.length,
+        startDate: startOfToday.toISOString().split('T')[0],
+        endDate: endOfWeek.toISOString().split('T')[0],
+      });
     } catch (err) {
       next(err);
     }

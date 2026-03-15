@@ -4,6 +4,7 @@ const colors: Record<EventStatus, { bg: string; text: string }> = {
   draft: { bg: '#f0efeb', text: '#7a7a7a' },
   published: { bg: '#e6f4ea', text: '#2D5F5D' },
   cancelled: { bg: '#fce8e6', text: '#E2725B' },
+  archived: { bg: '#e8e6e1', text: '#9ca3af' },
 };
 
 export function StatusBadge({ status }: { status: EventStatus }) {

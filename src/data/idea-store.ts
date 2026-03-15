@@ -62,17 +62,20 @@ export class IdeaStore {
          (title, short_description, category, suggested_date, date_reason, confidence, used, created_at)
        VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
     );
-    for (const idea of ideas) {
-      stmt.run(
-        idea.title,
-        idea.shortDescription || null,
-        idea.category || null,
-        idea.suggestedDate || null,
-        idea.dateReason || null,
-        idea.confidence ?? 'medium',
-        now,
-      );
-    }
+    const insertAll = this.db.transaction(() => {
+      for (const idea of ideas) {
+        stmt.run(
+          idea.title,
+          idea.shortDescription || null,
+          idea.category || null,
+          idea.suggestedDate || null,
+          idea.dateReason || null,
+          idea.confidence ?? 'medium',
+          now,
+        );
+      }
+    });
+    insertAll();
   }
 
   getById(id: number): QueuedIdea | undefined {

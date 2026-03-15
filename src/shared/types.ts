@@ -4,7 +4,7 @@
 
 // ── Events ──────────────────────────────────────────────
 
-export type EventStatus = 'draft' | 'published' | 'cancelled';
+export type EventStatus = 'draft' | 'published' | 'cancelled' | 'archived';
 
 export type PlatformName = 'meetup' | 'eventbrite' | 'headfirst';
 
@@ -28,9 +28,16 @@ export interface SocialiseEvent {
   venue: string;
   price: number;
   capacity: number;
+  imageUrl?: string;
+  category?: string;
   status: EventStatus;
   sync_status?: 'synced' | 'modified' | 'local_only';
+  actual_attendance?: number;
+  actual_revenue?: number;
   platforms: PlatformPublishStatus[];
+  notesCount?: number;
+  checklistTotal?: number;
+  checklistDone?: number;
   createdAt: string;
   updatedAt: string;
 }

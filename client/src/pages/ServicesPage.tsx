@@ -8,6 +8,7 @@ import {
   setupService,
 } from '../api/events';
 import { PLATFORM_COLORS, PLATFORM_ICONS } from '../lib/platforms';
+import { ListSkeleton } from '../components/Skeleton';
 
 // Electron API (available when running inside Electron)
 declare global {
@@ -24,6 +25,7 @@ declare global {
       resumeAutomation: () => Promise<void>;
       onAutomationStatus: (cb: (status: { step: number; totalSteps: number; description: string; state: string }) => void) => () => void;
       onAutomationResult: (cb: (result: { success: boolean; error?: string; data?: unknown }) => void) => () => void;
+      openInAutomationPanel: (url: string) => Promise<void>;
     };
   }
 }
@@ -55,7 +57,11 @@ export function ServicesPage() {
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    load().then(() => { if (cancelled) return; });
+    return () => { cancelled = true; };
+  }, [load]);
 
   // Subscribe to automation status and result events
   useEffect(() => {
@@ -77,7 +83,9 @@ export function ServicesPage() {
         // Mark service as connected in the database
         try {
           await connectService(platform, { automationConnected: 'true' });
-        } catch { /* ignore */ }
+        } catch {
+          setError('Connected but failed to save connection status');
+        }
 
         // Extract platform-specific data from automation result and store it
         try {
@@ -91,7 +99,6 @@ export function ServicesPage() {
             await setupService(platform, { organizationId: data.organizationId, organizationName: data.organizationName });
           }
         } catch (err) {
-          console.error('Failed to store platform setup data:', err);
           setError(`Connected but failed to save config: ${err instanceof Error ? err.message : 'unknown error'}`);
         }
 
@@ -132,7 +139,7 @@ export function ServicesPage() {
     }
   };
 
-  if (loading) return <p style={{ color: '#7a7a7a' }}>Loading services...</p>;
+  if (loading) return <ListSkeleton rows={3} />;
 
   return (
     <div>
@@ -143,7 +150,12 @@ export function ServicesPage() {
         </p>
       </div>
 
-      {error && <div style={styles.error}>{error}</div>}
+      {error && (
+        <div style={styles.errorBanner}>
+          {error}
+          <button style={styles.retryBtn} onClick={load}>Retry</button>
+        </div>
+      )}
 
       {automationStatus && (
         <div style={styles.automationProgress}>
@@ -245,14 +257,29 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 6,
   },
   subtitle: { fontSize: 14, color: '#7a7a7a' },
-  error: {
-    padding: '12px 16px',
+  errorBanner: {
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
     borderRadius: 12,
-    background: '#fce8e6',
-    color: '#E2725B',
+    padding: '14px 20px',
+    color: '#dc2626',
     fontSize: 14,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
     marginBottom: 20,
-    fontWeight: 500,
+  },
+  retryBtn: {
+    padding: '6px 16px',
+    borderRadius: 8,
+    border: '1px solid #fecaca',
+    background: '#fff',
+    color: '#dc2626',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
   },
   automationProgress: {
     padding: '12px 16px',

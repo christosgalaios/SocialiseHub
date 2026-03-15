@@ -57,7 +57,10 @@ export class SqliteServiceStore {
     if (row.refresh_token) credentials['refresh_token'] = row.refresh_token;
     if (row.token_expires_at) credentials['token_expires_at'] = row.token_expires_at;
 
-    const extra = row.extra ? (JSON.parse(row.extra) as Record<string, unknown>) : undefined;
+    let extra: Record<string, unknown> | undefined;
+    if (row.extra) {
+      try { extra = JSON.parse(row.extra) as Record<string, unknown>; } catch { extra = undefined; }
+    }
 
     return {
       platform,

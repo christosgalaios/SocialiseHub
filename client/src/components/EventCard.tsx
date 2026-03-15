@@ -13,7 +13,7 @@ export function EventCard({
   event: SocialiseEvent;
   onDelete: (id: string) => void;
   onDuplicate: (id: string) => void;
-  onPush?: (id: string, platform: string) => void;
+  onPush?: (id: string) => void;
   onOptimize?: (id: string) => void;
 }) {
   const nav = useNavigate();
@@ -79,6 +79,25 @@ export function EventCard({
             : event.description}
         </p>
 
+        {((event.checklistTotal ?? 0) > 0 || (event.notesCount ?? 0) > 0) && (
+          <div style={styles.progressRow}>
+            {(event.checklistTotal ?? 0) > 0 && (
+              <span style={{
+                ...styles.progressBadge,
+                background: event.checklistDone === event.checklistTotal ? '#dcfce7' : '#fef3c7',
+                color: event.checklistDone === event.checklistTotal ? '#16a34a' : '#d97706',
+              }}>
+                {event.checklistDone}/{event.checklistTotal} tasks
+              </span>
+            )}
+            {(event.notesCount ?? 0) > 0 && (
+              <span style={styles.notesBadge}>
+                {event.notesCount} note{event.notesCount !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+        )}
+
         <div style={styles.footer}>
           <div style={styles.platforms}>
             {event.platforms.map((ps) => (
@@ -94,7 +113,7 @@ export function EventCard({
                 style={styles.pushBtn}
                 onClick={(e) => {
                   e.stopPropagation();
-                  onPush?.(event.id, event.platforms[0].platform);
+                  onPush?.(event.id);
                 }}
               >
                 Push ↑
@@ -258,5 +277,24 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 4,
     lineHeight: 1,
     fontWeight: 700,
+  },
+  progressRow: {
+    display: 'flex',
+    gap: 8,
+    flexWrap: 'wrap' as const,
+  },
+  progressBadge: {
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '2px 8px',
+    borderRadius: 8,
+  },
+  notesBadge: {
+    fontSize: 11,
+    fontWeight: 600,
+    padding: '2px 8px',
+    borderRadius: 8,
+    background: '#f0f0ff',
+    color: '#6366f1',
   },
 };

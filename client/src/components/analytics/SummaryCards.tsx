@@ -5,6 +5,7 @@ export interface AnalyticsSummary {
   total_attendees: number;
   total_revenue: number;
   avg_fill_rate: number;
+  revenue_per_attendee?: number;
 }
 
 interface CardProps {
@@ -63,6 +64,14 @@ export function SummaryCards({ summary }: Props) {
         sub="attendance / capacity"
         color="#8b5cf6"
       />
+      {summary.revenue_per_attendee != null && summary.revenue_per_attendee > 0 && (
+        <Card
+          label="Revenue / Attendee"
+          value={`£${summary.revenue_per_attendee.toFixed(2)}`}
+          sub="ticket yield"
+          color="#ef4444"
+        />
+      )}
     </div>
   );
 }

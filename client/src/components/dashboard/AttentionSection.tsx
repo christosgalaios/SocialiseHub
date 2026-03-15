@@ -19,7 +19,7 @@ const URGENCY_COLORS: Record<AttentionItem['urgency'], string> = {
   low: '#9ca3af',
 };
 
-export function AttentionSection({ items }: { items: AttentionItem[] }) {
+export function AttentionSection({ items, totalCount }: { items: AttentionItem[]; totalCount?: number }) {
   const navigate = useNavigate();
 
   if (items.length === 0) {
@@ -35,7 +35,7 @@ export function AttentionSection({ items }: { items: AttentionItem[] }) {
     <section style={styles.section}>
       <div style={styles.sectionHeader}>
         <h2 style={styles.sectionTitle}>Attention Required</h2>
-        <span style={styles.countBadge}>{items.length}</span>
+        <span style={styles.countBadge}>{totalCount ?? items.length}</span>
       </div>
       <div style={styles.list}>
         {items.map((item) => (
@@ -60,8 +60,8 @@ export function AttentionSection({ items }: { items: AttentionItem[] }) {
                 {item.urgency}
               </span>
               <span style={styles.problemLabel}>
-                {(item as any).problems
-                  ? (item as any).problems.map((p: any) => p.label).join(' · ')
+                {item.problems && item.problems.length > 0
+                  ? item.problems.map(p => p.label).join(' · ')
                   : item.problemLabel}
               </span>
               <div style={styles.platforms}>
@@ -79,6 +79,11 @@ export function AttentionSection({ items }: { items: AttentionItem[] }) {
             </div>
           </div>
         ))}
+        {totalCount != null && totalCount > items.length && (
+          <div style={styles.moreIndicator}>
+            +{totalCount - items.length} more events need attention
+          </div>
+        )}
       </div>
     </section>
   );
@@ -193,5 +198,12 @@ const styles: Record<string, React.CSSProperties> = {
     height: 8,
     borderRadius: '50%',
     display: 'inline-block',
+  },
+  moreIndicator: {
+    fontSize: 12,
+    color: '#9ca3af',
+    textAlign: 'center',
+    padding: '8px 0',
+    fontStyle: 'italic',
   },
 };

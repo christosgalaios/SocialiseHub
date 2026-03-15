@@ -47,21 +47,47 @@ export function createServicesRouter(serviceStore: SqliteServiceStore, db?: Data
         return res.status(404).json({ error: 'Platform not found' });
       }
 
-      // Clean up platform events and linked events for this platform
+      // Clean up platform events and linked events for this platform (atomic)
       if (db) {
-        // Get event IDs linked to this platform's events before deleting
-        const linkedEvents = db.prepare(
-          'SELECT event_id FROM platform_events WHERE platform = ? AND event_id IS NOT NULL'
-        ).all(platform) as Array<{ event_id: string }>;
+        const cleanup = db.transaction(() => {
+          // Get event IDs linked to this platform's events before deleting
+          const linkedEvents = db.prepare(
+            'SELECT event_id FROM platform_events WHERE platform = ? AND event_id IS NOT NULL'
+          ).all(platform) as Array<{ event_id: string }>;
 
-        // Delete platform events
-        db.prepare('DELETE FROM platform_events WHERE platform = ?').run(platform);
+          // Delete platform events
+          db.prepare('DELETE FROM platform_events WHERE platform = ?').run(platform);
 
-        // Delete linked events (only those created by sync, not manually created ones)
-        for (const { event_id } of linkedEvents) {
-          // Only delete if event has sync_status 'synced' (not locally modified)
-          db.prepare("DELETE FROM events WHERE id = ? AND sync_status = 'synced'").run(event_id);
-        }
+          // Delete linked events (only those created by sync, not manually created ones)
+          for (const { event_id } of linkedEvents) {
+            // Check if this event is linked to other platforms
+            const otherLinks = db.prepare(
+              'SELECT COUNT(*) as cnt FROM platform_events WHERE event_id = ? AND platform != ?'
+            ).get(event_id, platform) as { cnt: number };
+
+            // Only delete if no other platform links remain and event is sync-created
+            if (otherLinks.cnt === 0) {
+              // Delete synced events (purely from platform, no local edits)
+              // Must cascade-delete related data first
+              const canDelete = db.prepare("SELECT id FROM events WHERE id = ? AND sync_status = 'synced'").get(event_id);
+              if (canDelete) {
+                db.prepare('DELETE FROM event_sync_snapshots WHERE event_id = ?').run(event_id);
+                db.prepare('DELETE FROM event_photos WHERE event_id = ?').run(event_id);
+                db.prepare('DELETE FROM event_scores WHERE event_id = ?').run(event_id);
+                db.prepare('DELETE FROM event_snapshots WHERE event_id = ?').run(event_id);
+                db.prepare('DELETE FROM event_notes WHERE event_id = ?').run(event_id);
+                db.prepare('DELETE FROM event_tags WHERE event_id = ?').run(event_id);
+                db.prepare('DELETE FROM event_checklist WHERE event_id = ?').run(event_id);
+                db.prepare('DELETE FROM sync_log WHERE event_id = ?').run(event_id);
+                db.prepare("DELETE FROM events WHERE id = ?").run(event_id);
+              } else {
+                // If event was modified locally (not deleted), reset to local_only since it's no longer linked
+                db.prepare("UPDATE events SET sync_status = 'local_only' WHERE id = ? AND sync_status = 'modified'").run(event_id);
+              }
+            }
+          }
+        });
+        cleanup();
       }
 
       res.json({ data: service });

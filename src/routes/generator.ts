@@ -85,15 +85,26 @@ export function createGeneratorRouter(
       if (!title || !description) {
         return res.status(400).json({ error: 'Title and description are required' });
       }
+      if (title.length > 200) {
+        return res.status(400).json({ error: 'title must be 200 characters or fewer' });
+      }
+      if (description.length > 5000) {
+        return res.status(400).json({ error: 'description must be 5000 characters or fewer' });
+      }
+
+      if (date !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        return res.status(400).json({ error: 'date must be in YYYY-MM-DD format' });
+      }
 
       const event = eventStore.create({
         title,
-        description: category ? `[${category}] ${description}` : description,
+        description,
         venue: venue ?? '',
         start_time: date ? `${date}T19:00:00+00:00` : new Date().toISOString(),
         duration_minutes: 120,
         price: 0,
         capacity: 50,
+        category,
       });
 
       res.status(201).json({ data: event });
@@ -145,6 +156,19 @@ export function createGeneratorRouter(
       if (!Array.isArray(ideas) || ideas.length === 0) {
         return res.status(400).json({ error: 'ideas must be a non-empty array' });
       }
+      if (ideas.length > 50) {
+        return res.status(400).json({ error: 'Maximum 50 ideas per batch' });
+      }
+      const invalid = ideas.some((idea) => !idea || typeof idea.title !== 'string' || !idea.title.trim());
+      if (invalid) {
+        return res.status(400).json({ error: 'Each idea must have a non-empty title' });
+      }
+      // Sanitize field lengths
+      for (const idea of ideas) {
+        idea.title = idea.title.trim().slice(0, 200);
+        if (idea.shortDescription) idea.shortDescription = String(idea.shortDescription).slice(0, 1000);
+        if (idea.category) idea.category = String(idea.category).slice(0, 100);
+      }
       ideaStore.insertBatch(ideas);
       res.json({ stored: ideas.length });
     } catch (err) {
@@ -161,23 +185,27 @@ export function createGeneratorRouter(
     try {
       if (!ideaStore) return res.status(503).json({ error: 'Idea store not available' });
       const id = Number(req.params.id);
+      if (Number.isNaN(id)) return res.status(400).json({ error: 'Invalid idea id' });
       const idea = ideaStore.getById(id);
       if (!idea) return res.status(404).json({ error: 'Idea not found' });
 
       ideaStore.markUsed(id);
 
+      // Validate suggestedDate if present — must be YYYY-MM-DD
+      const validDate = idea.suggestedDate && /^\d{4}-\d{2}-\d{2}$/.test(idea.suggestedDate)
+        ? idea.suggestedDate : undefined;
+
       const event = eventStore.create({
         title: idea.title,
-        description: idea.shortDescription
-          ? (idea.category ? `[${idea.category}] ${idea.shortDescription}` : idea.shortDescription)
-          : '',
+        description: idea.shortDescription ?? '',
         venue: '',
-        start_time: idea.suggestedDate
-          ? `${idea.suggestedDate}T19:00:00+00:00`
+        start_time: validDate
+          ? `${validDate}T19:00:00+00:00`
           : new Date().toISOString(),
         duration_minutes: 120,
         price: 0,
         capacity: 50,
+        category: idea.category,
       });
 
       res.status(201).json({ eventId: event.id });

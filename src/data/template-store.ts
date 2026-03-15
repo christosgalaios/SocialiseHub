@@ -2,6 +2,11 @@ import { randomUUID } from 'node:crypto';
 import type { Database } from './database.js';
 import type { Template, CreateTemplateInput, PlatformName } from '../shared/types.js';
 
+function safeJsonParse<T>(value: string, fallback: T): T {
+  try { return JSON.parse(value) as T; }
+  catch { return fallback; }
+}
+
 interface TemplateRow {
   id: string;
   name: string;
@@ -28,7 +33,7 @@ function rowToTemplate(row: TemplateRow): Template {
     price: row.price,
     capacity: row.capacity ?? 0,
     imageUrl: row.image_url ?? undefined,
-    platforms: row.platforms ? JSON.parse(row.platforms) : [],
+    platforms: row.platforms ? safeJsonParse<PlatformName[]>(row.platforms, []) : [],
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

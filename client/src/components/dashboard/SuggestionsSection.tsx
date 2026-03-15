@@ -27,6 +27,7 @@ export function SuggestionsSection() {
   const [suggestions, setSuggestions] = useState<DashboardSuggestion[] | null>(null);
   const [generatedAt, setGeneratedAt] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [aiModal, setAiModal] = useState<{ title: string; prompt: string; responseFormat: 'json' | 'text'; onSubmit: (r: string) => void } | null>(null);
 
   const load = useCallback(async () => {
@@ -34,12 +35,16 @@ export function SuggestionsSection() {
       const result = await getSuggestions();
       setSuggestions(result.suggestions);
       setGeneratedAt(result.generatedAt);
-    } catch {
-      // silently ignore
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load suggestions');
     }
   }, []);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    load().then(() => { if (cancelled) return; });
+    return () => { cancelled = true; };
+  }, [load]);
 
   const handleRefresh = useCallback(async () => {
     setLoading(true);
@@ -56,13 +61,13 @@ export function SuggestionsSection() {
             const parsed = JSON.parse(arrayMatch ? arrayMatch[1] : rawResponse) as DashboardSuggestion[];
             await storeSuggestions(parsed);
             await load();
-          } catch (err) {
-            console.error('[suggestions] Failed to parse/store:', err);
+          } catch {
+            setError('Failed to parse AI response — try again');
           }
         },
       });
-    } catch {
-      // silently ignore network errors
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate suggestions');
     } finally {
       setLoading(false);
     }
@@ -90,6 +95,10 @@ export function SuggestionsSection() {
           <span style={styles.spinner} />
           <span style={styles.loadingText}>Generating suggestions…</span>
         </div>
+      )}
+
+      {error && (
+        <div style={{ color: '#dc2626', fontSize: 13, padding: '8px 0' }}>{error}</div>
       )}
 
       {!loading && suggestions === null && (
@@ -128,22 +137,18 @@ export function SuggestionsSection() {
                   style={styles.actionBtn}
                   onClick={() => {
                     const params = new URLSearchParams();
-                    if ((s as DashboardSuggestion & { actionTitle?: string; actionDate?: string }).actionTitle) {
-                      params.set('title', (s as DashboardSuggestion & { actionTitle?: string }).actionTitle!);
-                    }
-                    if ((s as DashboardSuggestion & { actionDate?: string }).actionDate) {
-                      params.set('date', (s as DashboardSuggestion & { actionDate?: string }).actionDate!);
-                    }
+                    if (s.actionTitle) params.set('title', s.actionTitle);
+                    if (s.actionDate) params.set('date', s.actionDate);
                     navigate(`/events/new?${params.toString()}`);
                   }}
                 >
                   Create Event
                 </button>
               )}
-              {s.action === 'navigate' && (s as DashboardSuggestion & { actionUrl?: string }).actionUrl && (
+              {s.action === 'navigate' && s.actionUrl && (
                 <button
                   style={styles.actionBtn}
-                  onClick={() => navigate((s as DashboardSuggestion & { actionUrl?: string }).actionUrl!)}
+                  onClick={() => navigate(s.actionUrl!)}
                 >
                   Go
                 </button>

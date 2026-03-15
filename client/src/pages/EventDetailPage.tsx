@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import type {
   SocialiseEvent,
@@ -17,12 +17,14 @@ import {
   optimizeEvent,
   magicFill,
   autoFillPhotos,
+  getEventPhotos,
   getEventScore,
   scoreEvent,
   saveEventScore,
   pushEvent,
   pushAllEvents,
   pullEvent,
+  undoOptimize,
 } from '../api/events';
 import { AiPromptModal } from '../components/AiPromptModal';
 import { PlatformSelector } from '../components/PlatformSelector';
@@ -33,7 +35,11 @@ import { OptimizePanel } from '../components/OptimizePanel';
 import { ScorePanel } from '../components/ScorePanel';
 import type { ScoreBreakdown, ScoreSuggestion } from '../components/ScorePanel';
 import { PLATFORM_COLORS } from '../lib/platforms';
+import { EventTags } from '../components/EventTags';
+import { EventChecklist } from '../components/EventChecklist';
+import { ActivityTimeline } from '../components/ActivityTimeline';
 import { useToast } from '../context/ToastContext';
+import { ListSkeleton } from '../components/Skeleton';
 import { loadSettings } from '../lib/settings';
 import { checkEventReadiness, isReadyToPublish } from '../../../src/lib/event-readiness';
 
@@ -72,6 +78,9 @@ export function EventDetailPage() {
   const [venue, setVenue] = useState('');
   const [price, setPrice] = useState(0);
   const [capacity, setCapacity] = useState(50);
+  const [category, setCategory] = useState('');
+  const [actualAttendance, setActualAttendance] = useState<number | undefined>(undefined);
+  const [actualRevenue, setActualRevenue] = useState<number | undefined>(undefined);
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformName[]>([]);
 
   // Pre-fill date from query param (calendar day click)
@@ -107,15 +116,18 @@ export function EventDetailPage() {
   const [pullingPlatform, setPullingPlatform] = useState<string | null>(null);
 
   useEffect(() => {
-    // Always load services for platform selector
-    getServices().then(setServices).catch(() => {});
+    let cancelled = false;
+    getServices().then(data => { if (!cancelled) setServices(data); }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
     if (!id) return;
+    let cancelled = false;
     setLoading(true);
     getEvent(id)
       .then((ev) => {
+        if (cancelled) return;
         setEvent(ev);
         setTitle(ev.title);
         setDescription(ev.description);
@@ -125,13 +137,47 @@ export function EventDetailPage() {
         setVenue(ev.venue);
         setPrice(ev.price);
         setCapacity(ev.capacity);
+        setCategory(ev.category ?? '');
+        setActualAttendance(ev.actual_attendance);
+        setActualRevenue(ev.actual_revenue);
         setSelectedPlatforms(ev.platforms.map((p) => p.platform));
       })
-      .catch((err: unknown) =>
-        setError(err instanceof Error ? err.message : 'Load failed'),
-      )
-      .finally(() => setLoading(false));
+      .catch((err: unknown) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Load failed');
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [id]);
+
+  // Unsaved changes detection — warn before navigating away
+  const isDirty = useCallback(() => {
+    if (isNew) {
+      // For new events, dirty if any content has been entered
+      return !!(title.trim() || description.trim());
+    }
+    if (!event) return false;
+    return (
+      title !== event.title ||
+      description !== event.description ||
+      venue !== event.venue ||
+      price !== event.price ||
+      capacity !== event.capacity ||
+      durationMinutes !== event.duration_minutes ||
+      (category || '') !== (event.category ?? '') ||
+      startTime !== toDatetimeLocal(event.start_time) ||
+      endTime !== toDatetimeLocal(event.end_time)
+    );
+  }, [event, isNew, title, description, venue, price, capacity, durationMinutes, category, startTime, endTime]);
+
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty()) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
 
   // Auto-trigger optimize if ?optimize=true or magic fill if ?magic=true
   const autoOptimizeTriggered = useRef(false);
@@ -145,7 +191,6 @@ export function EventDetailPage() {
         handleMagicFill();
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, loading, event]);
 
   /** Score — check cache first, compose prompt if miss, open modal, save result on submit */
@@ -237,6 +282,7 @@ export function EventDetailPage() {
     venue,
     price,
     capacity,
+    category: category || undefined,
     platforms: selectedPlatforms,
   });
 
@@ -250,7 +296,11 @@ export function EventDetailPage() {
         showToast('Event created', 'success');
         nav(`/events/${created.id}`);
       } else {
-        const updated = await updateEvent(id!, buildInput());
+        const updated = await updateEvent(id!, {
+          ...buildInput(),
+          actual_attendance: actualAttendance,
+          actual_revenue: actualRevenue,
+        } as CreateEventInput);
         setEvent(updated);
         showToast('Changes saved', 'success');
       }
@@ -323,6 +373,19 @@ export function EventDetailPage() {
     }
   };
 
+  const handleUndoOptimize = async () => {
+    if (!id) return;
+    try {
+      const restored = await undoOptimize(id);
+      setEvent(restored);
+      setTitle(restored.title);
+      setDescription(restored.description);
+      showToast('Optimization undone', 'success');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Undo failed', 'error');
+    }
+  };
+
   /** Magic fill — open modal with magic-fill prompt, apply JSON response */
   const handleMagicFill = async () => {
     if (!id) return;
@@ -362,8 +425,12 @@ export function EventDetailPage() {
           }
         },
       });
-      // Auto-fill photos in background
-      autoFillPhotos(id).catch(() => {});
+      // Auto-fill photos in background (only if no photos exist yet)
+      getEventPhotos(id).then(existing => {
+        if (existing.length === 0) {
+          autoFillPhotos(id).catch(() => {});
+        }
+      }).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Magic fill failed');
     }
@@ -421,6 +488,9 @@ export function EventDetailPage() {
     setVenue(ev.venue);
     setPrice(ev.price);
     setCapacity(ev.capacity);
+    setCategory(ev.category ?? '');
+    setActualAttendance(ev.actual_attendance);
+    setActualRevenue(ev.actual_revenue);
     setSelectedPlatforms(ev.platforms.map((p) => p.platform));
   };
 
@@ -431,8 +501,8 @@ export function EventDetailPage() {
       await pushEvent(id, platform);
       showToast(`Pushed to ${platform}`, 'success');
       await reloadEvent();
-    } catch (err: any) {
-      showToast(err.message, 'error');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Operation failed', 'error');
     } finally {
       setPushingPlatform(null);
     }
@@ -445,8 +515,8 @@ export function EventDetailPage() {
       await pullEvent(id, platform);
       showToast(`Reverted to ${platform} version`, 'success');
       await reloadEvent();
-    } catch (err: any) {
-      showToast(err.message, 'error');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Operation failed', 'error');
     } finally {
       setPullingPlatform(null);
     }
@@ -458,8 +528,8 @@ export function EventDetailPage() {
       await pushAllEvents(id);
       showToast('Pushed to all platforms', 'success');
       await reloadEvent();
-    } catch (err: any) {
-      showToast(err.message, 'error');
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Operation failed', 'error');
     }
   };
 
@@ -481,7 +551,48 @@ export function EventDetailPage() {
   const readinessChecks = checkEventReadiness(currentFormEvent);
   const canPublish = isReadyToPublish(readinessChecks);
 
-  if (loading) return <p style={{ color: '#7a7a7a' }}>Loading...</p>;
+  if (loading) return <ListSkeleton rows={6} />;
+
+  // Full-page error when event failed to load (not new, no event data)
+  if (!isNew && !event && error) {
+    return (
+      <div>
+        <button onClick={() => nav('/')} style={styles.back}>
+          ← Back to Dashboard
+        </button>
+        <div style={styles.loadError}>
+          <p style={styles.loadErrorTitle}>Failed to load event</p>
+          <p style={styles.loadErrorMsg}>{error}</p>
+          <button style={styles.retryBtn} onClick={() => {
+            setError(null);
+            setLoading(true);
+            getEvent(id!)
+              .then((ev) => {
+                setEvent(ev);
+                setTitle(ev.title);
+                setDescription(ev.description);
+                setStartTime(toDatetimeLocal(ev.start_time));
+                setEndTime(toDatetimeLocal(ev.end_time));
+                setDurationMinutes(ev.duration_minutes);
+                setVenue(ev.venue);
+                setPrice(ev.price);
+                setCapacity(ev.capacity);
+                setCategory(ev.category ?? '');
+                setActualAttendance(ev.actual_attendance);
+                setActualRevenue(ev.actual_revenue);
+                setSelectedPlatforms(ev.platforms.map((p) => p.platform));
+              })
+              .catch((err: unknown) =>
+                setError(err instanceof Error ? err.message : 'Load failed'),
+              )
+              .finally(() => setLoading(false));
+          }}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -524,6 +635,16 @@ export function EventDetailPage() {
           </label>
 
           <label style={styles.field}>
+            <span style={styles.label}>Category</span>
+            <input
+              style={styles.input}
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="e.g. workshop, social, networking"
+            />
+          </label>
+
+          <label style={styles.field}>
             <span style={styles.label}>Start Time</span>
             <input
               style={styles.input}
@@ -540,7 +661,13 @@ export function EventDetailPage() {
               style={styles.input}
               type="datetime-local"
               value={endTime}
-              onChange={(e) => setEndTime(e.target.value)}
+              onChange={(e) => {
+                setEndTime(e.target.value);
+                if (startTime && e.target.value) {
+                  const diff = Math.round((new Date(e.target.value).getTime() - new Date(startTime).getTime()) / 60000);
+                  if (diff > 0 && diff <= 1440) setDurationMinutes(diff);
+                }
+              }}
             />
           </label>
 
@@ -551,7 +678,14 @@ export function EventDetailPage() {
               type="number"
               min="1"
               value={durationMinutes}
-              onChange={(e) => setDurationMinutes(Number(e.target.value))}
+              onChange={(e) => {
+                const mins = Number(e.target.value);
+                setDurationMinutes(mins);
+                if (startTime && mins > 0) {
+                  const end = new Date(new Date(startTime).getTime() + mins * 60000);
+                  setEndTime(toDatetimeLocal(end.toISOString()));
+                }
+              }}
               required
             />
           </label>
@@ -581,6 +715,35 @@ export function EventDetailPage() {
           </label>
         </div>
 
+        {!isNew && (
+          <div style={styles.row}>
+            <label style={styles.field}>
+              <span style={styles.label}>Actual Attendance</span>
+              <input
+                style={styles.input}
+                type="number"
+                min="0"
+                value={actualAttendance ?? ''}
+                onChange={(e) => setActualAttendance(e.target.value ? Number(e.target.value) : undefined)}
+                placeholder="After event"
+              />
+            </label>
+
+            <label style={styles.field}>
+              <span style={styles.label}>Actual Revenue</span>
+              <input
+                style={styles.input}
+                type="number"
+                min="0"
+                step="0.01"
+                value={actualRevenue ?? ''}
+                onChange={(e) => setActualRevenue(e.target.value ? Number(e.target.value) : undefined)}
+                placeholder="After event"
+              />
+            </label>
+          </div>
+        )}
+
         <label style={styles.field}>
           <span style={styles.label}>Description</span>
           <textarea
@@ -590,6 +753,14 @@ export function EventDetailPage() {
             placeholder="Describe your event..."
             required
           />
+          <span style={{
+            fontSize: 11,
+            color: description.length < 100 ? '#E2725B' : description.length < 250 ? '#f0a500' : '#2D9E6B',
+            textAlign: 'right',
+            marginTop: 2,
+          }}>
+            {description.length} chars{description.length < 100 ? ' (min 100 recommended)' : description.length < 250 ? ' (250+ for best score)' : ''}
+          </span>
         </label>
 
         {/* Photos */}
@@ -611,8 +782,11 @@ export function EventDetailPage() {
         )}
 
         <div style={styles.formActions}>
-          <button type="submit" disabled={saving} style={styles.saveBtn}>
-            {saving ? 'Saving...' : isNew ? 'Create Event' : 'Save Changes'}
+          <button type="submit" disabled={saving} style={{
+            ...styles.saveBtn,
+            ...(isDirty() && !isNew ? { boxShadow: '0 0 0 2px #f0a500' } : {}),
+          }}>
+            {saving ? 'Saving...' : isNew ? 'Create Event' : isDirty() ? 'Save Changes *' : 'Save Changes'}
           </button>
 
           {!isNew && (
@@ -635,6 +809,15 @@ export function EventDetailPage() {
               >
                 {optimizing ? 'Analyzing...' : 'SEO Optimize'}
               </button>
+              {!isNew && (
+                <button
+                  type="button"
+                  style={styles.undoBtn}
+                  onClick={handleUndoOptimize}
+                >
+                  Undo Optimize
+                </button>
+              )}
               <button
                 type="button"
                 disabled={scoring}
@@ -681,6 +864,18 @@ export function EventDetailPage() {
       )}
       </div>
 
+      {/* Tags & Checklist */}
+      {!isNew && id && (
+        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginTop: 8 }}>
+          <div style={{ flex: '1 1 280px', minWidth: 280 }}>
+            <EventTags eventId={id} />
+          </div>
+          <div style={{ flex: '1 1 350px', minWidth: 350 }}>
+            <EventChecklist eventId={id} />
+          </div>
+        </div>
+      )}
+
       {/* Score panel */}
       {scoreData && id && (
         <ScorePanel
@@ -692,6 +887,9 @@ export function EventDetailPage() {
           onRescore={() => setScoreData(null)}
         />
       )}
+
+      {/* Activity timeline */}
+      {!isNew && id && <ActivityTimeline eventId={id} />}
 
       {/* Publish results panel */}
       {publishResults && publishResults.length > 0 && (
@@ -771,9 +969,8 @@ export function EventDetailPage() {
                 onPush={() => handlePushPlatform(ps.platform)}
                 onPull={() => handlePullPlatform(ps.platform)}
                 onView={() => {
-                  const w = window as any;
-                  if (w.electronAPI?.openInAutomationPanel && ps.externalUrl) {
-                    w.electronAPI.openInAutomationPanel(ps.externalUrl);
+                  if (window.electronAPI?.openInAutomationPanel && ps.externalUrl) {
+                    window.electronAPI.openInAutomationPanel(ps.externalUrl);
                   } else if (ps.externalUrl) {
                     window.open(ps.externalUrl, '_blank');
                   }
@@ -830,6 +1027,33 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: 14,
     marginBottom: 20,
     fontWeight: 500,
+  },
+  loadError: {
+    textAlign: 'center' as const,
+    padding: '60px 24px',
+  },
+  loadErrorTitle: {
+    fontFamily: "'Outfit', sans-serif",
+    fontSize: 20,
+    fontWeight: 700,
+    color: '#080810',
+    marginBottom: 8,
+  },
+  loadErrorMsg: {
+    fontSize: 14,
+    color: '#E2725B',
+    marginBottom: 20,
+  },
+  retryBtn: {
+    padding: '10px 24px',
+    borderRadius: 12,
+    border: 'none',
+    background: '#E2725B',
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 700,
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
   },
   twoCol: {
     display: 'flex',
@@ -914,6 +1138,17 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     fontFamily: "'Outfit', sans-serif",
     transition: 'opacity 0.2s',
+  },
+  undoBtn: {
+    padding: '12px 20px',
+    borderRadius: 12,
+    border: '1.5px solid #e8e6e1',
+    background: '#fff',
+    color: '#7a7a7a',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
   },
   scoreBtn: {
     padding: '12px 20px',

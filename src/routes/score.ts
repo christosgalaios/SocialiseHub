@@ -25,11 +25,15 @@ export function createScoreRouter(db: Database, eventStore: SqliteEventStore): R
 
       if (!row) return res.json({ score: null });
 
+      let breakdown, suggestions;
+      try { breakdown = JSON.parse(row.breakdown_json); } catch { breakdown = {}; }
+      try { suggestions = JSON.parse(row.suggestions_json); } catch { suggestions = []; }
+
       res.json({
         score: {
           overall: row.overall,
-          breakdown: JSON.parse(row.breakdown_json),
-          suggestions: JSON.parse(row.suggestions_json),
+          breakdown,
+          suggestions,
           scoredAt: row.scored_at,
         },
       });
@@ -90,8 +94,19 @@ export function createScoreRouter(db: Database, eventStore: SqliteEventStore): R
         }>;
       };
 
+      const event = eventStore.getById(req.params.id);
+      if (!event) return res.status(404).json({ error: 'Event not found' });
+
       if (typeof overall !== 'number') {
         return res.status(400).json({ error: 'overall must be a number' });
+      }
+
+      if (breakdown !== undefined && (typeof breakdown !== 'object' || breakdown === null || Array.isArray(breakdown))) {
+        return res.status(400).json({ error: 'breakdown must be an object' });
+      }
+
+      if (suggestions !== undefined && !Array.isArray(suggestions)) {
+        return res.status(400).json({ error: 'suggestions must be an array' });
       }
 
       const now = new Date().toISOString();

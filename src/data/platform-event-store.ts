@@ -23,6 +23,14 @@ interface PlatformEventRow {
   image_urls: string | null;
 }
 
+function safeJsonParse<T>(value: string, fallback: T): T {
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
+}
+
 function rowToEvent(row: PlatformEventRow): PlatformEvent {
   return {
     id: row.id,
@@ -42,7 +50,7 @@ function rowToEvent(row: PlatformEventRow): PlatformEvent {
     revenue: row.revenue ?? undefined,
     ticketPrice: row.ticket_price ?? undefined,
     description: row.description ?? undefined,
-    imageUrls: row.image_urls ? (JSON.parse(row.image_urls) as string[]) : undefined,
+    imageUrls: row.image_urls ? safeJsonParse<string[]>(row.image_urls, []) : undefined,
   };
 }
 
@@ -90,7 +98,8 @@ export class PlatformEventStore {
         .prepare<[string, string], PlatformEventRow>(
           'SELECT * FROM platform_events WHERE platform = ? AND external_id = ?',
         )
-        .get(input.platform, input.externalId)!;
+        .get(input.platform, input.externalId);
+      if (!updated) throw new Error(`Failed to read back platform event after update: ${input.platform}/${input.externalId}`);
       return rowToEvent(updated);
     }
 
@@ -126,7 +135,8 @@ export class PlatformEventStore {
 
     const inserted = this.db
       .prepare<[string], PlatformEventRow>('SELECT * FROM platform_events WHERE id = ?')
-      .get(id)!;
+      .get(id);
+    if (!inserted) throw new Error(`Failed to read back platform event after insert: ${id}`);
     return rowToEvent(inserted);
   }
 
@@ -165,19 +175,33 @@ export class PlatformEventStore {
    * After a successful pull, remove platform_events that weren't in the fresh pull.
    * Called with the set of external_ids that were just pulled.
    * Does NOT delete events — just unlinks stale platform_events.
+   *
+   * Safety: skips cleanup if the fresh pull returned zero events (likely a failed fetch)
+   * or would remove more than 50% of existing events (likely a partial/paginated fetch).
    */
   cleanStale(platform: PlatformName, freshExternalIds: Set<string>): number {
+    if (freshExternalIds.size === 0) return 0;
+
     const existing = this.db.prepare(
       'SELECT id, external_id FROM platform_events WHERE platform = ?'
     ).all(platform) as Array<{ id: string; external_id: string }>;
 
-    let removed = 0;
-    for (const row of existing) {
-      if (!freshExternalIds.has(row.external_id)) {
-        this.db.prepare('DELETE FROM platform_events WHERE id = ?').run(row.id);
+    if (existing.length === 0) return 0;
+
+    const staleRows = existing.filter(row => !freshExternalIds.has(row.external_id));
+
+    // If we'd remove more than half the existing events, the pull was likely partial — skip cleanup
+    if (staleRows.length > existing.length * 0.5 && existing.length > 2) return 0;
+
+    const deleteStmt = this.db.prepare('DELETE FROM platform_events WHERE id = ?');
+    const deleteAll = this.db.transaction(() => {
+      let removed = 0;
+      for (const row of staleRows) {
+        deleteStmt.run(row.id);
         removed++;
       }
-    }
-    return removed;
+      return removed;
+    });
+    return deleteAll();
   }
 }

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SocialiseEvent } from '@shared/types';
 import { getEvents } from '../api/events';
+import { ListSkeleton } from '../components/Skeleton';
 
 function getDaysInMonth(year: number, month: number): number {
   return new Date(year, month + 1, 0).getDate();
@@ -37,14 +38,18 @@ export function CalendarPage() {
   const [month, setMonth] = useState(today.getMonth());
   const [events, setEvents] = useState<SocialiseEvent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [popoverDay, setPopoverDay] = useState<number | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
+    setError(null);
     getEvents()
-      .then(setEvents)
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .then(r => { if (!cancelled) setEvents(r.data); })
+      .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load events'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const goToday = () => { setYear(today.getFullYear()); setMonth(today.getMonth()); };
@@ -101,8 +106,32 @@ export function CalendarPage() {
         <h2 style={styles.monthLabel}>{MONTH_NAMES[month]} {year}</h2>
       </div>
 
+      {/* Monthly summary */}
+      {!loading && !error && (
+        <div style={styles.summary}>
+          {eventsByDay.size > 0 ? (
+            <span>{Array.from(eventsByDay.values()).reduce((sum, evts) => sum + evts.length, 0)} event{Array.from(eventsByDay.values()).reduce((sum, evts) => sum + evts.length, 0) !== 1 ? 's' : ''} this month</span>
+          ) : (
+            <span>No events this month — click a day to create one</span>
+          )}
+        </div>
+      )}
+
       {loading ? (
-        <p style={{ color: '#7a7a7a' }}>Loading...</p>
+        <ListSkeleton rows={5} />
+      ) : error ? (
+        <div style={styles.errorBanner}>
+          {error}
+          <button style={styles.retryBtn} onClick={() => {
+            const cancelled = false;
+            setLoading(true);
+            setError(null);
+            getEvents()
+              .then(r => { if (!cancelled) setEvents(r.data); })
+              .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : 'Failed to load events'); })
+              .finally(() => { if (!cancelled) setLoading(false); });
+          }}>Retry</button>
+        </div>
       ) : (
         <div style={styles.calendar}>
           {DAY_HEADERS.map((d) => (
@@ -334,5 +363,33 @@ const styles: Record<string, React.CSSProperties> = {
   popoverMeta: {
     fontSize: 11,
     color: '#7a7a7a',
+  },
+  summary: {
+    fontSize: 14,
+    color: '#7a7a7a',
+    marginBottom: 16,
+  },
+  errorBanner: {
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
+    borderRadius: 12,
+    padding: '14px 20px',
+    color: '#dc2626',
+    fontSize: 14,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  retryBtn: {
+    padding: '6px 16px',
+    borderRadius: 8,
+    border: '1px solid #fecaca',
+    background: '#fff',
+    color: '#dc2626',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
   },
 };

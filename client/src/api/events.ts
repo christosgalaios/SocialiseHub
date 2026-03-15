@@ -25,10 +25,32 @@ async function json<T>(res: Response): Promise<T> {
 
 // ── Events ──────────────────────────────────────────────
 
-export async function getEvents(): Promise<SocialiseEvent[]> {
-  const res = await fetch(`${BASE}/events`);
-  const body = await json<{ data: SocialiseEvent[] }>(res);
-  return body.data;
+export interface EventFilters {
+  status?: string;
+  sync_status?: string;
+  search?: string;
+  venue?: string;
+  category?: string;
+  tag?: string;
+  upcoming?: boolean;
+  start_after?: string;
+  start_before?: string;
+  sort_by?: string;
+  order?: 'asc' | 'desc';
+  page?: number;
+  per_page?: number;
+}
+
+export async function getEvents(filters?: EventFilters): Promise<{ data: SocialiseEvent[]; total: number }> {
+  const params = new URLSearchParams();
+  if (filters) {
+    for (const [key, val] of Object.entries(filters)) {
+      if (val !== undefined && val !== '') params.set(key, String(val));
+    }
+  }
+  const qs = params.toString();
+  const res = await fetch(`${BASE}/events${qs ? `?${qs}` : ''}`);
+  return json<{ data: SocialiseEvent[]; total: number }>(res);
 }
 
 export async function getEvent(id: string): Promise<SocialiseEvent> {
@@ -89,6 +111,240 @@ export async function duplicateEvent(id: string): Promise<SocialiseEvent> {
   return body.data;
 }
 
+export async function recurEvent(
+  id: string,
+  frequency: 'weekly' | 'biweekly' | 'monthly',
+  count: number,
+): Promise<{ data: SocialiseEvent[]; count: number }> {
+  const res = await fetch(`${BASE}/events/${id}/recur`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ frequency, count }),
+  });
+  return json<{ data: SocialiseEvent[]; count: number }>(res);
+}
+
+export async function batchUpdateStatus(
+  ids: string[],
+  status: 'draft' | 'published' | 'cancelled',
+): Promise<{ data: { id: string; success: boolean; error?: string }[]; updated: number }> {
+  const res = await fetch(`${BASE}/events/batch/status`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, status }),
+  });
+  return json(res);
+}
+
+export async function batchUpdateCategory(
+  ids: string[],
+  category: string,
+): Promise<{ data: { id: string; success: boolean; error?: string }[]; updated: number }> {
+  const res = await fetch(`${BASE}/events/batch/category`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, category }),
+  });
+  return json(res);
+}
+
+export async function batchDeleteEvents(
+  ids: string[],
+): Promise<{ data: { id: string; success: boolean; error?: string }[]; deleted: number }> {
+  const res = await fetch(`${BASE}/events/batch`, {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  return json(res);
+}
+
+export async function archiveEvents(
+  ids: string[],
+  unarchive = false,
+): Promise<{ data: { id: string; success: boolean; error?: string }[]; updated: number }> {
+  const res = await fetch(`${BASE}/events/batch/archive`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, unarchive }),
+  });
+  return json(res);
+}
+
+export interface CalendarDay {
+  date: string;
+  events: { id: string; title: string; start_time: string; status: string; venue: string }[];
+}
+
+export async function getCalendar(month?: string): Promise<{ data: CalendarDay[]; totalDays: number; totalEvents: number }> {
+  const qs = month ? `?month=${month}` : '';
+  const res = await fetch(`${BASE}/events/calendar${qs}`);
+  return json(res);
+}
+
+export interface ReadinessResult {
+  checks: Array<{ field: string; label: string; passed: boolean; severity: string }>;
+  score: number;
+  ready: boolean;
+}
+
+export async function getEventReadiness(id: string): Promise<ReadinessResult> {
+  const res = await fetch(`${BASE}/events/${id}/readiness`);
+  const body = await json<{ data: ReadinessResult }>(res);
+  return body.data;
+}
+
+export async function batchReadiness(
+  ids: string[],
+): Promise<{
+  data: Array<{ id: string; found: boolean; title?: string; score: number; ready: boolean }>;
+  summary: { total: number; ready: number; notReady: number; notFound: number; averageScore: number };
+}> {
+  const res = await fetch(`${BASE}/events/batch/readiness`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  return json(res);
+}
+
+export async function getEventPlatforms(id: string): Promise<import('@shared/types').PlatformEvent[]> {
+  const res = await fetch(`${BASE}/events/${id}/platforms`);
+  const body = await json<{ data: import('@shared/types').PlatformEvent[] }>(res);
+  return body.data;
+}
+
+export async function getEventLog(id: string, limit = 50): Promise<SyncLogEntry[]> {
+  const res = await fetch(`${BASE}/events/${id}/log?limit=${limit}`);
+  const body = await json<{ data: SyncLogEntry[] }>(res);
+  return body.data;
+}
+
+export async function getEventStats(): Promise<{
+  total: number;
+  byStatus: Record<string, number>;
+  bySyncStatus: Record<string, number>;
+  upcoming: number;
+  past: number;
+}> {
+  const res = await fetch(`${BASE}/events/stats`);
+  const body = await json<{ data: { total: number; byStatus: Record<string, number>; bySyncStatus: Record<string, number>; upcoming: number; past: number } }>(res);
+  return body.data;
+}
+
+export function getEventsExportUrl(params?: { status?: string; upcoming?: boolean }): string {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.upcoming) qs.set('upcoming', 'true');
+  return `${BASE}/events/export/csv${qs.toString() ? '?' + qs.toString() : ''}`;
+}
+
+export async function importEventsFromJson(
+  events: Array<{ title: string; description?: string; start_time: string; venue?: string; price?: number; capacity?: number; category?: string }>,
+): Promise<{ data: Array<{ index: number; success: boolean; id?: string; error?: string }>; imported: number; total: number }> {
+  const res = await fetch(`${BASE}/events/import/json`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ events }),
+  });
+  return json(res);
+}
+
+export async function quickCreateEvent(
+  title: string,
+  options?: { date?: string; category?: string },
+): Promise<SocialiseEvent> {
+  const res = await fetch(`${BASE}/events/quick-create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, ...options }),
+  });
+  const body = await json<{ data: SocialiseEvent }>(res);
+  return body.data;
+}
+
+export interface DuplicateGroup {
+  date: string;
+  events: Array<{ id: string; title: string; venue: string; status: string }>;
+}
+
+export async function getEventDuplicates(): Promise<{ data: DuplicateGroup[]; total: number }> {
+  const res = await fetch(`${BASE}/events/duplicates`);
+  return json(res);
+}
+
+export interface CompareEventResult {
+  id: string;
+  found: boolean;
+  title?: string;
+  description?: string;
+  startTime?: string;
+  venue?: string;
+  price?: number;
+  capacity?: number;
+  category?: string;
+  status?: string;
+  platformCount?: number;
+}
+
+export async function compareEvents(ids: string[]): Promise<CompareEventResult[]> {
+  const res = await fetch(`${BASE}/events/compare`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  const body = await json<{ data: CompareEventResult[] }>(res);
+  return body.data;
+}
+
+export async function cloneEvent(
+  id: string,
+  options?: { newDate?: string; titleSuffix?: string },
+): Promise<SocialiseEvent> {
+  const res = await fetch(`${BASE}/events/${id}/clone`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(options ?? {}),
+  });
+  const body = await json<{ data: SocialiseEvent }>(res);
+  return body.data;
+}
+
+export async function batchReschedule(
+  ids: string[],
+  offsetDays: number,
+): Promise<{ data: Array<{ id: string; success: boolean; newDate?: string }>; updated: number }> {
+  const res = await fetch(`${BASE}/events/batch/reschedule`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, offsetDays }),
+  });
+  return json(res);
+}
+
+export async function batchUpdateVenue(ids: string[], venue: string): Promise<{ updated: number }> {
+  const res = await fetch(`${BASE}/events/batch/venue`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, venue }),
+  });
+  return json(res);
+}
+
+export function getEventsJsonExportUrl(params?: { status?: string; upcoming?: boolean }): string {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.upcoming) qs.set('upcoming', 'true');
+  return `${BASE}/events/export/json${qs.toString() ? '?' + qs.toString() : ''}`;
+}
+
+export function getEventsCsvExportUrl(params?: { status?: string; upcoming?: boolean }): string {
+  const qs = new URLSearchParams();
+  if (params?.status) qs.set('status', params.status);
+  if (params?.upcoming) qs.set('upcoming', 'true');
+  return `${BASE}/events/export/csv${qs.toString() ? '?' + qs.toString() : ''}`;
+}
+
 // ── Services ────────────────────────────────────────────
 
 export async function getServices(): Promise<ServiceConnection[]> {
@@ -123,15 +379,14 @@ export async function disconnectService(
 // ── Automation ──────────────────────────────────────────
 
 export async function startAutomation(platform: PlatformName, action: string, data?: unknown): Promise<void> {
-  const api = (window as unknown as { electronAPI?: Record<string, unknown> }).electronAPI;
-  if (api && typeof api.startAutomation === 'function') {
-    await (api.startAutomation as Function)({ platform, action, data });
+  if (window.electronAPI?.startAutomation) {
+    await window.electronAPI.startAutomation({ platform, action, data });
   }
 }
 
 export async function cancelAutomation(): Promise<void> {
-  if (window.electronAPI) {
-    await (window.electronAPI as Record<string, Function>).cancelAutomation();
+  if (window.electronAPI?.cancelAutomation) {
+    await window.electronAPI.cancelAutomation();
   }
 }
 
@@ -153,7 +408,7 @@ export async function saveIdeaAsDraft(idea: {
     title: idea.title,
     description: idea.description,
     venue: idea.venue ?? '',
-    start_time: idea.date ? `${idea.date}T19:00:00+01:00` : new Date().toISOString(),
+    start_time: idea.date ? `${idea.date}T19:00:00Z` : new Date().toISOString(),
     duration_minutes: 120,
     price: 0,
     capacity: 50,
@@ -166,6 +421,77 @@ export async function getDashboardSummary(): Promise<DashboardSummary> {
   const res = await fetch(`${BASE}/sync/dashboard/summary`);
   const body = await json<{ data: DashboardSummary }>(res);
   return body.data;
+}
+
+export async function getWeeklyDigestPrompt(): Promise<{ prompt: string }> {
+  const res = await fetch(`${BASE}/dashboard/digest`, { method: 'POST' });
+  return json(res);
+}
+
+export interface TimelineEntry {
+  type: 'created' | 'note' | 'sync' | 'score' | 'platform_link';
+  timestamp: string;
+  summary: string;
+  details?: Record<string, unknown>;
+}
+
+export async function getEventTimeline(eventId: string): Promise<{ data: TimelineEntry[]; total: number }> {
+  const res = await fetch(`${BASE}/events/${eventId}/timeline`);
+  return json(res);
+}
+
+export async function getActionPlanPrompt(): Promise<{ prompt: string }> {
+  const res = await fetch(`${BASE}/dashboard/action-plan`, { method: 'POST' });
+  return json(res);
+}
+
+export async function getPortfolio(): Promise<{
+  data: {
+    categories: Array<{
+      category: string; count: number; upcoming: number;
+      draft: number; published: number; avgPrice: number;
+      totalCapacity: number; venueCount: number;
+    }>;
+    summary: {
+      totalEvents: number; totalCategories: number;
+      upcomingEvents: number; calendarGaps: string[];
+    };
+  };
+}> {
+  const res = await fetch(`${BASE}/dashboard/portfolio`);
+  return json(res);
+}
+
+export async function getConflicts(): Promise<{
+  data: Array<{
+    events: Array<{ id: string; title: string; start_time: string; venue: string }>;
+    reason: string;
+  }>;
+  total: number;
+}> {
+  const res = await fetch(`${BASE}/dashboard/conflicts`);
+  return json(res);
+}
+
+export interface EventHealthItem {
+  id: string;
+  title: string;
+  status: string;
+  date: string | null;
+  health: number;
+  factors: string[];
+  photoCount: number;
+  platformCount: number;
+  noteCount: number;
+  hasScore: boolean;
+}
+
+export async function getEventHealth(): Promise<{
+  data: EventHealthItem[];
+  summary: { total: number; averageHealth: number; healthy: number; needsWork: number };
+}> {
+  const res = await fetch(`${BASE}/dashboard/health`);
+  return json(res);
 }
 
 // ── Sync ───────────────────────────────────────────────
@@ -197,7 +523,7 @@ export async function pushAllEvents(eventId: string): Promise<{ results: Array<{
   return json(res);
 }
 
-export async function pullEvent(eventId: string, platform: string): Promise<any> {
+export async function pullEvent(eventId: string, platform: string): Promise<{ success: boolean; message?: string }> {
   const res = await fetch(`${BASE}/sync/pull-event`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -355,6 +681,46 @@ export async function getAnalyticsInsights(): Promise<{ prompt: string }> {
   return body.data;
 }
 
+export interface PricingAnalysis {
+  priceRanges: Array<{ range: string; eventCount: number; avgFillRate: number | null; avgAttendance: number | null; totalRevenue: number; avgPrice: number }>;
+  revenuePerAttendee: Array<{ platform: string; revenuePerAttendee: number; eventCount: number }>;
+}
+
+export async function getPricingAnalysis(): Promise<PricingAnalysis> {
+  const res = await fetch(`${BASE}/analytics/pricing`);
+  const body = await json<{ data: PricingAnalysis }>(res);
+  return body.data;
+}
+
+export async function getVenueAnalytics(): Promise<{
+  venues: Array<{ venue: string; eventCount: number; avgScore: number | null; platformCount: number }>;
+  venuePerformance: Array<{ venue: string; platform: string; eventCount: number; avgFillRate: number | null; avgAttendance: number | null; totalRevenue: number }>;
+}> {
+  const res = await fetch(`${BASE}/analytics/venues`);
+  const body = await json<{ data: Awaited<ReturnType<typeof getVenueAnalytics>> }>(res);
+  return body.data;
+}
+
+export async function getRoiAnalysis(): Promise<{
+  topEvents: Array<{
+    title: string; platform: string; date: string | null;
+    revenue: number; attendance: number; fillRate: number | null;
+    revenuePerHead: number;
+  }>;
+  monthlyRevenue: Array<{
+    month: string; revenue: number; attendees: number;
+    eventCount: number; revenuePerHead: number;
+  }>;
+  platformEfficiency: Array<{
+    platform: string; eventCount: number; totalRevenue: number;
+    totalAttendees: number; avgRevenue: number; revenuePerHead: number;
+  }>;
+}> {
+  const res = await fetch(`${BASE}/analytics/roi`);
+  const body = await json<{ data: Awaited<ReturnType<typeof getRoiAnalysis>> }>(res);
+  return body.data;
+}
+
 // ── Magic / Idea Queue ─────────────────────────────────
 
 export async function getNextIdea(): Promise<{ idea: QueuedIdea | null; remaining: number }> {
@@ -367,7 +733,7 @@ export async function generateIdeasPrompt(): Promise<{ prompt: string }> {
   return json<{ prompt: string }>(res);
 }
 
-export async function storeIdeas(ideas: any[]): Promise<{ stored: number }> {
+export async function storeIdeas(ideas: Omit<QueuedIdea, 'id' | 'used' | 'createdAt'>[]): Promise<{ stored: number }> {
   const res = await fetch(`${BASE}/generator/ideas/store`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -386,16 +752,29 @@ export async function magicFill(eventId: string): Promise<{ prompt: string; even
   return json<{ prompt: string; eventId: string }>(res);
 }
 
-export async function autoFillPhotos(eventId: string): Promise<{ photos: any[] }> {
+export async function autoFillPhotos(eventId: string): Promise<{ photos: EventPhoto[] }> {
   const res = await fetch(`${BASE}/events/${eventId}/photos/auto`, { method: 'POST' });
-  return json<{ photos: any[] }>(res);
+  return json<{ photos: EventPhoto[] }>(res);
 }
 
 // ── Scoring ────────────────────────────────────────────
 
-export async function getEventScore(id: string): Promise<{ score: any | null }> {
+export interface EventScore {
+  overall: number;
+  breakdown: Record<string, number>;
+  suggestions: Array<{
+    field: string;
+    current_issue: string;
+    suggestion: string;
+    impact: number;
+    suggested_value?: string | null;
+  }>;
+  scoredAt: string;
+}
+
+export async function getEventScore(id: string): Promise<{ score: EventScore | null }> {
   const res = await fetch(`${BASE}/events/${id}/score`);
-  return json<{ score: any | null }>(res);
+  return json<{ score: EventScore | null }>(res);
 }
 
 export async function scoreEvent(id: string): Promise<{ prompt: string; eventId: string }> {
@@ -403,12 +782,45 @@ export async function scoreEvent(id: string): Promise<{ prompt: string; eventId:
   return json<{ prompt: string; eventId: string }>(res);
 }
 
-export async function saveEventScore(id: string, data: { overall: number; breakdown: Record<string, number>; suggestions: any[] }): Promise<void> {
+export async function saveEventScore(id: string, data: { overall: number; breakdown: Record<string, number>; suggestions: EventScore['suggestions'] }): Promise<void> {
   const res = await fetch(`${BASE}/events/${id}/score/save`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(body.error || res.statusText);
+  }
+}
+
+// ── Notes ─────────────────────────────────────────────
+
+export interface EventNote {
+  id: number;
+  eventId: string;
+  content: string;
+  author: string;
+  createdAt: string;
+}
+
+export async function getEventNotes(eventId: string): Promise<{ data: EventNote[]; total: number }> {
+  const res = await fetch(`${BASE}/events/${eventId}/notes`);
+  return json(res);
+}
+
+export async function addEventNote(eventId: string, content: string, author?: string): Promise<EventNote> {
+  const res = await fetch(`${BASE}/events/${eventId}/notes`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, author }),
+  });
+  const result = await json<{ data: EventNote }>(res);
+  return result.data;
+}
+
+export async function deleteEventNote(eventId: string, noteId: number): Promise<void> {
+  const res = await fetch(`${BASE}/events/${eventId}/notes/${noteId}`, { method: 'DELETE' });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ error: res.statusText }));
     throw new Error(body.error || res.statusText);
@@ -421,9 +833,113 @@ export async function setupService(
   platform: PlatformName,
   config: Record<string, unknown>,
 ): Promise<void> {
-  await fetch(`${BASE}/services/${platform}/setup`, {
+  const res = await fetch(`${BASE}/services/${platform}/setup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
   });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(body.error || res.statusText);
+  }
+}
+
+// ── Tags ─────────────────────────────────────────────────
+
+export async function getEventTags(eventId: string): Promise<string[]> {
+  const res = await fetch(`${BASE}/events/${eventId}/tags`);
+  const body = await json<{ data: string[] }>(res);
+  return body.data;
+}
+
+export async function setEventTags(eventId: string, tags: string[]): Promise<string[]> {
+  const res = await fetch(`${BASE}/events/${eventId}/tags`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tags }),
+  });
+  const body = await json<{ data: string[] }>(res);
+  return body.data;
+}
+
+export async function addEventTag(eventId: string, tag: string): Promise<string[]> {
+  const res = await fetch(`${BASE}/events/${eventId}/tags`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ tag }),
+  });
+  const body = await json<{ data: string[] }>(res);
+  return body.data;
+}
+
+export async function removeEventTag(eventId: string, tag: string): Promise<void> {
+  const res = await fetch(`${BASE}/events/${eventId}/tags/${encodeURIComponent(tag)}`, {
+    method: 'DELETE',
+  });
+  await json<{ success: boolean }>(res);
+}
+
+export async function getAllTags(): Promise<Array<{ tag: string; count: number }>> {
+  const res = await fetch(`${BASE}/tags`);
+  const body = await json<{ data: Array<{ tag: string; count: number }> }>(res);
+  return body.data;
+}
+
+// ── Checklist ────────────────────────────────────────────
+
+export interface ChecklistItem {
+  id: number;
+  eventId: string;
+  label: string;
+  completed: boolean;
+  sortOrder: number;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+export async function getEventChecklist(eventId: string): Promise<{ data: ChecklistItem[]; total: number; done: number }> {
+  const res = await fetch(`${BASE}/events/${eventId}/checklist`);
+  return json(res);
+}
+
+export async function addChecklistItem(eventId: string, label: string): Promise<ChecklistItem> {
+  const res = await fetch(`${BASE}/events/${eventId}/checklist`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ label }),
+  });
+  const body = await json<{ data: ChecklistItem }>(res);
+  return body.data;
+}
+
+export async function updateChecklistItem(
+  eventId: string, itemId: number, update: { label?: string; completed?: boolean }
+): Promise<ChecklistItem> {
+  const res = await fetch(`${BASE}/events/${eventId}/checklist/${itemId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(update),
+  });
+  const body = await json<{ data: ChecklistItem }>(res);
+  return body.data;
+}
+
+export async function deleteChecklistItem(eventId: string, itemId: number): Promise<void> {
+  const res = await fetch(`${BASE}/events/${eventId}/checklist/${itemId}`, { method: 'DELETE' });
+  await json<{ success: boolean }>(res);
+}
+
+export async function generateChecklist(eventId: string): Promise<{ data: ChecklistItem[]; total: number; done: number }> {
+  const res = await fetch(`${BASE}/events/${eventId}/checklist/generate`, { method: 'POST' });
+  return json(res);
+}
+
+export async function reorderChecklist(eventId: string, order: number[]): Promise<ChecklistItem[]> {
+  const res = await fetch(`${BASE}/events/${eventId}/checklist/reorder`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ order }),
+  });
+  const body = await json<{ data: ChecklistItem[] }>(res);
+  return body.data;
 }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { SocialiseEvent, Template, QueuedIdea } from '@shared/types';
-import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushEvent, getNextIdea, generateIdeasPrompt, storeIdeas, acceptIdea } from '../api/events';
+import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushAllEvents, getNextIdea, generateIdeasPrompt, storeIdeas, acceptIdea, getAllTags, getEventsCsvExportUrl } from '../api/events';
 import { EventCard } from '../components/EventCard';
 import { GridSkeleton } from '../components/Skeleton';
 import { useToast } from '../context/ToastContext';
@@ -19,6 +19,12 @@ export function EventsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [tagFilter, setTagFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [sortBy, setSortBy] = useState('start_time');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [availableTags, setAvailableTags] = useState<Array<{ tag: string; count: number }>>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showIdeaModal, setShowIdeaModal] = useState(false);
@@ -32,22 +38,36 @@ export function EventsPage() {
   const nav = useNavigate();
   const { showToast } = useToast();
 
-  const load = async () => {
+  const load = async (signal?: { cancelled: boolean }) => {
     try {
       setLoading(true);
       setError(null);
-      const data = await getEvents();
+      const filters: Record<string, string> = {};
+      if (tagFilter) filters.tag = tagFilter;
+      if (sortBy) filters.sort_by = sortBy;
+      if (sortOrder) filters.order = sortOrder;
+      const { data } = await getEvents(Object.keys(filters).length > 0 ? filters : undefined);
+      if (signal?.cancelled) return;
       setEvents(data);
     } catch (err) {
+      if (signal?.cancelled) return;
       setError(err instanceof Error ? err.message : 'Failed to load events');
     } finally {
-      setLoading(false);
+      if (!signal?.cancelled) setLoading(false);
     }
   };
 
   useEffect(() => {
-    load();
-    getTemplates().then(setTemplates).catch(() => {});
+    const signal = { cancelled: false };
+    load(signal);
+    return () => { signal.cancelled = true; };
+  }, [tagFilter, sortBy, sortOrder]);
+
+  useEffect(() => {
+    let cancelled = false;
+    getTemplates().then(data => { if (!cancelled) setTemplates(data); }).catch(() => {});
+    getAllTags().then(data => { if (!cancelled) setAvailableTags(data); }).catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const handleDelete = async (id: string) => {
@@ -72,14 +92,14 @@ export function EventsPage() {
     }
   };
 
-  const handlePush = async (id: string, platform: string) => {
+  const handlePush = async (id: string) => {
     try {
-      await pushEvent(id, platform);
-      const data = await getEvents();
+      await pushAllEvents(id);
+      const { data } = await getEvents();
       setEvents(data);
       showToast('Event pushed successfully', 'success');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to push event');
     }
   };
 
@@ -178,10 +198,22 @@ export function EventsPage() {
     past: events.filter((e) => isPast(e)).length,
   };
 
+  // Derive unique categories from loaded events
+  const categories = [...new Set(events.map((e) => e.category).filter(Boolean))].sort();
+
   const filtered = events.filter((e) => {
-    if (activeTab === 'draft') return e.status === 'draft';
-    if (activeTab === 'published') return e.status === 'published' && !isPast(e);
-    if (activeTab === 'past') return isPast(e);
+    if (activeTab === 'draft' && e.status !== 'draft') return false;
+    if (activeTab === 'published' && (e.status !== 'published' || isPast(e))) return false;
+    if (activeTab === 'past' && !isPast(e)) return false;
+    if (categoryFilter && e.category !== categoryFilter) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      if (!e.title.toLowerCase().includes(q) &&
+          !e.description?.toLowerCase().includes(q) &&
+          !e.venue?.toLowerCase().includes(q)) {
+        return false;
+      }
+    }
     return true;
   });
 
@@ -201,7 +233,14 @@ export function EventsPage() {
             {filtered.length} event{filtered.length !== 1 ? 's' : ''}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <a
+            href={getEventsCsvExportUrl()}
+            download
+            style={styles.exportBtn}
+          >
+            Export CSV
+          </a>
           {templates.length > 0 && (
             <div style={{ position: 'relative' }}>
               <button
@@ -256,7 +295,66 @@ export function EventsPage() {
         ))}
       </div>
 
-      {error && <div style={styles.error}>{error}</div>}
+      <div style={styles.searchRow}>
+        <input
+          style={styles.searchInput}
+          type="text"
+          placeholder="Search events by title, description, or venue..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        {categories.length > 0 && (
+          <select
+            style={styles.tagSelect}
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+          >
+            <option value="">All categories</option>
+            {categories.map((c) => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        )}
+        {availableTags.length > 0 && (
+          <select
+            style={styles.tagSelect}
+            value={tagFilter}
+            onChange={(e) => setTagFilter(e.target.value)}
+          >
+            <option value="">All tags</option>
+            {availableTags.map((t) => (
+              <option key={t.tag} value={t.tag}>{t.tag} ({t.count})</option>
+            ))}
+          </select>
+        )}
+        <select
+          style={styles.tagSelect}
+          value={`${sortBy}:${sortOrder}`}
+          onChange={(e) => {
+            const [field, ord] = e.target.value.split(':');
+            setSortBy(field);
+            setSortOrder(ord as 'asc' | 'desc');
+          }}
+        >
+          <option value="start_time:desc">Date (newest)</option>
+          <option value="start_time:asc">Date (oldest)</option>
+          <option value="title:asc">Title (A-Z)</option>
+          <option value="title:desc">Title (Z-A)</option>
+          <option value="created_at:desc">Created (newest)</option>
+          <option value="price:desc">Price (high-low)</option>
+          <option value="capacity:desc">Capacity (high-low)</option>
+        </select>
+        {(searchQuery || tagFilter || categoryFilter) && (
+          <button style={styles.clearBtn} onClick={() => { setSearchQuery(''); setTagFilter(''); setCategoryFilter(''); }}>Clear</button>
+        )}
+      </div>
+
+      {error && (
+        <div style={styles.errorBanner}>
+          {error}
+          <button style={styles.retryBtn} onClick={load}>Retry</button>
+        </div>
+      )}
 
       {loading ? (
         <GridSkeleton count={6} />
@@ -307,6 +405,41 @@ export function EventsPage() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  searchRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  searchInput: {
+    flex: 1,
+    border: '1px solid #e8e6e1',
+    borderRadius: 12,
+    padding: '10px 16px',
+    fontSize: 14,
+    outline: 'none',
+    background: '#fff',
+    fontFamily: 'inherit',
+  },
+  tagSelect: {
+    border: '1px solid #e8e6e1',
+    borderRadius: 12,
+    padding: '10px 14px',
+    fontSize: 14,
+    background: '#fff',
+    fontFamily: 'inherit',
+    color: '#080810',
+    minWidth: 130,
+  },
+  clearBtn: {
+    background: '#f0f0f0',
+    border: '1px solid #ddd',
+    borderRadius: 8,
+    padding: '8px 14px',
+    fontSize: 13,
+    cursor: 'pointer',
+    color: '#555',
+  },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
@@ -363,6 +496,18 @@ const styles: Record<string, React.CSSProperties> = {
     borderBottom: '1px solid #f0eeeb',
     transition: 'background 0.1s',
   },
+  exportBtn: {
+    padding: '10px 16px',
+    borderRadius: 12,
+    border: '1.5px solid #e8e6e1',
+    background: '#fff',
+    color: '#7a7a7a',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    fontFamily: "'Outfit', sans-serif",
+    textDecoration: 'none',
+  },
   createBtn: {
     padding: '12px 24px',
     borderRadius: 12,
@@ -416,14 +561,29 @@ const styles: Record<string, React.CSSProperties> = {
     background: '#E2725B',
     color: '#fff',
   },
-  error: {
-    padding: '12px 16px',
+  errorBanner: {
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
     borderRadius: 12,
-    background: '#fce8e6',
-    color: '#E2725B',
+    padding: '14px 20px',
+    color: '#dc2626',
     fontSize: 14,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
     marginBottom: 20,
-    fontWeight: 500,
+  },
+  retryBtn: {
+    padding: '6px 16px',
+    borderRadius: 8,
+    border: '1px solid #fecaca',
+    background: '#fff',
+    color: '#dc2626',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
   },
   loading: {
     color: '#7a7a7a',

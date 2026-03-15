@@ -90,9 +90,80 @@ npm run test:run           # Run tests once
 npm run build:all          # Build server + electron + client
 ```
 
+## Testing
+
+- **Framework:** Vitest
+- **Test count:** 730+ tests across 25 files
+- **Database:** Tests use in-memory SQLite (`:memory:`)
+- **HTTP:** Route tests use supertest
+
+### Test Coverage
+- All data stores (events, platform events, services, templates, sync log, sync snapshots, ideas)
+- All API routes (events CRUD/batch/sort/paginate/export/stats/log/photos/optimize/score, sync, dashboard, analytics, generator, templates, services)
+- Core libraries (validation, event readiness)
+- Automation clients and engine
+
+### Running Tests
+```bash
+npm run test:run           # Run all tests once
+npx vitest run <file>      # Run specific test file
+npx vitest --watch         # Watch mode
+```
+
 ## Key Implementation Details
 
 - Meetup connect stores `groupUrlname` in service extra data — used by sync/publish/scrape
 - Service connection status stored in SQLite `services` table
 - Sync pull calls `client.fetchEvents()` which uses automation bridge → Electron → browser scrape
 - Meetup publish supports `draft: true` in data to save as draft instead of going live
+- Dashboard summary uses `events` table as primary source, not `platform_events`
+- Publish endpoint creates sync snapshots and sets `sync_status` to track sync state
+- findMatch dedup requires 60% title length overlap for substring matches to avoid false positives
+- cleanStale includes safety checks: skips if pull is empty or would remove >50% of rows
+- Analytics queries use parameterized queries to prevent SQL injection
+- Database tests run in-memory with better-sqlite3 in Node.js (not just Electron)
+- Event creation validates: date format, end_time > start_time, duration (1-1440), title (max 200), capacity (1-10000), description (max 5000), venue (max 500)
+- Event updates use `validateUpdateEventInput` (validates only fields present in the input)
+- Dashboard attention items flag: missing description, no photos, low score, title mismatch, no venue, no capacity, unsaved changes
+- Sync dedup uses normalized title matching with 60% length ratio requirement
+- `cleanStale` skips cleanup if fresh pull returned 0 events or would remove >50% of existing events
+- Platform image URLs are surfaced to event `image_url` during sync
+- Events API supports sorting (sort_by + order), pagination (page + per_page), batch operations, CSV export, and per-event sync log/platform history
+- Batch operations validate individual ids are non-empty strings
+- Platform event store uses safe JSON.parse to prevent corrupt image_urls from crashing sync
+- Service store uses safe JSON.parse for extra data
+- Calendar endpoint groups events by date with optional month filter
+- Per-event sync log and platform detail endpoints for event history tracking
+- Category field is now editable in EventDetailPage form (was missing previously)
+- Description character counter shows color-coded guidance (red < 100, yellow < 250, green 250+)
+- Stats endpoint includes `byTag` breakdown alongside `byCategory` and `byVenue`
+- Analytics summary includes `revenue_per_attendee` metric
+- Dashboard `/upcoming` accepts `?limit=` param (default 5, max 50)
+- Dashboard `/attention` accepts `?limit=` param (default 10, max 50)
+- Sync `/pull` accepts `?platform=meetup|eventbrite|headfirst` to pull from a single platform
+- React ErrorBoundary wraps all routes in App.tsx
+- Database migration v14 adds indexes on all foreign key columns (event_id) and commonly filtered columns (start_time, status)
+- Dashboard health, attention, and week endpoints use batch queries instead of per-event N+1 queries
+- Event cascade delete now includes sync_log cleanup
+- Validation enforces max lengths: description (5000), venue (500), category (100), title (200)
+- All frontend pages use ListSkeleton loading states and cancelled-flag cleanup in useEffect hooks
+- Event duration and end_time auto-sync in EventDetailPage (changing one computes the other)
+- All pages use cancelled-flag cleanup pattern for unmount safety
+- EventDetailPage warns before navigating away with unsaved changes (beforeunload + dirty indicator on save button)
+- Event store getAll() uses batch loading for platforms, photos, notes, and checklist counts (eliminates N+1)
+- EventCard shows checklist progress badges and notes count when data is present
+- SyncLogPage and ServicesPage have consistent error banners with retry buttons
+- Sync error messages include platform context for easier debugging
+- Checklist reorder route registered before `:itemId` route to prevent Express param capture shadowing
+- Services disconnect cascade-deletes related data (notes, checklist, photos, scores, etc.) when removing synced events
+- All batch endpoints validate individual IDs are non-empty strings
+- Batch category validates max 100 chars, batch venue validates max 500 chars
+- Import/json sanitizes numeric fields (price, capacity, duration) to valid ranges and truncates strings
+- Notes author truncated to 100 chars, score suggestions validated as array
+- Quick-create and generator/save enforce title (200) and description (5000) length limits
+- ActivityTimeline component on event detail page shows event history (creation, notes, sync, scores, platform links)
+- Clone operation uses db.transaction() for atomic tag/checklist copy
+- Batch reschedule validates date arithmetic (end_time > start_time, duration 1-1440)
+- Per-event photo limit enforced at 50 photos (photo/auto endpoint, batch operations)
+- Generator ideas field sanitizes length to prevent excessively long values
+- Consistent ID type validation across all batch endpoints (readiness, archive now match status/category/venue pattern)

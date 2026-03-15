@@ -1,13 +1,18 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { createDatabase, type Database } from './database.js';
 import { TemplateStore } from './template-store.js';
 
-// Skipped: better-sqlite3 native module only works in Electron context
-describe.skip('TemplateStore', () => {
+describe('TemplateStore', () => {
+  let db: Database;
   let store: TemplateStore;
 
   beforeEach(() => {
-    // Would need an in-memory database here
-    store = null as unknown as TemplateStore;
+    db = createDatabase(':memory:');
+    store = new TemplateStore(db);
+  });
+
+  afterEach(() => {
+    db.close();
   });
 
   it('creates and retrieves a template', () => {

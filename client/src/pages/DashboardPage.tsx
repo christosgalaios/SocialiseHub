@@ -6,6 +6,8 @@ import { AttentionSection } from '../components/dashboard/AttentionSection';
 import { UpcomingSection } from '../components/dashboard/UpcomingSection';
 import { PerformanceSection } from '../components/dashboard/PerformanceSection';
 import { SuggestionsSection } from '../components/dashboard/SuggestionsSection';
+import { WeekSection } from '../components/dashboard/WeekSection';
+import { ConflictsSection } from '../components/dashboard/ConflictsSection';
 import { useToast } from '../context/ToastContext';
 import { ListSkeleton } from '../components/Skeleton';
 
@@ -13,6 +15,7 @@ const SYNC_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
 interface DashboardData {
   attentionItems: AttentionItem[];
+  attentionTotalCount: number;
   upcomingEvents: UpcomingEvent[];
   performance: PerformanceStats;
 }
@@ -44,6 +47,7 @@ export function DashboardPage() {
       ]);
       setData({
         attentionItems: attentionRes.items,
+        attentionTotalCount: attentionRes.count,
         upcomingEvents: upcomingRes.events,
         performance: perfRes.data,
       });
@@ -68,7 +72,11 @@ export function DashboardPage() {
     }
   }, [showToast, load]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    let cancelled = false;
+    load().then(() => { if (cancelled) return; });
+    return () => { cancelled = true; };
+  }, [load]);
 
   // Auto-sync on mount if >30min since last sync
   useEffect(() => {
@@ -77,7 +85,7 @@ export function DashboardPage() {
     if (Date.now() - lastSync > SYNC_INTERVAL_MS) {
       handleSync();
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div>
@@ -104,13 +112,18 @@ export function DashboardPage() {
 
       {/* Error */}
       {!loading && error && (
-        <div style={styles.errorBanner}>{error}</div>
+        <div style={styles.errorBanner}>
+          {error}
+          <button style={styles.retryBtn} onClick={load}>Retry</button>
+        </div>
       )}
 
       {/* Content */}
       {!loading && !error && data && (
         <div style={styles.sections}>
-          <AttentionSection items={data.attentionItems} />
+          <ConflictsSection />
+          <WeekSection />
+          <AttentionSection items={data.attentionItems} totalCount={data.attentionTotalCount} />
           <UpcomingSection events={data.upcomingEvents} />
           <PerformanceSection stats={data.performance} />
           <SuggestionsSection />
@@ -169,6 +182,21 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '14px 20px',
     color: '#dc2626',
     fontSize: 14,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  retryBtn: {
+    padding: '6px 16px',
+    borderRadius: 8,
+    border: '1px solid #fecaca',
+    background: '#fff',
+    color: '#dc2626',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
   },
   sections: {
     display: 'flex',

@@ -10,7 +10,7 @@ export function createAnalyticsRouter(db: Database): Router {
    */
   router.get('/summary', (_req, res, next) => {
     try {
-      const totalEvents = (db.prepare('SELECT COUNT(*) as cnt FROM platform_events').get() as { cnt: number }).cnt;
+      const totalEvents = (db.prepare('SELECT COUNT(*) as cnt FROM events').get() as { cnt: number }).cnt;
       const totalAttendeesRow = db
         .prepare('SELECT SUM(attendance) as total FROM platform_events WHERE attendance IS NOT NULL')
         .get() as { total: number | null };
@@ -25,12 +25,19 @@ export function createAnalyticsRouter(db: Database): Router {
         )
         .get() as { avg_fill: number | null };
 
+      const totalAttendees = totalAttendeesRow.total ?? 0;
+      const totalRevenue = totalRevenueRow.total ?? 0;
+      const revenuePerAttendee = totalAttendees > 0
+        ? Math.round((totalRevenue / totalAttendees) * 100) / 100
+        : 0;
+
       res.json({
         data: {
           total_events: totalEvents,
-          total_attendees: totalAttendeesRow.total ?? 0,
-          total_revenue: totalRevenueRow.total ?? 0,
+          total_attendees: totalAttendees,
+          total_revenue: totalRevenue,
           avg_fill_rate: fillRateRow.avg_fill != null ? Math.round(fillRateRow.avg_fill * 100) : 0,
+          revenue_per_attendee: revenuePerAttendee,
         },
       });
     } catch (err) {
@@ -46,9 +53,18 @@ export function createAnalyticsRouter(db: Database): Router {
     try {
       const { startDate, endDate } = req.query as { startDate?: string; endDate?: string };
 
-      const dateFilter = startDate || endDate
-        ? `WHERE date IS NOT NULL${startDate ? ` AND date >= '${startDate}'` : ''}${endDate ? ` AND date <= '${endDate}'` : ''}`
-        : 'WHERE date IS NOT NULL';
+      // Build WHERE clause with parameterized placeholders to prevent SQL injection
+      const whereParts: string[] = ['date IS NOT NULL'];
+      const dateParams: string[] = [];
+      if (startDate) {
+        whereParts.push('date >= ?');
+        dateParams.push(startDate);
+      }
+      if (endDate) {
+        whereParts.push('date <= ?');
+        dateParams.push(endDate);
+      }
+      const dateFilter = `WHERE ${whereParts.join(' AND ')}`;
 
       // Attendance by month (line chart)
       const attendanceByMonthRows = db
@@ -62,7 +78,7 @@ export function createAnalyticsRouter(db: Database): Router {
            ORDER BY month ASC
            LIMIT 24`,
         )
-        .all() as { month: string; attendees: number; events_with_data: number }[];
+        .all(...dateParams) as { month: string; attendees: number; events_with_data: number }[];
 
       // Revenue by month (bar chart)
       const revenueByMonthRows = db
@@ -75,7 +91,7 @@ export function createAnalyticsRouter(db: Database): Router {
            ORDER BY month ASC
            LIMIT 24`,
         )
-        .all() as { month: string; revenue: number }[];
+        .all(...dateParams) as { month: string; revenue: number }[];
 
       // Fill rate by event type/status (use platform as category proxy)
       const fillByTypeRows = db
@@ -103,7 +119,7 @@ export function createAnalyticsRouter(db: Database): Router {
            GROUP BY day_of_week, hour
            ORDER BY day_of_week, hour`,
         )
-        .all() as { day_of_week: number; hour: number; event_count: number; avg_attendance: number }[];
+        .all(...dateParams) as { day_of_week: number; hour: number; event_count: number; avg_attendance: number }[];
 
       res.json({
         data: {
@@ -205,6 +221,264 @@ Provide 3-5 specific, actionable recommendations. Be direct and practical.
 Respond with ONLY the analysis text. No preamble, no introductory text.`;
 
       res.json({ data: { prompt } });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/analytics/pricing
+   * Pricing analysis — compares ticket prices vs fill rates and revenue.
+   */
+  router.get('/pricing', (_req, res, next) => {
+    try {
+      // Price vs fill rate correlation
+      const priceRanges = db.prepare(`
+        SELECT
+          CASE
+            WHEN ticket_price IS NULL OR ticket_price = 0 THEN 'free'
+            WHEN ticket_price < 10 THEN 'under_10'
+            WHEN ticket_price < 20 THEN '10_to_20'
+            ELSE 'over_20'
+          END as price_range,
+          COUNT(*) as event_count,
+          AVG(CASE WHEN capacity > 0 THEN CAST(attendance AS REAL) / capacity ELSE NULL END) as avg_fill,
+          AVG(attendance) as avg_attendance,
+          SUM(revenue) as total_revenue,
+          AVG(ticket_price) as avg_price
+        FROM platform_events
+        WHERE attendance IS NOT NULL AND capacity > 0
+        GROUP BY price_range
+        ORDER BY avg_price ASC
+      `).all() as Array<{
+        price_range: string;
+        event_count: number;
+        avg_fill: number | null;
+        avg_attendance: number | null;
+        total_revenue: number | null;
+        avg_price: number | null;
+      }>;
+
+      // Revenue per attendee by platform
+      const revenuePerAttendee = db.prepare(`
+        SELECT
+          platform,
+          CASE WHEN SUM(attendance) > 0
+            THEN CAST(SUM(revenue) AS REAL) / SUM(attendance)
+            ELSE 0
+          END as revenue_per_attendee,
+          COUNT(*) as event_count
+        FROM platform_events
+        WHERE attendance IS NOT NULL AND attendance > 0
+        GROUP BY platform
+      `).all() as Array<{ platform: string; revenue_per_attendee: number; event_count: number }>;
+
+      res.json({
+        data: {
+          priceRanges: priceRanges.map(r => ({
+            range: r.price_range,
+            eventCount: r.event_count,
+            avgFillRate: r.avg_fill != null ? Math.round(r.avg_fill * 100) : null,
+            avgAttendance: r.avg_attendance != null ? Math.round(r.avg_attendance) : null,
+            totalRevenue: r.total_revenue ?? 0,
+            avgPrice: r.avg_price != null ? Math.round(r.avg_price * 100) / 100 : 0,
+          })),
+          revenuePerAttendee: revenuePerAttendee.map(r => ({
+            platform: r.platform,
+            revenuePerAttendee: Math.round(r.revenue_per_attendee * 100) / 100,
+            eventCount: r.event_count,
+          })),
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/analytics/venues
+   * Venue performance analysis — which venues drive the best results.
+   */
+  router.get('/venues', (_req, res, next) => {
+    try {
+      const venueStats = db.prepare(`
+        SELECT
+          e.venue,
+          COUNT(*) as event_count,
+          AVG(es.overall) as avg_score,
+          COUNT(DISTINCT pe.platform) as platform_count
+        FROM events e
+        LEFT JOIN event_scores es ON es.event_id = e.id
+        LEFT JOIN platform_events pe ON pe.event_id = e.id
+        WHERE e.venue IS NOT NULL AND e.venue != '' AND e.status != 'archived'
+        GROUP BY e.venue
+        ORDER BY event_count DESC
+        LIMIT 20
+      `).all() as Array<{
+        venue: string;
+        event_count: number;
+        avg_score: number | null;
+        platform_count: number;
+      }>;
+
+      const platformVenueStats = db.prepare(`
+        SELECT
+          venue,
+          platform,
+          COUNT(*) as event_count,
+          AVG(CASE WHEN capacity > 0 THEN CAST(attendance AS REAL) / capacity ELSE NULL END) as avg_fill,
+          AVG(attendance) as avg_attendance,
+          SUM(revenue) as total_revenue
+        FROM platform_events
+        WHERE venue IS NOT NULL AND venue != ''
+          AND attendance IS NOT NULL AND capacity > 0
+        GROUP BY venue, platform
+        ORDER BY event_count DESC
+        LIMIT 30
+      `).all() as Array<{
+        venue: string;
+        platform: string;
+        event_count: number;
+        avg_fill: number | null;
+        avg_attendance: number | null;
+        total_revenue: number | null;
+      }>;
+
+      res.json({
+        data: {
+          venues: venueStats.map(v => ({
+            venue: v.venue,
+            eventCount: v.event_count,
+            avgScore: v.avg_score != null ? Math.round(v.avg_score) : null,
+            platformCount: v.platform_count,
+          })),
+          venuePerformance: platformVenueStats.map(v => ({
+            venue: v.venue,
+            platform: v.platform,
+            eventCount: v.event_count,
+            avgFillRate: v.avg_fill != null ? Math.round(v.avg_fill * 100) : null,
+            avgAttendance: v.avg_attendance != null ? Math.round(v.avg_attendance) : null,
+            totalRevenue: v.total_revenue ?? 0,
+          })),
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/analytics/roi
+   * Revenue efficiency analysis — which events/platforms generate the best return.
+   */
+  router.get('/roi', (_req, res, next) => {
+    try {
+      // Top performing events by revenue per capacity
+      const topEvents = db.prepare(`
+        SELECT
+          title,
+          platform,
+          date,
+          revenue,
+          attendance,
+          capacity,
+          ticket_price,
+          CASE WHEN capacity > 0 THEN CAST(attendance AS REAL) / capacity ELSE NULL END as fill_rate,
+          CASE WHEN attendance > 0 THEN CAST(revenue AS REAL) / attendance ELSE 0 END as revenue_per_head
+        FROM platform_events
+        WHERE revenue IS NOT NULL AND revenue > 0
+          AND attendance IS NOT NULL AND attendance > 0
+        ORDER BY revenue DESC
+        LIMIT 10
+      `).all() as Array<{
+        title: string;
+        platform: string;
+        date: string | null;
+        revenue: number;
+        attendance: number;
+        capacity: number | null;
+        ticket_price: number | null;
+        fill_rate: number | null;
+        revenue_per_head: number;
+      }>;
+
+      // Monthly revenue trend with growth rates
+      const monthlyRevenue = db.prepare(`
+        SELECT
+          strftime('%Y-%m', date) as month,
+          SUM(revenue) as revenue,
+          SUM(attendance) as attendees,
+          COUNT(*) as event_count,
+          CASE WHEN SUM(attendance) > 0
+            THEN CAST(SUM(revenue) AS REAL) / SUM(attendance)
+            ELSE 0
+          END as revenue_per_head
+        FROM platform_events
+        WHERE date IS NOT NULL AND revenue IS NOT NULL
+        GROUP BY month
+        ORDER BY month ASC
+        LIMIT 24
+      `).all() as Array<{
+        month: string;
+        revenue: number;
+        attendees: number;
+        event_count: number;
+        revenue_per_head: number;
+      }>;
+
+      // Platform efficiency
+      const platformEfficiency = db.prepare(`
+        SELECT
+          platform,
+          COUNT(*) as event_count,
+          SUM(revenue) as total_revenue,
+          SUM(attendance) as total_attendees,
+          AVG(revenue) as avg_revenue,
+          CASE WHEN SUM(attendance) > 0
+            THEN CAST(SUM(revenue) AS REAL) / SUM(attendance)
+            ELSE 0
+          END as revenue_per_head
+        FROM platform_events
+        WHERE revenue IS NOT NULL AND attendance IS NOT NULL AND attendance > 0
+        GROUP BY platform
+        ORDER BY total_revenue DESC
+      `).all() as Array<{
+        platform: string;
+        event_count: number;
+        total_revenue: number;
+        total_attendees: number;
+        avg_revenue: number;
+        revenue_per_head: number;
+      }>;
+
+      res.json({
+        data: {
+          topEvents: topEvents.map(e => ({
+            title: e.title,
+            platform: e.platform,
+            date: e.date?.slice(0, 10) ?? null,
+            revenue: Math.round(e.revenue * 100) / 100,
+            attendance: e.attendance,
+            fillRate: e.fill_rate != null ? Math.round(e.fill_rate * 100) : null,
+            revenuePerHead: Math.round(e.revenue_per_head * 100) / 100,
+          })),
+          monthlyRevenue: monthlyRevenue.map(m => ({
+            month: m.month,
+            revenue: Math.round(m.revenue * 100) / 100,
+            attendees: m.attendees,
+            eventCount: m.event_count,
+            revenuePerHead: Math.round(m.revenue_per_head * 100) / 100,
+          })),
+          platformEfficiency: platformEfficiency.map(p => ({
+            platform: p.platform,
+            eventCount: p.event_count,
+            totalRevenue: Math.round(p.total_revenue * 100) / 100,
+            totalAttendees: p.total_attendees,
+            avgRevenue: Math.round(p.avg_revenue * 100) / 100,
+            revenuePerHead: Math.round(p.revenue_per_head * 100) / 100,
+          })),
+        },
+      });
     } catch (err) {
       next(err);
     }

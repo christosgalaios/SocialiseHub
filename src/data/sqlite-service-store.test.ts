@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createDatabase, type Database } from './database.js';
 import { SqliteServiceStore } from './sqlite-service-store.js';
 
-// Skipped: better-sqlite3 native module only works in Electron context
-describe.skip('SqliteServiceStore', () => {
+describe('SqliteServiceStore', () => {
   let db: Database;
   let store: SqliteServiceStore;
 

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { EventPhoto, UnsplashPhoto } from '../api/events';
 import { PhotoGrid } from './PhotoGrid';
 import { PhotoSearchModal } from './PhotoSearchModal';
@@ -29,22 +29,24 @@ export function OptimizePanel({ eventId, eventTitle }: OptimizePanelProps) {
   const folderInputRef = useRef<HTMLInputElement>(null);
 
   // Lazy load photos
-  const ensurePhotos = async () => {
+  const ensurePhotos = async (signal?: { cancelled: boolean }) => {
     if (!photosLoaded) {
       try {
         const loaded = await getEventPhotos(eventId);
+        if (signal?.cancelled) return;
         setPhotos(loaded);
         setPhotosLoaded(true);
       } catch {
-        setError('Failed to load photos');
+        if (!signal?.cancelled) setError('Failed to load photos');
       }
     }
   };
 
-  // Expose for parent to trigger load
-  if (!photosLoaded) {
-    ensurePhotos().catch(() => {});
-  }
+  useEffect(() => {
+    const signal = { cancelled: false };
+    ensurePhotos(signal);
+    return () => { signal.cancelled = true; };
+  }, [eventId]);
 
   const handleUploadFiles = async (files: FileList | File[], source = 'upload') => {
     setUploading(true);

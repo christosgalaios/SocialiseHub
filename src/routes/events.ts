@@ -3,21 +3,854 @@ import type { SqliteEventStore } from '../data/sqlite-event-store.js';
 import type { PublishService } from '../tools/publish-service.js';
 import type { PlatformEventStore } from '../data/platform-event-store.js';
 import type { SyncLogStore } from '../data/sync-log-store.js';
-import type { PlatformName } from '../shared/types.js';
-import { validateCreateEventInput } from '../lib/validate.js';
+import type { SyncSnapshotStore } from '../data/sync-snapshot-store.js';
+import { computeSyncHash } from '../data/sync-snapshot-store.js';
+import type { PlatformName, EventStatus } from '../shared/types.js';
+import { validateCreateEventInput, validateUpdateEventInput } from '../lib/validate.js';
+import { checkEventReadiness } from '../lib/event-readiness.js';
+import type { Database } from '../data/database.js';
 
 export function createEventsRouter(
   store: SqliteEventStore,
   publishService: PublishService,
   platformEventStore: PlatformEventStore,
   syncLogStore: SyncLogStore,
+  snapshotStore: SyncSnapshotStore,
+  db?: Database,
 ): Router {
   const router = Router();
 
-  router.get('/', (_req, res, next) => {
+  router.get('/', (req, res, next) => {
+    try {
+      let events = store.getAll();
+
+      // Exclude archived events by default unless explicitly included
+      if (req.query.include_archived !== 'true') {
+        events = events.filter(e => e.status !== 'archived');
+      }
+
+      // Filter by status (draft, published, cancelled, archived)
+      const status = req.query.status as string | undefined;
+      if (status) events = events.filter(e => e.status === status);
+
+      // Filter by sync_status (synced, modified, local_only)
+      const syncStatus = req.query.sync_status as string | undefined;
+      if (syncStatus) events = events.filter(e => e.sync_status === syncStatus);
+
+      // Search by title, description, and venue (case-insensitive substring match)
+      const search = req.query.search as string | undefined;
+      if (search) {
+        const q = search.toLowerCase();
+        events = events.filter(e =>
+          e.title.toLowerCase().includes(q) ||
+          e.description?.toLowerCase().includes(q) ||
+          e.venue?.toLowerCase().includes(q)
+        );
+      }
+
+      // Filter by venue (case-insensitive substring match)
+      const venue = req.query.venue as string | undefined;
+      if (venue) {
+        const v = venue.toLowerCase();
+        events = events.filter(e => e.venue?.toLowerCase().includes(v));
+      }
+
+      // Filter by category
+      const category = req.query.category as string | undefined;
+      if (category) {
+        const c = category.toLowerCase();
+        events = events.filter(e => e.category?.toLowerCase() === c);
+      }
+
+      // Filter by tag
+      const tag = req.query.tag as string | undefined;
+      if (tag && db) {
+        const t = tag.toLowerCase();
+        const taggedIds = db.prepare(
+          'SELECT event_id FROM event_tags WHERE tag = ?'
+        ).all(t) as Array<{ event_id: string }>;
+        const taggedSet = new Set(taggedIds.map(r => r.event_id));
+        events = events.filter(e => taggedSet.has(e.id));
+      }
+
+      // Filter upcoming only
+      if (req.query.upcoming === 'true') {
+        const now = new Date().toISOString();
+        events = events.filter(e => e.start_time > now);
+      }
+
+      // Date range filters
+      const startAfter = req.query.start_after as string | undefined;
+      if (startAfter) events = events.filter(e => e.start_time >= startAfter);
+
+      const startBefore = req.query.start_before as string | undefined;
+      if (startBefore) events = events.filter(e => e.start_time <= startBefore);
+
+      // Sorting
+      const sortBy = req.query.sort_by as string | undefined;
+      const order = req.query.order === 'asc' ? 'asc' : 'desc';
+      const sortFieldMap: Record<string, string> = {
+        title: 'title', start_time: 'start_time', price: 'price',
+        capacity: 'capacity', status: 'status',
+        created_at: 'createdAt', updated_at: 'updatedAt',
+      };
+      const mappedField = sortBy ? sortFieldMap[sortBy] : undefined;
+      if (mappedField) {
+        events.sort((a, b) => {
+          const aVal = (a as unknown as Record<string, unknown>)[mappedField];
+          const bVal = (b as unknown as Record<string, unknown>)[mappedField];
+          if (aVal == null && bVal == null) return 0;
+          if (aVal == null) return 1;
+          if (bVal == null) return -1;
+          const cmp = typeof aVal === 'string' ? aVal.localeCompare(bVal as string) : (aVal as number) - (bVal as number);
+          return order === 'asc' ? cmp : -cmp;
+        });
+      }
+
+      // Pagination
+      const total = events.length;
+      const page = Math.max(1, Number(req.query.page) || 1);
+      const perPage = Math.min(100, Math.max(1, Number(req.query.per_page) || 0));
+      if (req.query.per_page) {
+        const start = (page - 1) * perPage;
+        events = events.slice(start, start + perPage);
+      }
+
+      res.json({ data: events, total, ...(req.query.per_page ? { page, per_page: perPage } : {}) });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  // Batch and export routes must be before /:id to avoid param capture
+  router.patch('/batch/status', (req, res, next) => {
+    try {
+      const { ids, status } = req.body as { ids?: string[]; status?: string };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'Each id must be a non-empty string' });
+      }
+      const validStatuses = ['draft', 'published', 'cancelled', 'archived'];
+      if (!status || !validStatuses.includes(status)) {
+        return res.status(400).json({ error: `status must be one of: ${validStatuses.join(', ')}` });
+      }
+
+      const results: { id: string; success: boolean; error?: string }[] = [];
+      for (const id of ids) {
+        const event = store.getById(id);
+        if (!event) {
+          results.push({ id, success: false, error: 'Not found' });
+          continue;
+        }
+        store.updateStatus(id, status as EventStatus);
+        results.push({ id, success: true });
+      }
+
+      res.json({ data: results, updated: results.filter(r => r.success).length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch('/batch/category', (req, res, next) => {
+    try {
+      const { ids, category } = req.body as { ids?: string[]; category?: string };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'All ids must be non-empty strings' });
+      }
+      if (typeof category !== 'string' || !category.trim()) {
+        return res.status(400).json({ error: 'category must be a non-empty string' });
+      }
+      if (category.length > 100) {
+        return res.status(400).json({ error: 'category must be 100 characters or fewer' });
+      }
+
+      const results: { id: string; success: boolean; error?: string }[] = [];
+      for (const id of ids) {
+        const event = store.getById(id);
+        if (!event) {
+          results.push({ id, success: false, error: 'Not found' });
+          continue;
+        }
+        store.update(id, { category: category || undefined });
+        results.push({ id, success: true });
+      }
+
+      res.json({ data: results, updated: results.filter(r => r.success).length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.patch('/batch/venue', (req, res, next) => {
+    try {
+      const { ids, venue } = req.body as { ids?: string[]; venue?: string };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'All ids must be non-empty strings' });
+      }
+      if (typeof venue !== 'string' || !venue.trim()) {
+        return res.status(400).json({ error: 'venue must be a non-empty string' });
+      }
+      if (venue.length > 500) {
+        return res.status(400).json({ error: 'venue must be 500 characters or fewer' });
+      }
+
+      const results: { id: string; success: boolean; error?: string }[] = [];
+      for (const id of ids) {
+        const event = store.getById(id);
+        if (!event) {
+          results.push({ id, success: false, error: 'Not found' });
+          continue;
+        }
+        store.update(id, { venue: venue.trim() });
+        results.push({ id, success: true });
+      }
+
+      res.json({ data: results, updated: results.filter(r => r.success).length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * PATCH /api/events/batch/reschedule
+   * Shifts multiple events by a fixed offset (days) or to specific dates.
+   */
+  router.patch('/batch/reschedule', (req, res, next) => {
+    try {
+      const { ids, offsetDays } = req.body as { ids?: string[]; offsetDays?: number };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'All ids must be non-empty strings' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+      if (typeof offsetDays !== 'number' || !Number.isInteger(offsetDays) || offsetDays === 0) {
+        return res.status(400).json({ error: 'offsetDays must be a non-zero integer' });
+      }
+      if (Math.abs(offsetDays) > 365) {
+        return res.status(400).json({ error: 'offsetDays must be between -365 and 365' });
+      }
+
+      const results: { id: string; success: boolean; newDate?: string; error?: string }[] = [];
+      for (const id of ids) {
+        const event = store.getById(id);
+        if (!event) {
+          results.push({ id, success: false, error: 'Not found' });
+          continue;
+        }
+        const oldDate = new Date(event.start_time);
+        if (isNaN(oldDate.getTime())) {
+          results.push({ id, success: false, error: 'Event has invalid start_time' });
+          continue;
+        }
+        oldDate.setDate(oldDate.getDate() + offsetDays);
+        const newStartTime = oldDate.toISOString();
+
+        const updateInput: Record<string, unknown> = { start_time: newStartTime };
+        if (event.end_time) {
+          const oldEnd = new Date(event.end_time);
+          oldEnd.setDate(oldEnd.getDate() + offsetDays);
+          updateInput.end_time = oldEnd.toISOString();
+        }
+
+        store.update(id, updateInput);
+        results.push({ id, success: true, newDate: newStartTime });
+      }
+
+      res.json({ data: results, updated: results.filter(r => r.success).length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.delete('/batch', (req, res, next) => {
+    try {
+      const { ids } = req.body as { ids?: string[] };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'Each id must be a non-empty string' });
+      }
+
+      const results: { id: string; success: boolean; error?: string }[] = [];
+      for (const id of ids) {
+        const deleted = store.delete(id);
+        results.push(deleted ? { id, success: true } : { id, success: false, error: 'Not found' });
+      }
+
+      res.json({ data: results, deleted: results.filter(r => r.success).length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/batch/readiness', (req, res, next) => {
+    try {
+      const { ids } = req.body as { ids?: string[] };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'All ids must be non-empty strings' });
+      }
+
+      const results = ids.map(id => {
+        const event = store.getById(id);
+        if (!event) return { id, found: false, score: 0, ready: false, checks: [] };
+
+        const checks = checkEventReadiness(event);
+        const passed = checks.filter(c => c.passed).length;
+        const total = checks.length;
+        const ready = checks.filter(c => c.severity === 'required').every(c => c.passed);
+
+        return {
+          id,
+          found: true,
+          title: event.title,
+          score: total > 0 ? Math.round((passed / total) * 100) : 0,
+          ready,
+          checks,
+        };
+      });
+
+      const avgScore = results.filter(r => r.found).length > 0
+        ? Math.round(results.filter(r => r.found).reduce((s, r) => s + r.score, 0) / results.filter(r => r.found).length)
+        : 0;
+
+      res.json({
+        data: results,
+        summary: {
+          total: results.length,
+          ready: results.filter(r => r.ready).length,
+          notReady: results.filter(r => r.found && !r.ready).length,
+          notFound: results.filter(r => !r.found).length,
+          averageScore: avgScore,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/batch/archive', (req, res, next) => {
+    try {
+      const { ids, unarchive } = req.body as { ids?: string[]; unarchive?: boolean };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'All ids must be non-empty strings' });
+      }
+
+      const results: { id: string; success: boolean; error?: string }[] = [];
+      for (const id of ids) {
+        const event = store.getById(id);
+        if (!event) {
+          results.push({ id, success: false, error: 'Not found' });
+          continue;
+        }
+        if (unarchive) {
+          store.updateStatus(id, 'draft');
+        } else {
+          store.updateStatus(id, 'archived');
+        }
+        results.push({ id, success: true });
+      }
+
+      res.json({ data: results, updated: results.filter(r => r.success).length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/calendar', (req, res, next) => {
+    try {
+      let events = store.getAll();
+
+      // Exclude archived events from calendar
+      events = events.filter(e => e.status !== 'archived');
+
+      // Optional month filter: ?month=2030-01
+      const month = req.query.month as string | undefined;
+      if (month) {
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+          return res.status(400).json({ error: 'month must be YYYY-MM format with valid month (01-12)' });
+        }
+        events = events.filter(e => e.start_time.startsWith(month));
+      }
+
+      // Group by date (YYYY-MM-DD)
+      const byDate: Record<string, { id: string; title: string; start_time: string; status: string; venue: string }[]> = {};
+      for (const e of events) {
+        const date = e.start_time.slice(0, 10);
+        if (!byDate[date]) byDate[date] = [];
+        byDate[date].push({
+          id: e.id,
+          title: e.title,
+          start_time: e.start_time,
+          status: e.status,
+          venue: e.venue,
+        });
+      }
+
+      // Sort dates
+      const sortedDates = Object.keys(byDate).sort();
+      const calendar = sortedDates.map(date => ({
+        date,
+        events: byDate[date],
+      }));
+
+      res.json({ data: calendar, totalDays: calendar.length, totalEvents: events.length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/stats', (_req, res, next) => {
     try {
       const events = store.getAll();
-      res.json({ data: events, total: events.length });
+      const byStatus: Record<string, number> = { draft: 0, published: 0, cancelled: 0, archived: 0 };
+      const bySyncStatus: Record<string, number> = { synced: 0, modified: 0, local_only: 0 };
+      const byCategory: Record<string, number> = {};
+      const byVenue: Record<string, number> = {};
+      let upcoming = 0;
+      let past = 0;
+      const now = new Date().toISOString();
+
+      for (const e of events) {
+        byStatus[e.status] = (byStatus[e.status] ?? 0) + 1;
+        const ss = e.sync_status ?? 'local_only';
+        bySyncStatus[ss] = (bySyncStatus[ss] ?? 0) + 1;
+        const cat = e.category ?? 'uncategorized';
+        byCategory[cat] = (byCategory[cat] ?? 0) + 1;
+        if (e.venue) byVenue[e.venue] = (byVenue[e.venue] ?? 0) + 1;
+        if (e.start_time > now) upcoming++;
+        else past++;
+      }
+
+      // Tag stats
+      const byTag: Record<string, number> = {};
+      if (db) {
+        const tagRows = db.prepare(
+          'SELECT tag, COUNT(*) as count FROM event_tags GROUP BY tag ORDER BY count DESC',
+        ).all() as Array<{ tag: string; count: number }>;
+        for (const row of tagRows) {
+          byTag[row.tag] = row.count;
+        }
+      }
+
+      // Activity stats
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const createdLast7 = events.filter(e => e.createdAt > sevenDaysAgo).length;
+      const createdLast30 = events.filter(e => e.createdAt > thirtyDaysAgo).length;
+      const modifiedLast7 = events.filter(e => e.updatedAt > sevenDaysAgo && e.updatedAt !== e.createdAt).length;
+
+      // Performance stats from events with actual data
+      const eventsWithAttendance = events.filter(e => e.actual_attendance != null && e.capacity > 0);
+      const totalAttendance = eventsWithAttendance.reduce((sum, e) => sum + (e.actual_attendance ?? 0), 0);
+      const totalCapacity = eventsWithAttendance.reduce((sum, e) => sum + e.capacity, 0);
+      const avgFillRate = totalCapacity > 0 ? Math.round((totalAttendance / totalCapacity) * 100) : null;
+
+      const eventsWithRevenue = events.filter(e => e.actual_revenue != null);
+      const totalRevenue = eventsWithRevenue.reduce((sum, e) => sum + (e.actual_revenue ?? 0), 0);
+
+      res.json({
+        data: {
+          total: events.length,
+          byStatus,
+          bySyncStatus,
+          byCategory,
+          byVenue,
+          byTag,
+          upcoming,
+          past,
+          activity: {
+            createdLast7,
+            createdLast30,
+            modifiedLast7,
+          },
+          performance: {
+            eventsWithData: eventsWithAttendance.length,
+            avgFillRate,
+            totalRevenue,
+            totalAttendance,
+          },
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/export/csv', (req, res, next) => {
+    try {
+      let events = store.getAll();
+
+      // Exclude archived by default
+      if (req.query.include_archived !== 'true') {
+        events = events.filter(e => e.status !== 'archived');
+      }
+
+      const status = req.query.status as string | undefined;
+      if (status) events = events.filter(e => e.status === status);
+      if (req.query.upcoming === 'true') {
+        const now = new Date().toISOString();
+        events = events.filter(e => e.start_time > now);
+      }
+
+      const escCsv = (val: string | number | undefined | null): string => {
+        if (val == null) return '';
+        const s = String(val);
+        return s.includes(',') || s.includes('"') || s.includes('\n')
+          ? `"${s.replace(/"/g, '""')}"` : s;
+      };
+
+      const headers = ['id', 'title', 'description', 'start_time', 'end_time', 'duration_minutes', 'venue', 'price', 'capacity', 'category', 'status', 'sync_status', 'actual_attendance', 'actual_revenue', 'createdAt', 'updatedAt'];
+      const rows = events.map(e =>
+        headers.map(h => escCsv((e as unknown as Record<string, unknown>)[h] as string)).join(',')
+      );
+
+      const csv = [headers.join(','), ...rows].join('\n');
+
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="events.csv"');
+      res.send(csv);
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/export/json', (req, res, next) => {
+    try {
+      let events = store.getAll();
+
+      // Exclude archived by default
+      if (req.query.include_archived !== 'true') {
+        events = events.filter(e => e.status !== 'archived');
+      }
+
+      const status = req.query.status as string | undefined;
+      if (status) events = events.filter(e => e.status === status);
+      if (req.query.upcoming === 'true') {
+        const now = new Date().toISOString();
+        events = events.filter(e => e.start_time > now);
+      }
+
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', 'attachment; filename="events.json"');
+      res.json({ data: events, exported_at: new Date().toISOString(), total: events.length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * GET /api/events/duplicates
+   * Scans all non-archived events for potential duplicates based on normalized title + same date.
+   */
+  router.get('/duplicates', (_req, res, next) => {
+    try {
+      const events = store.getAll().filter(e => e.status !== 'archived');
+
+      const normalize = (s: string) => s.toLowerCase().replace(/[^\w\s]/g, '').replace(/\s+/g, ' ').trim();
+
+      // Group by date prefix (YYYY-MM-DD)
+      const byDate: Record<string, typeof events> = {};
+      for (const e of events) {
+        const date = e.start_time.slice(0, 10);
+        if (!byDate[date]) byDate[date] = [];
+        byDate[date].push(e);
+      }
+
+      const duplicateGroups: Array<{ date: string; events: Array<{ id: string; title: string; venue: string; status: string }> }> = [];
+
+      for (const [date, dateEvents] of Object.entries(byDate)) {
+        if (dateEvents.length < 2) continue;
+
+        // Compare each pair by normalized title
+        const seen = new Map<string, typeof events>();
+        for (const e of dateEvents) {
+          const norm = normalize(e.title);
+          if (!norm) continue;
+
+          let matched = false;
+          for (const [key, group] of seen) {
+            const shorter = key.length <= norm.length ? key : norm;
+            const longer = key.length > norm.length ? key : norm;
+            if (key === norm || (shorter.length >= longer.length * 0.6 && longer.includes(shorter))) {
+              group.push(e);
+              matched = true;
+              break;
+            }
+          }
+          if (!matched) {
+            seen.set(norm, [e]);
+          }
+        }
+
+        for (const group of seen.values()) {
+          if (group.length >= 2) {
+            duplicateGroups.push({
+              date,
+              events: group.map(e => ({ id: e.id, title: e.title, venue: e.venue, status: e.status })),
+            });
+          }
+        }
+      }
+
+      res.json({ data: duplicateGroups, total: duplicateGroups.length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/compare', (req, res, next) => {
+    try {
+      const { ids } = req.body as { ids?: string[] };
+      if (!Array.isArray(ids) || ids.length < 2) {
+        return res.status(400).json({ error: 'ids must be an array with at least 2 event IDs' });
+      }
+      if (ids.length > 10) {
+        return res.status(400).json({ error: 'Maximum 10 events per comparison' });
+      }
+
+      const events = ids.map(id => {
+        const event = store.getById(id);
+        if (!event) return { id, found: false };
+
+        return {
+          id,
+          found: true,
+          title: event.title,
+          description: event.description?.slice(0, 200) ?? '',
+          startTime: event.start_time,
+          venue: event.venue,
+          price: event.price,
+          capacity: event.capacity,
+          category: event.category,
+          status: event.status,
+          platformCount: event.platforms.length,
+        };
+      });
+
+      res.json({ data: events });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * POST /api/events/:id/clone
+   * Duplicates an event as a new draft with an optional date shift.
+   */
+  router.post('/:id/clone', (req, res, next) => {
+    try {
+      const original = store.getById(req.params.id);
+      if (!original) return res.status(404).json({ error: 'Event not found' });
+
+      const { newDate, titleSuffix } = req.body as { newDate?: string; titleSuffix?: string };
+
+      const cloned = store.create({
+        title: titleSuffix ? `${original.title} ${titleSuffix}` : original.title,
+        description: original.description,
+        start_time: newDate || original.start_time,
+        end_time: original.end_time,
+        duration_minutes: original.duration_minutes,
+        venue: original.venue,
+        price: original.price,
+        capacity: original.capacity,
+        category: original.category,
+      });
+
+      // Copy tags and checklist items if db is available
+      if (db) {
+        const copyRelated = db.transaction(() => {
+          const tags = db.prepare(
+            'SELECT tag FROM event_tags WHERE event_id = ?'
+          ).all(req.params.id) as Array<{ tag: string }>;
+          const insertTag = db.prepare(
+            'INSERT OR IGNORE INTO event_tags (event_id, tag) VALUES (?, ?)'
+          );
+          for (const { tag } of tags) {
+            insertTag.run(cloned.id, tag);
+          }
+
+          const checklistItems = db.prepare(
+            'SELECT label, sort_order FROM event_checklist WHERE event_id = ? ORDER BY sort_order ASC'
+          ).all(req.params.id) as Array<{ label: string; sort_order: number }>;
+          const insertChecklist = db.prepare(
+            'INSERT INTO event_checklist (event_id, label, sort_order, created_at) VALUES (?, ?, ?, ?)'
+          );
+          const now = new Date().toISOString();
+          for (const item of checklistItems) {
+            insertChecklist.run(cloned.id, item.label, item.sort_order, now);
+          }
+        });
+        copyRelated();
+      }
+
+      res.status(201).json({ data: cloned });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
+   * POST /api/events/batch/delete
+   * Permanently deletes multiple events. Irreversible.
+   */
+  router.post('/batch/delete', (req, res, next) => {
+    try {
+      const { ids } = req.body as { ids?: string[] };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch delete' });
+      }
+      if (ids.some(id => typeof id !== 'string' || !id)) {
+        return res.status(400).json({ error: 'All ids must be non-empty strings' });
+      }
+
+      const results = ids.map(id => {
+        const deleted = store.delete(id);
+        return { id, deleted };
+      });
+
+      const deletedCount = results.filter(r => r.deleted).length;
+      res.json({ data: results, deleted: deletedCount, total: ids.length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/quick-create', (req, res, next) => {
+    try {
+      const { title, date, category } = req.body as {
+        title?: string; date?: string; category?: string;
+      };
+
+      if (!title || typeof title !== 'string' || title.trim().length === 0) {
+        return res.status(400).json({ error: 'title is required' });
+      }
+      if (title.length > 200) {
+        return res.status(400).json({ error: 'title must be 200 characters or fewer' });
+      }
+      if (category && typeof category === 'string' && category.length > 100) {
+        return res.status(400).json({ error: 'category must be 100 characters or fewer' });
+      }
+
+      // Auto-generate sensible defaults
+      const nextWeek = new Date();
+      nextWeek.setDate(nextWeek.getDate() + 7);
+      nextWeek.setHours(19, 0, 0, 0);
+
+      let startTime: string;
+      if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        startTime = `${date}T19:00:00+00:00`;
+      } else {
+        startTime = nextWeek.toISOString();
+      }
+
+      const event = store.create({
+        title: title.trim(),
+        description: '',
+        start_time: startTime,
+        venue: 'TBD',
+        price: 0,
+        capacity: 50,
+        duration_minutes: 120,
+        category,
+      });
+
+      res.status(201).json({ data: event });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/import/json', (req, res, next) => {
+    try {
+      const { events: importEvents } = req.body as { events?: Array<{
+        title?: string; description?: string; start_time?: string;
+        venue?: string; price?: number; capacity?: number; category?: string;
+        duration_minutes?: number;
+      }> };
+
+      if (!Array.isArray(importEvents) || importEvents.length === 0) {
+        return res.status(400).json({ error: 'events must be a non-empty array' });
+      }
+      if (importEvents.length > 200) {
+        return res.status(400).json({ error: 'Maximum 200 events per import' });
+      }
+
+      const results: { index: number; success: boolean; id?: string; error?: string }[] = [];
+      for (let i = 0; i < importEvents.length; i++) {
+        const item = importEvents[i];
+        if (!item.title || !item.start_time) {
+          results.push({ index: i, success: false, error: 'title and start_time are required' });
+          continue;
+        }
+        if (isNaN(new Date(item.start_time).getTime())) {
+          results.push({ index: i, success: false, error: 'start_time must be a valid date' });
+          continue;
+        }
+        // Sanitize numeric fields
+        const price = typeof item.price === 'number' && item.price >= 0 ? item.price : 0;
+        const capacity = typeof item.capacity === 'number' && item.capacity >= 1 && item.capacity <= 10000 ? item.capacity : 50;
+        const durationMinutes = typeof item.duration_minutes === 'number' && item.duration_minutes >= 1 && item.duration_minutes <= 1440 ? item.duration_minutes : 120;
+        const title = typeof item.title === 'string' ? item.title.slice(0, 200) : item.title;
+        try {
+          const event = store.create({
+            title,
+            description: item.description ? String(item.description).slice(0, 5000) : '',
+            start_time: item.start_time,
+            venue: item.venue ? String(item.venue).slice(0, 500) : '',
+            price,
+            capacity,
+            category: item.category ? String(item.category).slice(0, 100) : undefined,
+            duration_minutes: durationMinutes,
+          });
+          results.push({ index: i, success: true, id: event.id });
+        } catch (err) {
+          results.push({ index: i, success: false, error: err instanceof Error ? err.message : 'Unknown error' });
+        }
+      }
+
+      const imported = results.filter(r => r.success).length;
+      res.status(201).json({ data: results, imported, total: importEvents.length });
     } catch (err) {
       next(err);
     }
@@ -28,6 +861,29 @@ export function createEventsRouter(
       const event = store.getById(req.params.id);
       if (!event) return res.status(404).json({ error: 'Event not found' });
       res.json({ data: event });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/:id/platforms', (req, res, next) => {
+    try {
+      const event = store.getById(req.params.id);
+      if (!event) return res.status(404).json({ error: 'Event not found' });
+      const platformEvents = platformEventStore.getByEventId(req.params.id);
+      res.json({ data: platformEvents });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/:id/log', (req, res, next) => {
+    try {
+      const event = store.getById(req.params.id);
+      if (!event) return res.status(404).json({ error: 'Event not found' });
+      const limit = Math.min(Math.max(1, Number(req.query.limit) || 50), 200);
+      const entries = syncLogStore.getByEventId(req.params.id, limit);
+      res.json({ data: entries, total: entries.length });
     } catch (err) {
       next(err);
     }
@@ -48,6 +904,10 @@ export function createEventsRouter(
 
   router.put('/:id', (req, res, next) => {
     try {
+      const validation = validateUpdateEventInput(req.body);
+      if (!validation.valid) {
+        return res.status(400).json({ error: `Validation failed: ${validation.errors.join(', ')}` });
+      }
       const event = store.update(req.params.id, req.body);
       if (!event) return res.status(404).json({ error: 'Event not found' });
       res.json({ data: event });
@@ -66,6 +926,28 @@ export function createEventsRouter(
     }
   });
 
+  router.get('/:id/readiness', (req, res, next) => {
+    try {
+      const event = store.getById(req.params.id);
+      if (!event) return res.status(404).json({ error: 'Event not found' });
+
+      const checks = checkEventReadiness(event);
+      const passed = checks.filter(c => c.passed).length;
+      const total = checks.length;
+      const ready = checks.filter(c => c.severity === 'required').every(c => c.passed);
+
+      res.json({
+        data: {
+          checks,
+          score: total > 0 ? Math.round((passed / total) * 100) : 0,
+          ready,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.post('/:id/duplicate', (req, res, next) => {
     try {
       const original = store.getById(req.params.id);
@@ -74,14 +956,87 @@ export function createEventsRouter(
       const copy = store.create({
         title: `Copy of ${original.title}`,
         description: original.description,
-        start_time: new Date().toISOString(),
+        start_time: original.start_time,
+        end_time: original.end_time,
         duration_minutes: original.duration_minutes,
         venue: original.venue,
         price: original.price,
         capacity: original.capacity,
+        category: original.category,
       });
 
       res.status(201).json({ data: copy });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.post('/:id/recur', (req, res, next) => {
+    try {
+      const original = store.getById(req.params.id);
+      if (!original) return res.status(404).json({ error: 'Event not found' });
+
+      const { frequency, count } = req.body as { frequency?: string; count?: number };
+      const validFrequencies = ['weekly', 'biweekly', 'monthly'];
+      if (!frequency || !validFrequencies.includes(frequency)) {
+        return res.status(400).json({ error: `frequency must be one of: ${validFrequencies.join(', ')}` });
+      }
+      if (!count || !Number.isInteger(count) || count < 1 || count > 52) {
+        return res.status(400).json({ error: 'count must be an integer between 1 and 52' });
+      }
+
+      const daysMap: Record<string, number> = { weekly: 7, biweekly: 14, monthly: 0 };
+      const created: typeof original[] = [];
+
+      // Hoist tag query and insert outside the loop
+      const sourceTags = db
+        ? (db.prepare('SELECT tag FROM event_tags WHERE event_id = ?').all(req.params.id) as Array<{ tag: string }>)
+        : [];
+      const insertTag = db
+        ? db.prepare('INSERT OR IGNORE INTO event_tags (event_id, tag) VALUES (?, ?)')
+        : null;
+
+      for (let i = 1; i <= count; i++) {
+        const baseDate = new Date(original.start_time);
+        if (frequency === 'monthly') {
+          baseDate.setMonth(baseDate.getMonth() + i);
+        } else {
+          baseDate.setDate(baseDate.getDate() + daysMap[frequency] * i);
+        }
+
+        let endDate: string | undefined;
+        if (original.end_time) {
+          const end = new Date(original.end_time);
+          const diff = end.getTime() - new Date(original.start_time).getTime();
+          endDate = new Date(baseDate.getTime() + diff).toISOString();
+        }
+
+        const event = store.create({
+          title: original.title,
+          description: original.description,
+          start_time: baseDate.toISOString(),
+          end_time: endDate,
+          duration_minutes: original.duration_minutes,
+          venue: original.venue,
+          price: original.price,
+          capacity: original.capacity,
+          category: original.category,
+        });
+
+        // Copy tags to recurring events (using hoisted prepare)
+        if (insertTag) {
+          const copyTags = db!.transaction(() => {
+            for (const { tag } of sourceTags) {
+              insertTag.run(event.id, tag);
+            }
+          });
+          copyTags();
+        }
+
+        created.push(event);
+      }
+
+      res.status(201).json({ data: created, count: created.length });
     } catch (err) {
       next(err);
     }
@@ -98,6 +1053,9 @@ export function createEventsRouter(
       if (!event) {
         return res.status(404).json({ error: 'Event not found' });
       }
+
+      const readiness = checkEventReadiness(event);
+      const requiredMissing = readiness.filter(c => c.severity === 'required' && !c.passed);
 
       const results = await publishService.publish(event, platforms);
 
@@ -131,9 +1089,45 @@ export function createEventsRouter(
       const anySucceeded = results.some((r) => r.success);
       if (anySucceeded) {
         store.updateStatus(event.id, 'published');
+        store.updateSyncStatus(event.id, 'synced');
+
+        // Create sync snapshots for each successfully published platform
+        for (const result of results) {
+          if (result.success) {
+            const platformEventsAfter = platformEventStore.getByEventId(event.id);
+            const pe = platformEventsAfter.find((p) => p.platform === result.platform);
+            const photos = pe?.imageUrls ?? [];
+            const publishHash = computeSyncHash({
+              title: event.title,
+              description: event.description ?? '',
+              startTime: event.start_time,
+              venue: event.venue ?? '',
+              price: event.price,
+              capacity: event.capacity ?? 0,
+              photos,
+            });
+            snapshotStore.upsert({
+              eventId: event.id,
+              platform: result.platform,
+              title: event.title,
+              description: event.description ?? '',
+              startTime: event.start_time,
+              venue: event.venue ?? '',
+              price: event.price,
+              capacity: event.capacity ?? 0,
+              photosJson: JSON.stringify(photos),
+              snapshotHash: publishHash,
+            });
+          }
+        }
       }
 
-      res.json({ data: results });
+      res.json({
+        data: results,
+        warnings: requiredMissing.length > 0
+          ? requiredMissing.map(c => `Missing ${c.label.toLowerCase()}`)
+          : undefined,
+      });
     } catch (err) {
       next(err);
     }

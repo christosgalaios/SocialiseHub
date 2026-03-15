@@ -15,6 +15,7 @@ import { ToastProvider } from './context/ToastContext';
 import { ToastContainer } from './components/Toast';
 import { SyncStatus } from './components/SyncStatus';
 import { SettingsPage } from './pages/SettingsPage';
+import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Typed Electron API exposed via preload
 interface ElectronAPI {
@@ -224,6 +225,7 @@ export function App() {
         {/* ── Main content area (vertical stack: content + terminal) ── */}
         <div style={styles.contentColumn}>
           <main style={styles.main}>
+            <ErrorBoundary>
             <Routes>
               <Route path="/" element={<DashboardPage />} />
               <Route path="/events" element={<EventsPage />} />
@@ -238,6 +240,7 @@ export function App() {
               <Route path="/settings" element={<SettingsPage />} />
               <Route path="/tester" element={<AppTesterPage />} />
             </Routes>
+            </ErrorBoundary>
           </main>
 
           {/* Terminal panel */}

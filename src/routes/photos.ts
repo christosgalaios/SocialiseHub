@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { mkdirSync, unlinkSync, existsSync, createWriteStream } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import multer from 'multer';
 import type { Database } from '../data/database.js';
@@ -61,6 +61,16 @@ export function createPhotosRouter(db: Database): Router {
       if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
       const eventId = req.params.id as string;
+
+      // Limit photos per event
+      const countRow = db.prepare<[string], { cnt: number }>(
+        'SELECT COUNT(*) as cnt FROM event_photos WHERE event_id = ?'
+      ).get(eventId);
+      if (countRow && countRow.cnt >= 50) {
+        try { unlinkSync(req.file.path); } catch { /* cleanup failed, ignore */ }
+        return res.status(400).json({ error: 'Maximum 50 photos per event' });
+      }
+
       const source = (req.body as { source?: string }).source ?? 'upload';
       const relativePath = `/data/photos/${eventId}/${req.file.filename}`;
 
@@ -79,7 +89,8 @@ export function createPhotosRouter(db: Database): Router {
         'SELECT * FROM event_photos WHERE id = ?'
       ).get(result.lastInsertRowid as number);
 
-      res.status(201).json({ data: photoToDto(photo!) });
+      if (!photo) return res.status(500).json({ error: 'Failed to read back inserted photo' });
+      res.status(201).json({ data: photoToDto(photo) });
     } catch (err) {
       next(err);
     }
@@ -92,7 +103,22 @@ export function createPhotosRouter(db: Database): Router {
   router.patch('/:id/photos/reorder', (req, res, next) => {
     try {
       const { order } = req.body as { order?: number[] };
-      if (!Array.isArray(order)) return res.status(400).json({ error: 'order must be an array of photo IDs' });
+      if (!Array.isArray(order) || order.length === 0) return res.status(400).json({ error: 'order must be a non-empty array of photo IDs' });
+
+      // Validate: no duplicates
+      if (new Set(order).size !== order.length) {
+        return res.status(400).json({ error: 'order must not contain duplicate photo IDs' });
+      }
+
+      // Validate: all IDs belong to this event
+      const existingPhotos = db.prepare<[string], { id: number }>(
+        'SELECT id FROM event_photos WHERE event_id = ?'
+      ).all(req.params.id);
+      const existingIds = new Set(existingPhotos.map(p => p.id));
+      const invalidIds = order.filter(id => !existingIds.has(id));
+      if (invalidIds.length > 0) {
+        return res.status(400).json({ error: `Photo IDs not found for this event: ${invalidIds.join(', ')}` });
+      }
 
       const updatePos = db.prepare('UPDATE event_photos SET position = ?, is_cover = ? WHERE id = ? AND event_id = ?');
       const reorder = db.transaction(() => {
@@ -128,6 +154,14 @@ export function createPhotosRouter(db: Database): Router {
       ).get(eventId);
       if (!eventRow) return res.status(404).json({ error: 'Event not found' });
 
+      // Check photo count limit
+      const countRow = db.prepare<[string], { cnt: number }>(
+        'SELECT COUNT(*) as cnt FROM event_photos WHERE event_id = ?'
+      ).get(eventId);
+      if (countRow && countRow.cnt >= 50) {
+        return res.status(400).json({ error: 'Maximum 50 photos per event' });
+      }
+
       const accessKey = process.env.UNSPLASH_ACCESS_KEY;
       if (!accessKey) return res.status(503).json({ error: 'UNSPLASH_ACCESS_KEY not configured' });
 
@@ -140,7 +174,7 @@ export function createPhotosRouter(db: Database): Router {
       });
       if (!searchResp.ok) {
         const text = await searchResp.text();
-        return res.status(searchResp.status).json({ error: `Unsplash error: ${text}` });
+        return res.status(502).json({ error: `Unsplash error: ${text}` });
       }
 
       const searchData = await searchResp.json() as {
@@ -172,42 +206,56 @@ export function createPhotosRouter(db: Database): Router {
       );
 
       const createdPhotos: ReturnType<typeof photoToDto>[] = [];
+      let downloadFailures = 0;
 
       for (const result of searchData.results) {
         const filename = `${Date.now()}_unsplash_${result.id}.jpg`;
         const filePath = join(photoDir, filename);
         const relativePath = `/data/photos/${eventId}/${filename}`;
 
-        // Download photo to disk
-        const dlResp = await fetch(result.urls.regular);
-        if (!dlResp.ok || !dlResp.body) continue;
+        try {
+          // Download photo to disk
+          const dlResp = await fetch(result.urls.regular);
+          if (!dlResp.ok || !dlResp.body) {
+            downloadFailures++;
+            continue;
+          }
 
-        await pipeline(
-          // Node 18+ supports ReadableStream → Readable conversion via stream.Readable.fromWeb
-          // but we use the simpler approach: collect body as buffer
-          (async function* () {
-            const reader = dlResp.body!.getReader();
-            while (true) {
-              const { done, value } = await reader.read();
-              if (done) break;
-              yield Buffer.from(value);
-            }
-          })(),
-          createWriteStream(filePath),
-        );
+          await pipeline(
+            // Node 18+ supports ReadableStream → Readable conversion via stream.Readable.fromWeb
+            // but we use the simpler approach: collect body as buffer
+            (async function* () {
+              const reader = dlResp.body!.getReader();
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                yield Buffer.from(value);
+              }
+            })(),
+            createWriteStream(filePath),
+          );
 
-        const isCover = nextPos === 0 ? 1 : 0;
-        const dbResult = insertStmt.run(eventId, relativePath, 'unsplash', nextPos, isCover);
+          const isCover = nextPos === 0 ? 1 : 0;
+          const dbResult = insertStmt.run(eventId, relativePath, 'unsplash', nextPos, isCover);
 
-        const photoRow = db.prepare<[number], PhotoRow>(
-          'SELECT * FROM event_photos WHERE id = ?'
-        ).get(dbResult.lastInsertRowid as number);
+          const photoRow = db.prepare<[number], PhotoRow>(
+            'SELECT * FROM event_photos WHERE id = ?'
+          ).get(dbResult.lastInsertRowid as number);
 
-        if (photoRow) createdPhotos.push(photoToDto(photoRow));
-        nextPos++;
+          if (photoRow) createdPhotos.push(photoToDto(photoRow));
+          nextPos++;
+        } catch {
+          downloadFailures++;
+        }
       }
 
-      res.status(201).json({ photos: createdPhotos });
+      if (createdPhotos.length === 0 && downloadFailures > 0) {
+        return res.status(502).json({ error: `All ${downloadFailures} photo downloads failed` });
+      }
+      res.status(201).json({
+        photos: createdPhotos,
+        ...(downloadFailures > 0 ? { warnings: [`${downloadFailures} photo download(s) failed`] } : {}),
+      });
     } catch (err) {
       next(err);
     }
@@ -219,16 +267,25 @@ export function createPhotosRouter(db: Database): Router {
    */
   router.delete('/:id/photos/:photoId', (req, res, next) => {
     try {
+      const photoId = Number(req.params.photoId);
+      if (Number.isNaN(photoId)) return res.status(400).json({ error: 'Invalid photo ID' });
+
       const photo = db.prepare<[number, string], PhotoRow>(
         'SELECT * FROM event_photos WHERE id = ? AND event_id = ?'
-      ).get(Number(req.params.photoId), req.params.id);
+      ).get(photoId, req.params.id);
 
       if (!photo) return res.status(404).json({ error: 'Photo not found' });
 
-      // Delete file from disk
-      const filePath = join(process.cwd(), photo.photo_path.replace(/^\/data\//, 'data/'));
-      if (existsSync(filePath)) {
-        try { unlinkSync(filePath); } catch { /* ignore fs errors */ }
+      // Delete file from disk (with path traversal protection)
+      const filePath = resolve(process.cwd(), photo.photo_path.replace(/^\//, ''));
+      const safeBase = resolve(process.cwd(), 'data');
+      if (!filePath.startsWith(safeBase)) {
+        // Path resolves outside data directory — skip file deletion but still remove DB record
+        console.warn(`Photo path escapes data directory, skipping file delete: ${photo.photo_path}`);
+      } else if (existsSync(filePath)) {
+        try { unlinkSync(filePath); } catch (err) {
+          console.warn(`Failed to delete photo file ${filePath}:`, err);
+        }
       }
 
       db.prepare('DELETE FROM event_photos WHERE id = ?').run(photo.id);

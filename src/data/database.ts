@@ -152,6 +152,64 @@ function runMigrations(db: Database): void {
     )`);
     db.pragma('user_version = 8');
   }
+  if (currentVersion < 9) {
+    try { db.exec('ALTER TABLE events ADD COLUMN category TEXT'); } catch { /* exists */ }
+    db.pragma('user_version = 9');
+  }
+  if (currentVersion < 10) {
+    db.exec(`CREATE TABLE IF NOT EXISTS event_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT NOT NULL,
+      content TEXT NOT NULL,
+      author TEXT DEFAULT 'manager',
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (event_id) REFERENCES events(id)
+    )`);
+    db.pragma('user_version = 10');
+  }
+  if (currentVersion < 11) {
+    db.exec(`CREATE TABLE IF NOT EXISTS event_tags (
+      event_id TEXT NOT NULL,
+      tag TEXT NOT NULL,
+      FOREIGN KEY (event_id) REFERENCES events(id),
+      UNIQUE(event_id, tag)
+    )`);
+    db.pragma('user_version = 11');
+  }
+  if (currentVersion < 12) {
+    db.exec(`CREATE TABLE IF NOT EXISTS event_checklist (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      completed INTEGER DEFAULT 0,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      completed_at TEXT,
+      FOREIGN KEY (event_id) REFERENCES events(id)
+    )`);
+    db.pragma('user_version = 12');
+  }
+  if (currentVersion < 13) {
+    try { db.exec('ALTER TABLE events ADD COLUMN actual_attendance INTEGER'); } catch { /* exists */ }
+    try { db.exec('ALTER TABLE events ADD COLUMN actual_revenue REAL'); } catch { /* exists */ }
+    db.pragma('user_version = 13');
+  }
+  if (currentVersion < 14) {
+    // Add indexes on foreign key columns for faster lookups and cascade deletes
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_platform_events_event_id ON platform_events(event_id);
+      CREATE INDEX IF NOT EXISTS idx_event_photos_event_id ON event_photos(event_id);
+      CREATE INDEX IF NOT EXISTS idx_event_scores_event_id ON event_scores(event_id);
+      CREATE INDEX IF NOT EXISTS idx_event_notes_event_id ON event_notes(event_id);
+      CREATE INDEX IF NOT EXISTS idx_event_tags_event_id ON event_tags(event_id);
+      CREATE INDEX IF NOT EXISTS idx_event_checklist_event_id ON event_checklist(event_id);
+      CREATE INDEX IF NOT EXISTS idx_sync_log_event_id ON sync_log(event_id);
+      CREATE INDEX IF NOT EXISTS idx_event_sync_snapshots_event_id ON event_sync_snapshots(event_id);
+      CREATE INDEX IF NOT EXISTS idx_events_start_time ON events(start_time);
+      CREATE INDEX IF NOT EXISTS idx_events_status ON events(status);
+    `);
+    db.pragma('user_version = 14');
+  }
 }
 
 function createSchema(db: Database): void {
@@ -167,7 +225,9 @@ function createSchema(db: Database): void {
       price REAL DEFAULT 0,
       capacity INTEGER,
       image_url TEXT,
+      category TEXT,
       status TEXT DEFAULT 'draft',
+      sync_status TEXT DEFAULT 'local_only',
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );

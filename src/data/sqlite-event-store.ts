@@ -12,7 +12,8 @@ import type {
 /** Fields the public API is allowed to update via update(). */
 const UPDATABLE_FIELDS = new Set([
   'title', 'description', 'start_time', 'end_time', 'duration_minutes',
-  'venue', 'price', 'capacity',
+  'venue', 'price', 'capacity', 'image_url', 'category',
+  'actual_attendance', 'actual_revenue',
 ]);
 
 interface EventRow {
@@ -25,8 +26,12 @@ interface EventRow {
   venue: string | null;
   price: number;
   capacity: number | null;
+  image_url: string | null;
+  category: string | null;
   status: string;
   sync_status: string | null;
+  actual_attendance: number | null;
+  actual_revenue: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -58,6 +63,13 @@ export class SqliteEventStore {
       publishedAt: pr.published_at ?? undefined,
     }));
 
+    // Get cover photo URL
+    const coverPhoto = this.db
+      .prepare<[string], { photo_path: string }>(
+        'SELECT photo_path FROM event_photos WHERE event_id = ? AND is_cover = 1 LIMIT 1'
+      )
+      .get(row.id);
+
     return {
       id: row.id,
       title: row.title,
@@ -68,8 +80,12 @@ export class SqliteEventStore {
       venue: row.venue ?? '',
       price: row.price,
       capacity: row.capacity ?? 0,
+      imageUrl: coverPhoto?.photo_path ?? (row.image_url || undefined),
+      category: row.category ?? undefined,
       status: row.status as EventStatus,
       sync_status: (row.sync_status ?? 'local_only') as 'synced' | 'modified' | 'local_only',
+      actual_attendance: row.actual_attendance ?? undefined,
+      actual_revenue: row.actual_revenue ?? undefined,
       platforms,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
@@ -80,7 +96,69 @@ export class SqliteEventStore {
     const rows = this.db
       .prepare<[], EventRow>(`SELECT * FROM events ORDER BY start_time DESC`)
       .all();
-    return rows.map((row) => this.rowToEvent(row));
+    if (rows.length === 0) return [];
+
+    // Batch-load all platform events to avoid N+1 queries
+    const allPlatformRows = this.db.prepare<[], PlatformEventRow & { event_id: string }>(
+      `SELECT event_id, platform, external_id, external_url, published_at
+       FROM platform_events WHERE event_id IS NOT NULL`,
+    ).all();
+    const platformsByEvent = new Map<string, PlatformPublishStatus[]>();
+    for (const pr of allPlatformRows) {
+      if (!platformsByEvent.has(pr.event_id)) platformsByEvent.set(pr.event_id, []);
+      platformsByEvent.get(pr.event_id)!.push({
+        platform: pr.platform as PlatformName,
+        published: pr.published_at != null,
+        externalId: pr.external_id,
+        externalUrl: pr.external_url ?? undefined,
+        publishedAt: pr.published_at ?? undefined,
+      });
+    }
+
+    // Batch-load all cover photos
+    const coverPhotos = new Map<string, string>();
+    const photoRows = this.db.prepare<[], { event_id: string; photo_path: string }>(
+      'SELECT event_id, photo_path FROM event_photos WHERE is_cover = 1',
+    ).all();
+    for (const p of photoRows) coverPhotos.set(p.event_id, p.photo_path);
+
+    // Batch-load notes counts
+    const notesCounts = new Map<string, number>();
+    const notesRows = this.db.prepare<[], { event_id: string; cnt: number }>(
+      'SELECT event_id, COUNT(*) as cnt FROM event_notes GROUP BY event_id',
+    ).all();
+    for (const r of notesRows) notesCounts.set(r.event_id, r.cnt);
+
+    // Batch-load checklist progress
+    const checklistProgress = new Map<string, { total: number; done: number }>();
+    const checklistRows = this.db.prepare<[], { event_id: string; total: number; done: number }>(
+      'SELECT event_id, COUNT(*) as total, SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as done FROM event_checklist GROUP BY event_id',
+    ).all();
+    for (const r of checklistRows) checklistProgress.set(r.event_id, { total: r.total, done: r.done });
+
+    return rows.map((row) => ({
+      id: row.id,
+      title: row.title,
+      description: row.description ?? '',
+      start_time: row.start_time,
+      end_time: row.end_time ?? undefined,
+      duration_minutes: row.duration_minutes,
+      venue: row.venue ?? '',
+      price: row.price,
+      capacity: row.capacity ?? 0,
+      imageUrl: coverPhotos.get(row.id) ?? (row.image_url || undefined),
+      category: row.category ?? undefined,
+      status: row.status as EventStatus,
+      sync_status: (row.sync_status ?? 'local_only') as 'synced' | 'modified' | 'local_only',
+      actual_attendance: row.actual_attendance ?? undefined,
+      actual_revenue: row.actual_revenue ?? undefined,
+      platforms: platformsByEvent.get(row.id) ?? [],
+      notesCount: notesCounts.get(row.id) ?? 0,
+      checklistTotal: checklistProgress.get(row.id)?.total ?? 0,
+      checklistDone: checklistProgress.get(row.id)?.done ?? 0,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
   }
 
   getById(id: string): SocialiseEvent | undefined {
@@ -108,7 +186,7 @@ export class SqliteEventStore {
       // Match events on the same day
       const datePrefix = date.slice(0, 10); // YYYY-MM-DD
       candidates = this.db
-        .prepare<[string], EventRow>(`SELECT * FROM events WHERE start_time LIKE ? || '%'`)
+        .prepare<[string], EventRow>(`SELECT * FROM events WHERE substr(start_time, 1, 10) = ?`)
         .all(datePrefix);
     } else {
       // No date — search all (expensive, but rare)
@@ -119,8 +197,11 @@ export class SqliteEventStore {
       const candidateTitle = normalize(row.title);
       // Exact match after normalization
       if (candidateTitle === normalizedTitle) return this.rowToEvent(row);
-      // One title contains the other (handles slight differences like "Bristol" suffix)
-      if (candidateTitle.includes(normalizedTitle) || normalizedTitle.includes(candidateTitle)) {
+      // Substring match only when the shorter string is at least 60% of the longer string.
+      // This prevents false matches like "social" matching "antisocial networking night".
+      const shorter = candidateTitle.length <= normalizedTitle.length ? candidateTitle : normalizedTitle;
+      const longer = candidateTitle.length > normalizedTitle.length ? candidateTitle : normalizedTitle;
+      if (shorter.length >= longer.length * 0.6 && longer.includes(shorter)) {
         return this.rowToEvent(row);
       }
     }
@@ -135,9 +216,9 @@ export class SqliteEventStore {
       .prepare(
         `INSERT INTO events
            (id, title, description, start_time, end_time, duration_minutes,
-            venue, price, capacity, status, sync_status, created_at, updated_at)
+            venue, price, capacity, category, status, sync_status, created_at, updated_at)
          VALUES
-           (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'local_only', ?, ?)`,
+           (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'local_only', ?, ?)`,
       )
       .run(
         id,
@@ -149,6 +230,7 @@ export class SqliteEventStore {
         input.venue ?? null,
         input.price ?? 0,
         input.capacity ?? null,
+        input.category ?? null,
         now,
         now,
       );
@@ -167,11 +249,10 @@ export class SqliteEventStore {
 
     if (Object.keys(safe).length === 0) return existing;
 
-    const columnMap: Record<string, string> = {};
     const now = new Date().toISOString();
 
     const setClauses = Object.keys(safe)
-      .map((k) => `${columnMap[k] ?? k} = ?`)
+      .map((k) => `${k} = ?`)
       .join(', ');
 
     // Auto-flip sync_status from 'synced' to 'modified' when a synced event is edited
@@ -213,15 +294,20 @@ export class SqliteEventStore {
   }
 
   delete(id: string): boolean {
-    // Clean up FK references before deleting
-    this.db.prepare('DELETE FROM event_sync_snapshots WHERE event_id = ?').run(id);
-    this.db.prepare('DELETE FROM event_photos WHERE event_id = ?').run(id);
-    this.db.prepare('DELETE FROM event_scores WHERE event_id = ?').run(id);
-    this.db.prepare('DELETE FROM event_snapshots WHERE event_id = ?').run(id);
-    this.db.prepare('UPDATE platform_events SET event_id = NULL WHERE event_id = ?').run(id);
-    const result = this.db
-      .prepare('DELETE FROM events WHERE id = ?')
-      .run(id);
+    // Wrap in transaction for atomicity — all cleanup succeeds or none does
+    const deleteAll = this.db.transaction(() => {
+      this.db.prepare('DELETE FROM event_sync_snapshots WHERE event_id = ?').run(id);
+      this.db.prepare('DELETE FROM event_photos WHERE event_id = ?').run(id);
+      this.db.prepare('DELETE FROM event_scores WHERE event_id = ?').run(id);
+      this.db.prepare('DELETE FROM event_snapshots WHERE event_id = ?').run(id);
+      this.db.prepare('DELETE FROM event_notes WHERE event_id = ?').run(id);
+      this.db.prepare('DELETE FROM event_tags WHERE event_id = ?').run(id);
+      this.db.prepare('DELETE FROM event_checklist WHERE event_id = ?').run(id);
+      this.db.prepare('DELETE FROM sync_log WHERE event_id = ?').run(id);
+      this.db.prepare('UPDATE platform_events SET event_id = NULL WHERE event_id = ?').run(id);
+      return this.db.prepare('DELETE FROM events WHERE id = ?').run(id);
+    });
+    const result = deleteAll();
     return result.changes > 0;
   }
 }

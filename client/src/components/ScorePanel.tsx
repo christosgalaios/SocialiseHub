@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { updateEvent } from '../api/events';
 
 export interface ScoreSuggestion {
@@ -9,11 +10,6 @@ export interface ScoreSuggestion {
 }
 
 export interface ScoreBreakdown {
-  seo: number;
-  timing: number;
-  pricing: number;
-  description: number;
-  photos: number;
   [key: string]: number;
 }
 
@@ -201,12 +197,19 @@ export function ScorePanel({
   onApply,
   onRescore,
 }: ScorePanelProps) {
+  const [applying, setApplying] = useState<string | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
+
   const handleApply = async (field: string, suggestedValue: string) => {
+    setApplying(field);
+    setApplyError(null);
     try {
       await updateEvent(eventId, { [field]: suggestedValue });
       onApply(field, suggestedValue);
     } catch (err) {
-      console.error('Failed to apply suggestion', err);
+      setApplyError(err instanceof Error ? err.message : 'Failed to apply suggestion');
+    } finally {
+      setApplying(null);
     }
   };
 
@@ -230,6 +233,9 @@ export function ScorePanel({
       {suggestions.length > 0 && (
         <div style={panelStyles.suggestionsSection}>
           <h3 style={panelStyles.suggestionsTitle}>Improvement Suggestions</h3>
+          {applyError && (
+            <div style={{ color: '#dc2626', fontSize: 13, marginBottom: 8 }}>{applyError}</div>
+          )}
           <div style={panelStyles.suggestionsList}>
             {suggestions.map((s, i) => {
               const fieldColor = IMPACT_COLORS[s.field] ?? '#888';
@@ -255,10 +261,15 @@ export function ScorePanel({
                       <span style={panelStyles.valueLabel}>Suggested:</span>
                       <span style={panelStyles.valueText}>{s.suggested_value}</span>
                       <button
-                        style={panelStyles.applyBtn}
+                        style={{
+                          ...panelStyles.applyBtn,
+                          opacity: applying === s.field ? 0.6 : 1,
+                          cursor: applying === s.field ? 'wait' : 'pointer',
+                        }}
+                        disabled={applying === s.field}
                         onClick={() => handleApply(s.field, s.suggested_value!)}
                       >
-                        Apply
+                        {applying === s.field ? 'Applying...' : 'Apply'}
                       </button>
                     </div>
                   )}

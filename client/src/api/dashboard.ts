@@ -16,6 +16,7 @@ export interface AttentionItem {
   urgency: 'high' | 'medium' | 'low';
   platforms: string[];
   date: string | null;
+  problems?: Array<{ problem: string; label: string; urgency: string }>;
 }
 
 export interface UpcomingEvent {
@@ -24,7 +25,9 @@ export interface UpcomingEvent {
   startTime: string;
   venue: string | null;
   readiness: number;
-  readinessChecks: Record<string, boolean>;
+  passed: number;
+  total: number;
+  missing: string[];
   platforms: string[];
   photoCount: number;
   timeUntil: string;
@@ -44,6 +47,9 @@ export interface DashboardSuggestion {
   body: string;
   priority: 'high' | 'medium' | 'low';
   action?: string;
+  actionTitle?: string;
+  actionDate?: string;
+  actionUrl?: string;
 }
 
 export async function getAttentionItems(): Promise<{ items: AttentionItem[]; count: number }> {
@@ -78,4 +84,103 @@ export async function storeSuggestions(suggestions: DashboardSuggestion[]): Prom
     body: JSON.stringify({ suggestions }),
   });
   return json<{ ok: boolean }>(res);
+}
+
+export interface WeekDayEvent {
+  id: string;
+  title: string;
+  startTime: string;
+  venue: string | null;
+  status: string;
+  capacity: number | null;
+  price: number;
+  checklist: { total: number; done: number } | null;
+}
+
+export interface WeekView {
+  data: Record<string, WeekDayEvent[]>;
+  totalEvents: number;
+  startDate: string;
+  endDate: string;
+}
+
+export async function getWeekView(): Promise<WeekView> {
+  const res = await fetch(`${BASE}/week`);
+  return json<WeekView>(res);
+}
+
+export interface PortfolioCategory {
+  category: string;
+  count: number;
+  upcoming: number;
+  draft: number;
+  published: number;
+  avgPrice: number;
+  totalCapacity: number;
+  venueCount: number;
+}
+
+export interface PortfolioData {
+  data: {
+    categories: PortfolioCategory[];
+    summary: {
+      totalEvents: number;
+      totalCategories: number;
+      upcomingEvents: number;
+      calendarGaps: string[];
+    };
+  };
+}
+
+export async function getPortfolio(): Promise<PortfolioData> {
+  const res = await fetch(`${BASE}/portfolio`);
+  return json<PortfolioData>(res);
+}
+
+export interface Conflict {
+  events: Array<{ id: string; title: string; start_time: string; venue: string }>;
+  reason: string;
+}
+
+export async function getConflicts(): Promise<{ data: Conflict[]; total: number }> {
+  const res = await fetch(`${BASE}/conflicts`);
+  return json<{ data: Conflict[]; total: number }>(res);
+}
+
+export interface EventHealth {
+  id: string;
+  title: string;
+  status: string;
+  date: string | null;
+  health: number;
+  factors: string[];
+  photoCount: number;
+  platformCount: number;
+  noteCount: number;
+  hasScore: boolean;
+}
+
+export interface HealthSummary {
+  data: EventHealth[];
+  summary: {
+    total: number;
+    averageHealth: number;
+    healthy: number;
+    needsWork: number;
+  };
+}
+
+export async function getHealth(): Promise<HealthSummary> {
+  const res = await fetch(`${BASE}/health`);
+  return json<HealthSummary>(res);
+}
+
+export async function generateDigestPrompt(): Promise<{ prompt: string }> {
+  const res = await fetch(`${BASE}/digest`, { method: 'POST' });
+  return json<{ prompt: string }>(res);
+}
+
+export async function generateActionPlanPrompt(): Promise<{ prompt: string }> {
+  const res = await fetch(`${BASE}/action-plan`, { method: 'POST' });
+  return json<{ prompt: string }>(res);
 }

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { existsSync, readdirSync } from 'node:fs';
-import { join, extname } from 'node:path';
+import { join, extname, resolve } from 'node:path';
 import type { Database } from '../data/database.js';
 import type { SqliteEventStore } from '../data/sqlite-event-store.js';
 import type { SocialiseEvent } from '../shared/types.js';
@@ -46,7 +46,12 @@ export function createOptimizeRouter(db: Database, eventStore: SqliteEventStore)
 
       if (!row) return res.status(404).json({ error: 'No snapshot found for this event' });
 
-      const snapshot = JSON.parse(row.snapshot_json) as SocialiseEvent;
+      let snapshot: SocialiseEvent;
+      try {
+        snapshot = JSON.parse(row.snapshot_json) as SocialiseEvent;
+      } catch {
+        return res.status(500).json({ error: 'Snapshot data is corrupted' });
+      }
       const updated = eventStore.update(req.params.id, {
         title: snapshot.title,
         description: snapshot.description,
@@ -99,7 +104,7 @@ export function createOptimizeRouter(db: Database, eventStore: SqliteEventStore)
 
       if (!response.ok) {
         const text = await response.text();
-        return res.status(response.status).json({ error: `Unsplash error: ${text}` });
+        return res.status(502).json({ error: `Unsplash error: ${text}` });
       }
 
       const data = await response.json() as {
@@ -133,6 +138,15 @@ export function createOptimizeRouter(db: Database, eventStore: SqliteEventStore)
     try {
       const { folderPath } = req.body as { folderPath?: string };
       if (!folderPath) return res.status(400).json({ error: 'folderPath is required' });
+
+      // Path traversal protection: only allow access within data directory or user home
+      const resolved = resolve(folderPath);
+      const dataDir = resolve(process.cwd(), 'data');
+      const homeDir = process.env.HOME || process.env.USERPROFILE || '';
+      if (!resolved.startsWith(dataDir) && (!homeDir || !resolved.startsWith(homeDir))) {
+        return res.status(403).json({ error: 'Access denied: folder path must be within the data or home directory' });
+      }
+
       if (!existsSync(folderPath)) return res.status(404).json({ error: 'Folder not found' });
 
       const files = readdirSync(folderPath)
