@@ -11,17 +11,29 @@ export function createAnalyticsRouter(db: Database): Router {
   router.get('/summary', (_req, res, next) => {
     try {
       const totalEvents = (db.prepare('SELECT COUNT(*) as cnt FROM events').get() as { cnt: number }).cnt;
+      // Use MAX per event_id to avoid double-counting multi-platform events
       const totalAttendeesRow = db
-        .prepare('SELECT SUM(attendance) as total FROM platform_events WHERE attendance IS NOT NULL')
+        .prepare(`SELECT SUM(max_att) as total FROM (
+          SELECT MAX(attendance) as max_att FROM platform_events
+          WHERE attendance IS NOT NULL AND event_id IS NOT NULL
+          GROUP BY event_id
+        )`)
         .get() as { total: number | null };
       const totalRevenueRow = db
-        .prepare('SELECT SUM(revenue) as total FROM platform_events WHERE revenue IS NOT NULL')
+        .prepare(`SELECT SUM(max_rev) as total FROM (
+          SELECT MAX(revenue) as max_rev FROM platform_events
+          WHERE revenue IS NOT NULL AND event_id IS NOT NULL
+          GROUP BY event_id
+        )`)
         .get() as { total: number | null };
       const fillRateRow = db
         .prepare(
-          `SELECT AVG(CAST(attendance AS REAL) / CAST(capacity AS REAL)) as avg_fill
-           FROM platform_events
-           WHERE attendance IS NOT NULL AND capacity IS NOT NULL AND capacity > 0`,
+          `SELECT AVG(fill) as avg_fill FROM (
+            SELECT MAX(CAST(attendance AS REAL)) / MAX(CAST(capacity AS REAL)) as fill
+            FROM platform_events
+            WHERE attendance IS NOT NULL AND capacity IS NOT NULL AND capacity > 0 AND event_id IS NOT NULL
+            GROUP BY event_id
+          )`,
         )
         .get() as { avg_fill: number | null };
 
