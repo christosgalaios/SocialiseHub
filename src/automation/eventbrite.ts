@@ -316,7 +316,7 @@ export function eventbriteScrapeSteps(): AutomationStep[] {
         let hasMore = true;
         while (hasMore && page <= 20) {
           const eventsResp = await fetch(
-            '/api/v3/organizations/' + orgId + '/events/?status=draft,live,started,ended,completed&order_by=start_desc&page_size=50&page=' + page + '&expand=ticket_classes',
+            '/api/v3/organizations/' + orgId + '/events/?status=draft,live,started,ended,completed&order_by=start_desc&page_size=50&page=' + page + '&expand=venue,ticket_classes',
             { credentials: 'include', headers }
           );
           if (!eventsResp.ok) {
@@ -345,7 +345,7 @@ export function eventbriteScrapeSteps(): AutomationStep[] {
               externalId: e.id,
               title: e.name?.text ?? '',
               date: e.start?.utc ?? '',
-              venue: '',
+              venue: e.venue ? (e.venue.name + (e.venue.address?.city ? ', ' + e.venue.address.city : '')) : (e.is_online_event ? 'Online' : ''),
               url: e.url ?? '',
               status: isPast ? 'past' : 'active',
               attendance,
