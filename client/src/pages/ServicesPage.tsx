@@ -150,7 +150,12 @@ export function ServicesPage() {
         </p>
       </div>
 
-      {error && <div style={styles.error}>{error}</div>}
+      {error && (
+        <div style={styles.errorBanner}>
+          {error}
+          <button style={styles.retryBtn} onClick={load}>Retry</button>
+        </div>
+      )}
 
       {automationStatus && (
         <div style={styles.automationProgress}>
@@ -252,14 +257,29 @@ const styles: Record<string, React.CSSProperties> = {
     marginBottom: 6,
   },
   subtitle: { fontSize: 14, color: '#7a7a7a' },
-  error: {
-    padding: '12px 16px',
+  errorBanner: {
+    background: '#fef2f2',
+    border: '1px solid #fecaca',
     borderRadius: 12,
-    background: '#fce8e6',
-    color: '#E2725B',
+    padding: '14px 20px',
+    color: '#dc2626',
     fontSize: 14,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
     marginBottom: 20,
-    fontWeight: 500,
+  },
+  retryBtn: {
+    padding: '6px 16px',
+    borderRadius: 8,
+    border: '1px solid #fecaca',
+    background: '#fff',
+    color: '#dc2626',
+    fontSize: 13,
+    fontWeight: 600,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap' as const,
   },
   automationProgress: {
     padding: '12px 16px',
