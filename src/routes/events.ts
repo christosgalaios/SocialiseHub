@@ -153,8 +153,8 @@ export function createEventsRouter(
       if (ids.length > 100) {
         return res.status(400).json({ error: 'Maximum 100 events per batch' });
       }
-      if (typeof category !== 'string') {
-        return res.status(400).json({ error: 'category must be a string' });
+      if (typeof category !== 'string' || !category.trim()) {
+        return res.status(400).json({ error: 'category must be a non-empty string' });
       }
 
       const results: { id: string; success: boolean; error?: string }[] = [];
@@ -720,6 +720,10 @@ export function createEventsRouter(
         const item = importEvents[i];
         if (!item.title || !item.start_time) {
           results.push({ index: i, success: false, error: 'title and start_time are required' });
+          continue;
+        }
+        if (isNaN(new Date(item.start_time).getTime())) {
+          results.push({ index: i, success: false, error: 'start_time must be a valid date' });
           continue;
         }
         try {

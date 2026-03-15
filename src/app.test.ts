@@ -692,6 +692,13 @@ describe('App', () => {
     expect(res.body.error).toContain('category');
   });
 
+  it('PATCH /api/events/batch/category returns 400 for empty string category', async () => {
+    const app = createTestApp();
+    const res = await request(app).patch('/api/events/batch/category').send({ ids: ['x'], category: '   ' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('non-empty');
+  });
+
   // ── Batch Reschedule ─────────────────────────────────
 
   it('PATCH /api/events/batch/reschedule shifts events by offset days', async () => {
@@ -2360,6 +2367,16 @@ describe('App', () => {
     const res = await request(app).post('/api/events/import/json').send({ events: tooMany });
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('200');
+  });
+
+  it('POST /api/events/import/json rejects invalid date format', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/import/json').send({
+      events: [{ title: 'Bad Date', start_time: 'not-a-date' }],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data[0].success).toBe(false);
+    expect(res.body.data[0].error).toContain('valid date');
   });
 
   // ── Calendar excludes archived ──────────────────────────

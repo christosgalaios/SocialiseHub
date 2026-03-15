@@ -78,8 +78,8 @@ export function EventsPage() {
       const { data } = await getEvents();
       setEvents(data);
       showToast('Event pushed successfully', 'success');
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to push event');
     }
   };
 
