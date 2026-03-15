@@ -398,6 +398,11 @@ export async function analyzeMarket(): Promise<ScrapedEvent[]> {
   return body.events;
 }
 
+export async function getMarketStatus(): Promise<{ hasData: boolean; count: number }> {
+  const res = await fetch(`${BASE}/generator/market-status`);
+  return json<{ hasData: boolean; count: number }>(res);
+}
+
 export async function saveIdeaAsDraft(idea: {
   title: string;
   description: string;

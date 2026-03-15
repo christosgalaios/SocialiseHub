@@ -26,6 +26,23 @@ export function createGeneratorRouter(
   const router = Router();
 
   /**
+   * GET /api/generator/market-status
+   * Returns whether market data is available and how many events.
+   */
+  router.get('/market-status', (_req, res, next) => {
+    try {
+      let marketData = analyzer.getMarketData();
+      if (marketData.length === 0 && platformEventStore) {
+        const platformEvents = platformEventStore.getAll();
+        marketData = platformEvents.map(() => ({} as ScrapedEvent)); // just count
+      }
+      res.json({ hasData: marketData.length > 0, count: marketData.length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  /**
    * POST /api/generator/analyze
    * Returns cached market events from market_events table.
    */

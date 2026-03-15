@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { SocialiseEvent, Template, QueuedIdea } from '@shared/types';
-import { getEvents, deleteEvent, duplicateEvent, getTemplates, createEventFromTemplate, pushAllEvents, getNextIdea, generateIdeasPrompt, storeIdeas, acceptIdea, getAllTags, getEventsCsvExportUrl } from '../api/events';
+import type { SocialiseEvent, QueuedIdea } from '@shared/types';
+import { getEvents, deleteEvent, duplicateEvent, pushAllEvents, getNextIdea, generateIdeasPrompt, storeIdeas, acceptIdea, getAllTags, getEventsCsvExportUrl, getMarketStatus } from '../api/events';
 import { EventCard } from '../components/EventCard';
 import { GridSkeleton } from '../components/Skeleton';
 import { useToast } from '../context/ToastContext';
@@ -27,8 +27,6 @@ export function EventsPage() {
   const [sortBy, setSortBy] = useState('start_time');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [availableTags, setAvailableTags] = useState<Array<{ tag: string; count: number }>>([]);
-  const [templates, setTemplates] = useState<Template[]>([]);
-  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showIdeaModal, setShowIdeaModal] = useState(false);
   const [currentIdea, setCurrentIdea] = useState<QueuedIdea | null>(null);
   const [ideaLoading, setIdeaLoading] = useState(false);
@@ -67,7 +65,6 @@ export function EventsPage() {
 
   useEffect(() => {
     let cancelled = false;
-    getTemplates().then(data => { if (!cancelled) setTemplates(data); }).catch(() => {});
     getAllTags().then(data => { if (!cancelled) setAvailableTags(data); }).catch(() => {});
     return () => { cancelled = true; };
   }, []);
@@ -83,16 +80,6 @@ export function EventsPage() {
     }
   };
 
-  const handleCreateFromTemplate = async (templateId: string) => {
-    try {
-      const event = await createEventFromTemplate(templateId);
-      setShowTemplatePicker(false);
-      showToast('Event created from template', 'success');
-      nav(`/events/${event.id}`);
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : 'Failed to create from template', 'error');
-    }
-  };
 
   const handlePush = async (id: string) => {
     try {
@@ -120,6 +107,18 @@ export function EventsPage() {
   };
 
   const handleMagicNew = async () => {
+    // Check market data exists before allowing idea generation
+    try {
+      const { hasData } = await getMarketStatus();
+      if (!hasData) {
+        showToast('Run Market Analysis first (Market page) before generating ideas', 'error');
+        return;
+      }
+    } catch {
+      showToast('Could not check market data — run Market Analysis first', 'error');
+      return;
+    }
+
     setShowIdeaModal(true);
     setIdeaLoading(true);
     setCurrentIdea(null);
@@ -130,7 +129,7 @@ export function EventsPage() {
         setIdeaLoading(false);
         return;
       }
-      // No queued ideas — open AI modal to generate
+      // No queued ideas — open AI modal to generate (market data is included in prompt)
       const { prompt } = await generateIdeasPrompt();
       setIdeaLoading(false);
       setShowIdeaModal(false);

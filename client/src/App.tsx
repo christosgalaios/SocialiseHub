@@ -38,7 +38,7 @@ const primaryNav = [
   { to: '/events', label: 'Events', icon: '📅' },
   { to: '/calendar', label: 'Calendar', icon: '📆' },
   { to: '/analytics', label: 'Analytics', icon: '📈' },
-  { to: '/generator', label: 'Generator', icon: '💡' },
+  { to: '/generator', label: 'Market', icon: '💡' },
 ];
 
 const secondaryNav = [
