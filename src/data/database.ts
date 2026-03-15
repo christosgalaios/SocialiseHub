@@ -189,6 +189,11 @@ function runMigrations(db: Database): void {
     )`);
     db.pragma('user_version = 12');
   }
+  if (currentVersion < 13) {
+    try { db.exec('ALTER TABLE events ADD COLUMN actual_attendance INTEGER'); } catch { /* exists */ }
+    try { db.exec('ALTER TABLE events ADD COLUMN actual_revenue REAL'); } catch { /* exists */ }
+    db.pragma('user_version = 13');
+  }
 }
 
 function createSchema(db: Database): void {

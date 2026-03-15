@@ -485,7 +485,7 @@ export function createEventsRouter(
           ? `"${s.replace(/"/g, '""')}"` : s;
       };
 
-      const headers = ['id', 'title', 'description', 'start_time', 'end_time', 'duration_minutes', 'venue', 'price', 'capacity', 'category', 'status', 'sync_status', 'createdAt', 'updatedAt'];
+      const headers = ['id', 'title', 'description', 'start_time', 'end_time', 'duration_minutes', 'venue', 'price', 'capacity', 'category', 'status', 'sync_status', 'actual_attendance', 'actual_revenue', 'createdAt', 'updatedAt'];
       const rows = events.map(e =>
         headers.map(h => escCsv((e as unknown as Record<string, unknown>)[h] as string)).join(',')
       );
@@ -519,45 +519,6 @@ export function createEventsRouter(
       res.setHeader('Content-Type', 'application/json');
       res.setHeader('Content-Disposition', 'attachment; filename="events.json"');
       res.json({ data: events, exported_at: new Date().toISOString(), total: events.length });
-    } catch (err) {
-      next(err);
-    }
-  });
-
-  router.get('/export/csv', (req, res, next) => {
-    try {
-      let events = store.getAll();
-
-      if (req.query.include_archived !== 'true') {
-        events = events.filter(e => e.status !== 'archived');
-      }
-      const status = req.query.status as string | undefined;
-      if (status) events = events.filter(e => e.status === status);
-      if (req.query.upcoming === 'true') {
-        const now = new Date().toISOString();
-        events = events.filter(e => e.start_time > now);
-      }
-
-      const headers = ['id', 'title', 'description', 'start_time', 'end_time', 'duration_minutes', 'venue', 'price', 'capacity', 'category', 'status', 'sync_status', 'createdAt', 'updatedAt'];
-
-      const escapeCsv = (val: unknown): string => {
-        if (val == null) return '';
-        const str = String(val);
-        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
-          return `"${str.replace(/"/g, '""')}"`;
-        }
-        return str;
-      };
-
-      const rows = events.map(e =>
-        headers.map(h => escapeCsv((e as unknown as Record<string, unknown>)[h])).join(',')
-      );
-
-      const csv = [headers.join(','), ...rows].join('\n');
-
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', 'attachment; filename="events.csv"');
-      res.send(csv);
     } catch (err) {
       next(err);
     }

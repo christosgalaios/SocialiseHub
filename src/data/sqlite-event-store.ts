@@ -13,6 +13,7 @@ import type {
 const UPDATABLE_FIELDS = new Set([
   'title', 'description', 'start_time', 'end_time', 'duration_minutes',
   'venue', 'price', 'capacity', 'image_url', 'category',
+  'actual_attendance', 'actual_revenue',
 ]);
 
 interface EventRow {
@@ -29,6 +30,8 @@ interface EventRow {
   category: string | null;
   status: string;
   sync_status: string | null;
+  actual_attendance: number | null;
+  actual_revenue: number | null;
   created_at: string;
   updated_at: string;
 }
@@ -81,6 +84,8 @@ export class SqliteEventStore {
       category: row.category ?? undefined,
       status: row.status as EventStatus,
       sync_status: (row.sync_status ?? 'local_only') as 'synced' | 'modified' | 'local_only',
+      actual_attendance: row.actual_attendance ?? undefined,
+      actual_revenue: row.actual_revenue ?? undefined,
       platforms,
       createdAt: row.created_at,
       updatedAt: row.updated_at,

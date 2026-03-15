@@ -822,7 +822,7 @@ describe('App', () => {
     expect(res.headers['content-type']).toContain('text/csv');
     expect(res.headers['content-disposition']).toContain('events.csv');
     const lines = res.text.split('\n');
-    expect(lines[0]).toBe('id,title,description,start_time,end_time,duration_minutes,venue,price,capacity,category,status,sync_status,createdAt,updatedAt');
+    expect(lines[0]).toBe('id,title,description,start_time,end_time,duration_minutes,venue,price,capacity,category,status,sync_status,actual_attendance,actual_revenue,createdAt,updatedAt');
     expect(lines).toHaveLength(2); // header + 1 event
     expect(lines[1]).toContain('CSV Event');
   });
@@ -2349,7 +2349,7 @@ describe('App', () => {
     expect(res.headers['content-type']).toContain('text/csv');
     expect(res.headers['content-disposition']).toContain('events.csv');
     const lines = res.text.split('\n');
-    expect(lines[0]).toBe('id,title,description,start_time,end_time,duration_minutes,venue,price,capacity,category,status,sync_status,createdAt,updatedAt');
+    expect(lines[0]).toBe('id,title,description,start_time,end_time,duration_minutes,venue,price,capacity,category,status,sync_status,actual_attendance,actual_revenue,createdAt,updatedAt');
     expect(lines).toHaveLength(2); // header + 1 event
     expect(lines[1]).toContain('CSV Event');
     expect(lines[1]).toContain('Bristol Pub');
@@ -3795,6 +3795,46 @@ describe('App', () => {
       { tag: 'outdoor', count: 1 },
       { tag: 'vip', count: 1 },
     ]);
+  });
+
+  // ── Attendance & Revenue Tracking ────────────────────────
+
+  it('PUT /api/events/:id updates actual_attendance and actual_revenue', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Attendance Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+
+    const res = await request(app).put(`/api/events/${id}`).send({
+      actual_attendance: 18,
+      actual_revenue: 90,
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.data.actual_attendance).toBe(18);
+    expect(res.body.data.actual_revenue).toBe(90);
+
+    // Verify persistence
+    const get = await request(app).get(`/api/events/${id}`);
+    expect(get.body.data.actual_attendance).toBe(18);
+    expect(get.body.data.actual_revenue).toBe(90);
+  });
+
+  it('GET /api/events/export/csv includes attendance and revenue columns', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Revenue CSV', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    await request(app).put(`/api/events/${e.body.data.id}`).send({
+      actual_attendance: 15, actual_revenue: 75,
+    });
+
+    const res = await request(app).get('/api/events/export/csv');
+    expect(res.text).toContain('actual_attendance');
+    expect(res.text).toContain('15');
+    expect(res.text).toContain('75');
   });
 
   it('GET /api/events?tag=X filters by tag', async () => {
