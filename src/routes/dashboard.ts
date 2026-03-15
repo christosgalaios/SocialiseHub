@@ -152,6 +152,28 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
           });
         }
 
+        // Incomplete checklist items for upcoming events (within 14 days)
+        if (isUpcoming) {
+          const daysOut = (new Date(ev.start_time).getTime() - now.getTime()) / 86400000;
+          if (daysOut <= 14) {
+            const checklistStats = db.prepare(
+              'SELECT COUNT(*) as total, SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as done FROM event_checklist WHERE event_id = ?'
+            ).get(ev.id) as { total: number; done: number };
+            if (checklistStats.total > 0 && checklistStats.done < checklistStats.total) {
+              const remaining = checklistStats.total - checklistStats.done;
+              items.push({
+                eventId: ev.id,
+                eventTitle: ev.title,
+                problem: 'incomplete_checklist',
+                problemLabel: `${remaining} checklist item${remaining > 1 ? 's' : ''} incomplete`,
+                urgency: daysOut <= 3 ? 'high' : 'medium',
+                platforms,
+                date: ev.start_time,
+              });
+            }
+          }
+        }
+
         // Unsaved changes (modified but not pushed)
         if (ev.sync_status === 'modified') {
           items.push({

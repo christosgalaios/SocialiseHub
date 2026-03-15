@@ -1532,6 +1532,30 @@ describe('App', () => {
     expect(problems).toContain('no_photos');
   });
 
+  it('GET /api/dashboard/attention flags incomplete checklist for upcoming events', async () => {
+    const app = createTestApp();
+    // Create event 5 days out
+    const futureDate = new Date(Date.now() + 5 * 86400000).toISOString();
+    const e = await request(app).post('/api/events').send({
+      title: 'Checklist Event With Enough Title Length',
+      description: 'A detailed description that is long enough to pass the 20 char minimum requirement.',
+      start_time: futureDate, venue: 'Bristol Pub', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    // Add checklist items, leave them incomplete
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'Book DJ' });
+    await request(app).post(`/api/events/${id}/checklist`).send({ label: 'Order drinks' });
+
+    const res = await request(app).get('/api/dashboard/attention');
+    expect(res.status).toBe(200);
+    const checklistProblems = res.body.items.filter(
+      (i: { eventId: string }) => i.eventId === id
+    ).flatMap((i: { problems: Array<{ problem: string }> }) => i.problems)
+      .filter((p: { problem: string }) => p.problem === 'incomplete_checklist');
+    expect(checklistProblems.length).toBe(1);
+    expect(checklistProblems[0].label).toContain('2 checklist items incomplete');
+  });
+
   it('GET /api/dashboard/upcoming returns events array', async () => {
     const app = createTestApp();
     const res = await request(app).get('/api/dashboard/upcoming');
