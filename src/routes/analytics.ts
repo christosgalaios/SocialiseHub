@@ -650,8 +650,8 @@ Respond with ONLY the analysis text. No preamble, no introductory text.`;
           SUM(COALESCE(revenue, 0)) as total_revenue
         FROM platform_events
         WHERE date IS NOT NULL
-        GROUP BY day_index
-        ORDER BY day_index
+        GROUP BY 1
+        ORDER BY 1
       `).all() as Array<{
         day_index: number;
         event_count: number;

@@ -456,6 +456,7 @@ export function AnalyticsPage() {
   const [topEvents, setTopEvents] = useState<TopEvent[]>([]);
   const [dayOfWeek, setDayOfWeek] = useState<DayOfWeekAnalytics[]>([]);
   const [overviewExtrasLoading, setOverviewExtrasLoading] = useState(false);
+  const [overviewExtrasLoaded, setOverviewExtrasLoaded] = useState(false);
 
   // Drill-down
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
@@ -490,12 +491,14 @@ export function AnalyticsPage() {
 
   // Load overview extras (top events + day-of-week) lazily — only once
   const loadOverviewExtras = async (signal: { cancelled: boolean }) => {
+    if (overviewExtrasLoaded) return;
     setOverviewExtrasLoading(true);
     try {
       const [top, dow] = await Promise.all([getAnalyticsTopEvents(), getAnalyticsDayOfWeek()]);
       if (signal.cancelled) return;
       setTopEvents(top);
       setDayOfWeek(dow);
+      setOverviewExtrasLoaded(true);
     } catch {
       // non-fatal
     } finally {
@@ -572,7 +575,7 @@ export function AnalyticsPage() {
     return (
       <div style={styles.error}>
         <span>{error}</span>
-        <button style={styles.retryBtn} onClick={() => loadData()}>
+        <button style={styles.retryBtn} onClick={() => loadData({ cancelled: false })}>
           Retry
         </button>
       </div>
