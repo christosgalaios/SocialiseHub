@@ -81,15 +81,16 @@ export class AutomationEngine {
     const timeout = step.timeout ?? DEFAULT_TIMEOUT;
 
     switch (step.action) {
-      case 'navigate':
+      case 'navigate': {
         if (!step.url) throw new Error('Navigate step requires url');
+        const urlBefore = this.wc.getURL();
         await this.wc.loadURL(step.url);
         // Wait for the URL to actually change — loadURL resolves on navigation
-        // commit, but the old page's DOM may still be present. Poll until the
-        // webContents URL matches the target, then allow the page to settle.
-        await this.waitForUrlChange(step.url, step.timeout ?? DEFAULT_TIMEOUT);
+        // commit, but the old page's DOM may still be present.
+        await this.waitForUrlChange(urlBefore, step.url, step.timeout ?? DEFAULT_TIMEOUT);
         await this.sleep(500);
         break;
+      }
 
       case 'waitForSelector':
         if (!step.selector) throw new Error('waitForSelector requires selector');
@@ -159,12 +160,16 @@ export class AutomationEngine {
     throw new Error(`Timeout waiting for selector: ${selector}`);
   }
 
-  private async waitForUrlChange(targetUrl: string, timeout: number): Promise<void> {
+  private async waitForUrlChange(urlBefore: string, targetUrl: string, timeout: number): Promise<void> {
+    const targetBase = targetUrl.split('#')[0].replace(/\/$/, '');
     const start = Date.now();
     while (Date.now() - start < timeout) {
       const currentUrl = this.wc.getURL();
-      // Match on origin+pathname (ignore hash for hash-routed apps)
-      if (currentUrl.startsWith(new URL(targetUrl).origin)) return;
+      // Success: URL changed to target (ignoring trailing slash and hash)
+      const currentBase = currentUrl.split('#')[0].replace(/\/$/, '');
+      if (currentBase === targetBase) return;
+      // Also succeed if URL changed from before (redirect happened)
+      if (currentUrl !== urlBefore) return;
       await this.sleep(POLL_INTERVAL);
     }
     // Don't throw — the page may have redirected legitimately

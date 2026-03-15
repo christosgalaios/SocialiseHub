@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import type { SqliteEventStore } from '../data/sqlite-event-store.js';
 import type { PlatformEventStore } from '../data/platform-event-store.js';
-import { COMPARABLE_FIELDS, valuesMatch, normalizeString, type FieldConflict } from './conflict-utils.js';
+import { COMPARABLE_FIELDS, valuesMatch, type FieldConflict } from './conflict-utils.js';
 
 export function createConflictsRouter(
   eventStore: SqliteEventStore,
@@ -171,5 +171,3 @@ export function createConflictsRouter(
   return router;
 }
 
-// Re-export for use in normalizeString if needed externally
-export { normalizeString };

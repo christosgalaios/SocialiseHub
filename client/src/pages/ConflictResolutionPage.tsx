@@ -53,31 +53,43 @@ export function ConflictResolutionPage() {
   const [syncErrors, setSyncErrors] = useState<Array<{ platform: string; error: string }>>([]);
   const [finalConflicts, setFinalConflicts] = useState<FieldConflict[]>([]);
 
-  const load = useCallback(async () => {
+  const loadConflicts = useCallback(() => {
     if (!id) return;
-    let cancelled = false;
     setPageState('loading');
     setError(null);
-    try {
-      const result = await getEventConflicts(id);
-      if (!cancelled) {
+    getEventConflicts(id)
+      .then((result) => {
         setData(result);
         setEditedFields({});
         setPageState('idle');
-      }
-    } catch (err) {
-      if (!cancelled) {
+      })
+      .catch((err) => {
         setError(err instanceof Error ? err.message : 'Failed to load conflicts');
         setPageState('error');
-      }
-    }
-    return () => { cancelled = true; };
+      });
   }, [id]);
 
   useEffect(() => {
-    const cleanup = load();
-    return () => { cleanup?.then?.((fn) => fn && fn()); };
-  }, [load]);
+    let cancelled = false;
+    if (!id) return;
+    setPageState('loading');
+    setError(null);
+    getEventConflicts(id)
+      .then((result) => {
+        if (!cancelled) {
+          setData(result);
+          setEditedFields({});
+          setPageState('idle');
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : 'Failed to load conflicts');
+          setPageState('error');
+        }
+      });
+    return () => { cancelled = true; };
+  }, [id]);
 
   const getDisplayValue = (field: string, hubValue: string | number | null): string => {
     if (field in editedFields) return String(editedFields[field]);
@@ -185,7 +197,7 @@ export function ConflictResolutionPage() {
         <div style={styles.errorBox}>
           <div style={styles.errorTitle}>Failed to load conflicts</div>
           <div style={styles.errorMsg}>{error}</div>
-          <button style={styles.retryBtn} onClick={load}>Retry</button>
+          <button style={styles.retryBtn} onClick={loadConflicts}>Retry</button>
         </div>
       </div>
     );
@@ -223,7 +235,7 @@ export function ConflictResolutionPage() {
             <div style={{ ...styles.statusBar, background: '#fef2f2', color: '#dc2626' }}>
               {finalConflicts.length} conflict{finalConflicts.length !== 1 ? 's' : ''} remaining after sync
             </div>
-            <button style={styles.retryBtn} onClick={load}>Review Remaining Conflicts</button>
+            <button style={styles.retryBtn} onClick={loadConflicts}>Review Remaining Conflicts</button>
           </div>
         )}
       </div>
