@@ -1,3 +1,5 @@
+> **Cross-project rules:** See [`claude-shared`](https://github.com/christosgalaios/claude-shared) repo (`~/.claude/claude-shared/CLAUDE.md`). Run `bash setup.sh` on new machines.
+
 # SocialiseHub
 
 AI-powered business operations tool for the Socialise events company.
