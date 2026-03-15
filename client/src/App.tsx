@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink } from 'react-router-dom';
 import { DashboardPage } from './pages/DashboardPage';
 import { EventsPage } from './pages/EventsPage';
@@ -18,20 +18,8 @@ import { SettingsPage } from './pages/SettingsPage';
 import { ConflictResolutionPage } from './pages/ConflictResolutionPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
-// Typed Electron API exposed via preload
-interface ElectronAPI {
-  isElectron: boolean;
-  toggleClaudePanel: () => Promise<boolean>;
-  focusClaudePanel: () => Promise<void>;
-  isClaudePanelOpen: () => Promise<boolean>;
-  getClaudePanelWidth: () => Promise<number>;
-  resizeClaudePanel: (width: number) => Promise<number>;
-  getExtensionStatus: () => Promise<{ loaded: boolean; error?: string; diagnosis?: string; fix?: string }>;
-}
-
 // Detect Electron environment
-const electronAPI = (window as unknown as { electronAPI?: ElectronAPI }).electronAPI;
-const isElectron = !!electronAPI?.isElectron;
+const isElectron = !!(window as unknown as { electronAPI?: { isElectron: boolean } }).electronAPI?.isElectron;
 
 const primaryNav = [
   { to: '/', label: 'Dashboard', icon: '📊' },
@@ -51,71 +39,8 @@ const SIDEBAR_EXPANDED = 240;
 const SIDEBAR_COLLAPSED = 64;
 
 export function App() {
-  const [claudeOpen, setClaudeOpen] = useState(true);
   const [collapsed, setCollapsed] = useState(false);
   const [terminalOpen, setTerminalOpen] = useState(false);
-  const [devToolsOpen, setDevToolsOpen] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const dragStartX = useRef(0);
-  const dragStartWidth = useRef(0);
-  const panelWidthRef = useRef(420);
-  const didDrag = useRef(false);
-
-  useEffect(() => {
-    if (isElectron && electronAPI) {
-      electronAPI.isClaudePanelOpen().then((open) => {
-        setClaudeOpen(open);
-      });
-      electronAPI.getClaudePanelWidth().then((w) => {
-        panelWidthRef.current = w;
-      });
-    }
-  }, []);
-
-  const handleToggleClaude = async () => {
-    if (isElectron && electronAPI) {
-      const newState = await electronAPI.toggleClaudePanel();
-      setClaudeOpen(newState);
-    }
-  };
-
-  // ── Drag-to-resize the Claude panel ──
-  const handleDragStart = useCallback((e: React.MouseEvent) => {
-    if (!claudeOpen) return;
-    e.preventDefault();
-    setDragging(true);
-    didDrag.current = false;
-    dragStartX.current = e.clientX;
-    dragStartWidth.current = panelWidthRef.current;
-  }, [claudeOpen]);
-
-  useEffect(() => {
-    if (!dragging) return;
-
-    const handleMouseMove = (e: MouseEvent) => {
-      // Only count as drag if moved more than 4px (prevents accidental drag on click)
-      const delta = dragStartX.current - e.clientX;
-      if (Math.abs(delta) > 4) {
-        didDrag.current = true;
-      }
-      if (didDrag.current) {
-        const newWidth = dragStartWidth.current + delta;
-        panelWidthRef.current = newWidth;
-        electronAPI?.resizeClaudePanel(newWidth);
-      }
-    };
-
-    const handleMouseUp = () => {
-      setDragging(false);
-    };
-
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-    };
-  }, [dragging]);
 
   const sidebarWidth = collapsed ? SIDEBAR_COLLAPSED : SIDEBAR_EXPANDED;
 
@@ -124,9 +49,6 @@ export function App() {
     <BrowserRouter>
       <div style={styles.layout}>
         <ToastContainer />
-        {/* Transparent overlay during drag to prevent iframe stealing mouse events */}
-        {dragging && <div style={styles.dragOverlay} />}
-
         {/* ── Sidebar ── */}
         <nav style={{ ...styles.sidebar, width: sidebarWidth }}>
           <div style={{ ...styles.logo, justifyContent: collapsed ? 'center' : 'flex-start', padding: collapsed ? '0 0 28px' : '0 24px 28px' }}>
@@ -178,62 +100,22 @@ export function App() {
           </div>
 
           <div style={{ ...styles.sidebarFooter, padding: collapsed ? '16px 8px' : '16px 24px' }}>
-            {/* Dev tools — sandwiched behind a toggle */}
+            {/* Console toggle — always visible in sidebar */}
             {isElectron && (
-              <>
-                <button
-                  style={{
-                    ...styles.devToolsToggle,
-                    justifyContent: collapsed ? 'center' : 'flex-start',
-                    padding: collapsed ? '6px 0' : '6px 14px',
-                  }}
-                  onClick={() => setDevToolsOpen((o) => !o)}
-                  title={devToolsOpen ? 'Hide dev tools' : 'Show dev tools'}
-                >
-                  {collapsed ? (
-                    <span style={{ fontSize: 12, color: '#555' }}>{devToolsOpen ? '▾' : '▸'}</span>
-                  ) : (
-                    <>
-                      <span style={{ fontSize: 11, color: '#555' }}>{devToolsOpen ? '▾' : '▸'}</span>
-                      <span>Dev Tools</span>
-                    </>
-                  )}
-                </button>
-
-                {devToolsOpen && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <button
-                      style={{
-                        ...styles.toggleBtn,
-                        ...styles.terminalToggle,
-                        justifyContent: collapsed ? 'center' : 'flex-start',
-                        padding: collapsed ? '8px 0' : '8px 14px',
-                        fontSize: 12,
-                      }}
-                      onClick={() => setTerminalOpen((o) => !o)}
-                      title={terminalOpen ? 'Hide console' : 'Show console'}
-                    >
-                      <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 800 }}>{'>_'}</span>
-                      {!collapsed && <span>{terminalOpen ? 'Hide Console' : 'Console'}</span>}
-                    </button>
-
-                    <button
-                      style={{
-                        ...styles.toggleBtn,
-                        ...styles.claudeToggle,
-                        justifyContent: collapsed ? 'center' : 'flex-start',
-                        padding: collapsed ? '8px 0' : '8px 14px',
-                        fontSize: 12,
-                      }}
-                      onClick={handleToggleClaude}
-                      title={claudeOpen ? 'Hide Claude panel' : 'Show Claude panel'}
-                    >
-                      <span style={{ fontSize: 13 }}>🤖</span>
-                      {!collapsed && <span>{claudeOpen ? 'Hide Claude' : 'Claude'}</span>}
-                    </button>
-                  </div>
-                )}
-              </>
+              <button
+                style={{
+                  ...styles.toggleBtn,
+                  ...styles.terminalToggle,
+                  justifyContent: collapsed ? 'center' : 'flex-start',
+                  padding: collapsed ? '8px 0' : '8px 14px',
+                  fontSize: 12,
+                }}
+                onClick={() => setTerminalOpen((o) => !o)}
+                title={terminalOpen ? 'Hide console' : 'Show console'}
+              >
+                <span style={{ fontSize: 12, fontFamily: 'monospace', fontWeight: 800 }}>{'>_'}</span>
+                {!collapsed && <span>{terminalOpen ? 'Hide Console' : 'Console'}</span>}
+              </button>
             )}
 
             <button
@@ -274,23 +156,7 @@ export function App() {
           {terminalOpen && isElectron && <TerminalPanel />}
         </div>
 
-        {/* ── Claude panel resize handle + fold/unfold ── */}
-        {isElectron && (
-          <div
-            style={{
-              ...styles.panelHandle,
-              cursor: claudeOpen ? (dragging ? 'col-resize' : 'col-resize') : 'pointer',
-            }}
-            onMouseDown={handleDragStart}
-            onClick={() => {
-              // Only toggle if it was a pure click, not a drag gesture
-              if (!didDrag.current) handleToggleClaude();
-            }}
-            title={claudeOpen ? 'Drag to resize · Double-click to fold' : 'Click to unfold Claude panel'}
-          >
-            <span style={styles.handleArrow}>{claudeOpen ? '⋮' : '‹'}</span>
-          </div>
-        )}
+        {/* Claude panel resize handle removed — Claude runs in bottom console */}
       </div>
     </BrowserRouter>
     </ToastProvider>

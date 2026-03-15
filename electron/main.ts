@@ -208,9 +208,6 @@ async function loadChromeExtension(config: AppConfig): Promise<boolean> {
 
 let mainWindow: BaseWindow | null = null;
 let appView: WebContentsView | null = null;
-let claudeView: WebContentsView | null = null;
-let claudePanelOpen = true;
-let claudeViewAttached = false;
 let ptyProcess: ReturnType<typeof pty.spawn> | null = null;
 let automationView: WebContentsView | null = null;
 let automationViewAttached = false;
@@ -218,74 +215,36 @@ let automationViewAttached = false;
 // ── Layout management ───────────────────────────────────
 
 /**
- * Lays out the app view and Claude panel within the BaseWindow.
- * When the panel is open, the app takes (width - panelWidth) and Claude takes panelWidth.
- * When hidden, the app takes full width and the Claude view is detached (but stays alive).
+ * Lays out the app view within the BaseWindow.
+ * App takes full width. Automation view splits the right side when active.
  */
 function layoutViews(win: BaseWindow, panelWidth: number): void {
-  if (!appView || !claudeView) return;
+  if (!appView) return;
 
   const { width, height } = win.getContentBounds();
 
-  if (claudePanelOpen) {
-    const appWidth = Math.max(400, width - panelWidth);
-    const actualPanelWidth = width - appWidth;
-    appView.setBounds({ x: 0, y: 0, width: appWidth, height });
-    claudeView.setBounds({ x: appWidth, y: 0, width: actualPanelWidth, height });
-
-    if (!claudeViewAttached) {
-      win.contentView.addChildView(claudeView);
-      claudeViewAttached = true;
-    }
-  } else {
-    appView.setBounds({ x: 0, y: 0, width, height });
-
-    if (claudeViewAttached) {
-      win.contentView.removeChildView(claudeView);
-      claudeViewAttached = false;
-    }
-  }
-
-  // If automation view is showing, re-layout it too
+  // If automation view is showing, split the window
   if (automationViewAttached && automationView) {
     const appWidth = Math.max(400, width - panelWidth);
     const actualPanelWidth = width - appWidth;
-    appView?.setBounds({ x: 0, y: 0, width: appWidth, height });
+    appView.setBounds({ x: 0, y: 0, width: appWidth, height });
     automationView.setBounds({ x: appWidth, y: 0, width: actualPanelWidth, height });
+  } else {
+    appView.setBounds({ x: 0, y: 0, width, height });
   }
 }
 
-function togglePanel(config: AppConfig): boolean {
-  if (!mainWindow) return false;
-
-  claudePanelOpen = !claudePanelOpen;
-  config.claudePanelOpen = claudePanelOpen;
-  saveConfig(config);
-
-  layoutViews(mainWindow, config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH);
-  return claudePanelOpen;
+function togglePanel(_config: AppConfig): boolean {
+  // Claude panel removed — no-op, returns false
+  return false;
 }
 
-function focusPanel(config: AppConfig): void {
-  if (!mainWindow || !claudeView) return;
-
-  if (!claudePanelOpen) {
-    claudePanelOpen = true;
-    config.claudePanelOpen = true;
-    saveConfig(config);
-    layoutViews(mainWindow, config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH);
-  }
-
-  claudeView.webContents.focus();
+function focusPanel(_config: AppConfig): void {
+  // Claude panel removed — no-op
 }
 
 function showAutomationView(win: BaseWindow, panelWidth: number): void {
   if (!automationView || automationViewAttached) return;
-  // Hide Claude panel if open
-  if (claudePanelOpen && claudeView && claudeViewAttached) {
-    win.contentView.removeChildView(claudeView);
-    claudeViewAttached = false;
-  }
   win.contentView.addChildView(automationView);
   automationViewAttached = true;
   const { width, height } = win.getContentBounds();
@@ -307,7 +266,6 @@ function hideAutomationView(win: BaseWindow, config: AppConfig): void {
 
 async function createMainWindow(port: number, config: AppConfig, hasExtension: boolean): Promise<BaseWindow> {
   const bounds = config.windowBounds ?? { width: 1400, height: 900 };
-  claudePanelOpen = config.claudePanelOpen ?? true;
   const panelWidth = config.claudePanelWidth ?? DEFAULT_PANEL_WIDTH;
 
   const win = new BaseWindow({
@@ -329,13 +287,7 @@ async function createMainWindow(port: number, config: AppConfig, hasExtension: b
     },
   });
 
-  // ── Claude View (right panel — claude.ai chat) ──
-  claudeView = new WebContentsView({
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-    },
-  });
+  // Claude View removed — Claude runs in the bottom console terminal instead
 
   // ── Automation View (right panel — platform websites during automation) ──
   const automationSession = session.fromPartition('persist:automation');
@@ -365,7 +317,7 @@ async function createMainWindow(port: number, config: AppConfig, hasExtension: b
   // Add app view (always visible)
   win.contentView.addChildView(appView);
 
-  // Set initial layout (adds claudeView if panel is open)
+  // Set initial layout (app takes full width)
   layoutViews(win, panelWidth);
 
   // Handle window resize — recalculate layout
@@ -398,20 +350,7 @@ async function createMainWindow(port: number, config: AppConfig, hasExtension: b
     return { action: 'deny' };
   });
 
-  // ── Claude View: keep auth flows in-panel, open other links externally ──
-  claudeView.webContents.setWindowOpenHandler(({ url }) => {
-    if (
-      url.includes('claude.ai') ||
-      url.includes('anthropic.com') ||
-      url.includes('accounts.google.com') ||
-      url.includes('appleid.apple.com') ||
-      url.includes('login.microsoftonline.com')
-    ) {
-      return { action: 'allow' };
-    }
-    shell.openExternal(url);
-    return { action: 'deny' };
-  });
+  // Claude View removed — no link handler needed
 
   // Load the SocialiseHub app
   if (isDev) {
@@ -419,11 +358,7 @@ async function createMainWindow(port: number, config: AppConfig, hasExtension: b
   } else {
     appView.webContents.loadURL(`http://localhost:${port}`);
   }
-  // Load Claude panel — always use claude.ai for maximum reliability.
-  // The extension's content scripts inject into appView for DOM access,
-  // while claude.ai in the right panel provides the chat interface.
-  claudeView.webContents.loadURL('https://claude.ai/new');
-  console.log('Claude panel: loading claude.ai');
+  // Claude panel removed — Claude runs in the bottom console terminal
 
   // Log extension status once app is loaded
   appView.webContents.on('did-finish-load', () => {
@@ -439,10 +374,8 @@ async function createMainWindow(port: number, config: AppConfig, hasExtension: b
   // Cleanup on window close
   win.on('closed', () => {
     appView = null;
-    claudeView = null;
     automationView = null;
     mainWindow = null;
-    claudeViewAttached = false;
     automationViewAttached = false;
   });
 
@@ -474,7 +407,7 @@ function setupIpcHandlers(config: AppConfig): void {
   });
 
   ipcMain.handle('get-claude-panel-state', () => {
-    return claudePanelOpen;
+    return false; // Claude panel removed
   });
 
   ipcMain.handle('get-extension-status', () => {

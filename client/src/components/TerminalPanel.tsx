@@ -1,15 +1,47 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 
-interface Props {
-  height?: number;
-}
+const MIN_HEIGHT = 120;
+const MAX_HEIGHT_RATIO = 0.8; // max 80% of viewport
+const DEFAULT_HEIGHT = 260;
 
-export function TerminalPanel({ height = 260 }: Props) {
+export function TerminalPanel() {
   const containerRef = useRef<HTMLDivElement>(null);
   const xtermRef = useRef<Terminal | null>(null);
+  const [height, setHeight] = useState(DEFAULT_HEIGHT);
+  const [dragging, setDragging] = useState(false);
+  const dragStartY = useRef(0);
+  const dragStartHeight = useRef(0);
+
+  // Drag-to-resize handler
+  const handleDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setDragging(true);
+    dragStartY.current = e.clientY;
+    dragStartHeight.current = height;
+  }, [height]);
+
+  useEffect(() => {
+    if (!dragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const delta = dragStartY.current - e.clientY; // dragging up = larger
+      const maxH = Math.floor(window.innerHeight * MAX_HEIGHT_RATIO);
+      const newHeight = Math.max(MIN_HEIGHT, Math.min(dragStartHeight.current + delta, maxH));
+      setHeight(newHeight);
+    };
+
+    const handleMouseUp = () => setDragging(false);
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [dragging]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -96,16 +128,39 @@ export function TerminalPanel({ height = 260 }: Props) {
   }, []);
 
   return (
-    <div
-      style={{
-        height,
-        borderTop: '2px solid #1a1a2e',
-        background: '#0d0d1a',
-        overflow: 'hidden',
-        flexShrink: 0,
-      }}
-    >
-      <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+    <div style={{ flexShrink: 0 }}>
+      {/* Transparent overlay during drag to prevent terminal stealing mouse events */}
+      {dragging && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, cursor: 'row-resize' }} />
+      )}
+      {/* Drag handle */}
+      <div
+        style={{
+          height: 6,
+          background: '#1a1a2e',
+          cursor: 'row-resize',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+        onMouseDown={handleDragStart}
+      >
+        <div style={{
+          width: 40,
+          height: 3,
+          borderRadius: 2,
+          background: '#333',
+        }} />
+      </div>
+      <div
+        style={{
+          height,
+          background: '#0d0d1a',
+          overflow: 'hidden',
+        }}
+      >
+        <div ref={containerRef} style={{ width: '100%', height: '100%' }} />
+      </div>
     </div>
   );
 }
