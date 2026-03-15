@@ -25,10 +25,30 @@ async function json<T>(res: Response): Promise<T> {
 
 // ── Events ──────────────────────────────────────────────
 
-export async function getEvents(): Promise<SocialiseEvent[]> {
-  const res = await fetch(`${BASE}/events`);
-  const body = await json<{ data: SocialiseEvent[] }>(res);
-  return body.data;
+export interface EventFilters {
+  status?: string;
+  sync_status?: string;
+  search?: string;
+  venue?: string;
+  upcoming?: boolean;
+  start_after?: string;
+  start_before?: string;
+  sort_by?: string;
+  order?: 'asc' | 'desc';
+  page?: number;
+  per_page?: number;
+}
+
+export async function getEvents(filters?: EventFilters): Promise<{ data: SocialiseEvent[]; total: number }> {
+  const params = new URLSearchParams();
+  if (filters) {
+    for (const [key, val] of Object.entries(filters)) {
+      if (val !== undefined && val !== '') params.set(key, String(val));
+    }
+  }
+  const qs = params.toString();
+  const res = await fetch(`${BASE}/events${qs ? `?${qs}` : ''}`);
+  return json<{ data: SocialiseEvent[]; total: number }>(res);
 }
 
 export async function getEvent(id: string): Promise<SocialiseEvent> {

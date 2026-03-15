@@ -42,7 +42,7 @@ export function CalendarPage() {
   useEffect(() => {
     setLoading(true);
     getEvents()
-      .then(setEvents)
+      .then(r => setEvents(r.data))
       .catch(() => {})
       .finally(() => setLoading(false));
   }, []);

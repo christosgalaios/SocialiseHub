@@ -36,7 +36,7 @@ export function EventsPage() {
     try {
       setLoading(true);
       setError(null);
-      const data = await getEvents();
+      const { data } = await getEvents();
       setEvents(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load events');
@@ -75,7 +75,7 @@ export function EventsPage() {
   const handlePush = async (id: string) => {
     try {
       await pushAllEvents(id);
-      const data = await getEvents();
+      const { data } = await getEvents();
       setEvents(data);
       showToast('Event pushed successfully', 'success');
     } catch (err: any) {

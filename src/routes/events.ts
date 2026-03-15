@@ -37,11 +37,25 @@ export function createEventsRouter(
         events = events.filter(e => e.title.toLowerCase().includes(q));
       }
 
+      // Filter by venue (case-insensitive substring match)
+      const venue = req.query.venue as string | undefined;
+      if (venue) {
+        const v = venue.toLowerCase();
+        events = events.filter(e => e.venue?.toLowerCase().includes(v));
+      }
+
       // Filter upcoming only
       if (req.query.upcoming === 'true') {
         const now = new Date().toISOString();
         events = events.filter(e => e.start_time > now);
       }
+
+      // Date range filters
+      const startAfter = req.query.start_after as string | undefined;
+      if (startAfter) events = events.filter(e => e.start_time >= startAfter);
+
+      const startBefore = req.query.start_before as string | undefined;
+      if (startBefore) events = events.filter(e => e.start_time <= startBefore);
 
       // Sorting
       const sortBy = req.query.sort_by as string | undefined;

@@ -317,6 +317,55 @@ describe('App', () => {
     expect(res.body.data[0].title).toBe('Future Event');
   });
 
+  it('GET /api/events?venue=studio filters by venue', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Yoga', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'Yoga Studio', price: 5, capacity: 20,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Pub Quiz', description: 'D', start_time: '2030-01-02T19:00:00Z',
+      venue: 'The Lanes', price: 0, capacity: 50,
+    });
+    const res = await request(app).get('/api/events?venue=studio');
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].title).toBe('Yoga');
+  });
+
+  it('GET /api/events?start_after=...&start_before=... filters by date range', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Early', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Mid', description: 'D', start_time: '2030-03-15T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Late', description: 'D', start_time: '2030-06-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get('/api/events?start_after=2030-02-01T00:00:00Z&start_before=2030-04-01T00:00:00Z');
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].title).toBe('Mid');
+  });
+
+  it('GET /api/events?start_after=... filters events after date', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Old', description: 'D', start_time: '2020-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    await request(app).post('/api/events').send({
+      title: 'New', description: 'D', start_time: '2030-06-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get('/api/events?start_after=2025-01-01T00:00:00Z');
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].title).toBe('New');
+  });
+
   it('GET /api/sync/dashboard/summary returns stats', async () => {
     const app = createTestApp();
     const res = await request(app).get('/api/sync/dashboard/summary');
