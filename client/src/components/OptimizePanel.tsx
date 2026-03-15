@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type { EventPhoto, UnsplashPhoto } from '../api/events';
 import { PhotoGrid } from './PhotoGrid';
 import { PhotoSearchModal } from './PhotoSearchModal';
@@ -41,10 +41,9 @@ export function OptimizePanel({ eventId, eventTitle }: OptimizePanelProps) {
     }
   };
 
-  // Expose for parent to trigger load
-  if (!photosLoaded) {
-    ensurePhotos().catch(() => {});
-  }
+  useEffect(() => {
+    ensurePhotos();
+  }, [eventId]);
 
   const handleUploadFiles = async (files: FileList | File[], source = 'upload') => {
     setUploading(true);

@@ -834,11 +834,15 @@ export async function setupService(
   platform: PlatformName,
   config: Record<string, unknown>,
 ): Promise<void> {
-  await fetch(`${BASE}/services/${platform}/setup`, {
+  const res = await fetch(`${BASE}/services/${platform}/setup`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(config),
   });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(body.error || res.statusText);
+  }
 }
 
 // ── Tags ─────────────────────────────────────────────────

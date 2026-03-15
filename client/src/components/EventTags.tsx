@@ -5,11 +5,12 @@ export function EventTags({ eventId }: { eventId: string }) {
   const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     getEventTags(eventId)
       .then(setTags)
-      .catch(() => {})
+      .catch(() => setError('Failed to load tags'))
       .finally(() => setLoading(false));
   }, [eventId]);
 
@@ -19,14 +20,14 @@ export function EventTags({ eventId }: { eventId: string }) {
       const updated = await addEventTag(eventId, newTag.trim());
       setTags(updated);
       setNewTag('');
-    } catch { /* ignore */ }
+    } catch { setError('Failed to add tag'); }
   };
 
   const handleRemove = async (tag: string) => {
     try {
       await removeEventTag(eventId, tag);
       setTags(prev => prev.filter(t => t !== tag));
-    } catch { /* ignore */ }
+    } catch { setError('Failed to remove tag'); }
   };
 
   if (loading) return null;
@@ -34,6 +35,7 @@ export function EventTags({ eventId }: { eventId: string }) {
   return (
     <div style={styles.container}>
       <label style={styles.label}>Tags</label>
+      {error && <span style={styles.errorMsg}>{error}</span>}
       <div style={styles.tagList}>
         {tags.map(tag => (
           <span key={tag} style={styles.tag}>
@@ -123,4 +125,5 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'center',
     justifyContent: 'center',
   },
+  errorMsg: { fontSize: 12, color: '#dc2626' },
 };

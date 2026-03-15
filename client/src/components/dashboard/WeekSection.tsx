@@ -24,6 +24,7 @@ export function WeekSection() {
   const [days, setDays] = useState<Record<string, WeekDayEvent[]> | null>(null);
   const [totalEvents, setTotalEvents] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -32,7 +33,7 @@ export function WeekSection() {
         setDays(res.data);
         setTotalEvents(res.totalEvents);
       })
-      .catch(() => {})
+      .catch(() => setError(true))
       .finally(() => setLoading(false));
   }, []);
 
@@ -41,6 +42,17 @@ export function WeekSection() {
       <section style={styles.section}>
         <h2 style={styles.sectionTitle}>This Week</h2>
         <div style={styles.loadingText}>Loading...</div>
+      </section>
+    );
+  }
+
+  if (error) {
+    return (
+      <section style={styles.section}>
+        <h2 style={styles.sectionTitle}>This Week</h2>
+        <div style={styles.empty}>
+          <p style={styles.emptyText}>Unable to load week view</p>
+        </div>
       </section>
     );
   }

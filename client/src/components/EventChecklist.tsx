@@ -14,14 +14,16 @@ export function EventChecklist({ eventId }: { eventId: string }) {
   const [done, setDone] = useState(0);
   const [newLabel, setNewLabel] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
+    setError(null);
     try {
       const res = await getEventChecklist(eventId);
       setItems(res.data);
       setTotal(res.total);
       setDone(res.done);
-    } catch { /* ignore */ }
+    } catch { setError('Failed to load checklist'); }
     setLoading(false);
   };
 
@@ -33,28 +35,28 @@ export function EventChecklist({ eventId }: { eventId: string }) {
       await addChecklistItem(eventId, newLabel.trim());
       setNewLabel('');
       await load();
-    } catch { /* ignore */ }
+    } catch { setError('Action failed — please try again'); }
   };
 
   const handleToggle = async (item: ChecklistItem) => {
     try {
       await updateChecklistItem(eventId, item.id, { completed: !item.completed });
       await load();
-    } catch { /* ignore */ }
+    } catch { setError('Action failed — please try again'); }
   };
 
   const handleDelete = async (itemId: number) => {
     try {
       await deleteChecklistItem(eventId, itemId);
       await load();
-    } catch { /* ignore */ }
+    } catch { setError('Action failed — please try again'); }
   };
 
   const handleGenerate = async () => {
     try {
       await generateChecklist(eventId);
       await load();
-    } catch { /* ignore */ }
+    } catch { setError('Action failed — please try again'); }
   };
 
   if (loading) return null;
@@ -76,6 +78,10 @@ export function EventChecklist({ eventId }: { eventId: string }) {
         <div style={styles.progressBar}>
           <div style={{ ...styles.progressFill, width: `${progress}%` }} />
         </div>
+      )}
+
+      {error && (
+        <div style={styles.errorMsg}>{error}</div>
       )}
 
       <div style={styles.list}>
@@ -202,4 +208,5 @@ const styles: Record<string, React.CSSProperties> = {
     cursor: 'pointer',
     alignSelf: 'flex-start',
   },
+  errorMsg: { fontSize: 12, color: '#dc2626', padding: '4px 0' },
 };
