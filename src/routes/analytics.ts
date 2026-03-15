@@ -146,7 +146,7 @@ export function createAnalyticsRouter(db: Database): Router {
              CAST(strftime('%w', date) AS INTEGER) as day_of_week,
              CAST(strftime('%H', date) AS INTEGER) as hour,
              COUNT(*) as event_count,
-             AVG(COALESCE(attendance, 0)) as avg_attendance
+             AVG(CASE WHEN attendance IS NOT NULL AND attendance > 0 THEN attendance END) as avg_attendance
            FROM platform_events
            ${dateFilter}
            GROUP BY day_of_week, hour
@@ -529,7 +529,7 @@ Respond with ONLY the analysis text. No preamble, no introductory text.`;
           SUM(COALESCE(attendance, 0)) as total_attendance,
           AVG(CASE WHEN capacity > 0 THEN CAST(attendance AS REAL) / CAST(capacity AS REAL) ELSE NULL END) as avg_fill_rate,
           SUM(COALESCE(revenue, 0)) as total_revenue,
-          AVG(COALESCE(attendance, 0)) as avg_attendance
+          AVG(CASE WHEN attendance IS NOT NULL AND attendance > 0 THEN attendance END) as avg_attendance
         FROM platform_events
         WHERE organizer_name IS NOT NULL AND organizer_name != ''
         GROUP BY organizer_name
@@ -658,7 +658,7 @@ Respond with ONLY the analysis text. No preamble, no introductory text.`;
           END as day_index,
           COUNT(*) as event_count,
           SUM(COALESCE(attendance, 0)) as total_attendance,
-          AVG(COALESCE(attendance, 0)) as avg_attendance,
+          AVG(CASE WHEN attendance IS NOT NULL AND attendance > 0 THEN attendance END) as avg_attendance,
           SUM(COALESCE(revenue, 0)) as total_revenue
         FROM platform_events
         WHERE date IS NOT NULL AND date != '' AND strftime('%w', date) IS NOT NULL
@@ -735,7 +735,7 @@ Respond with ONLY the analysis text. No preamble, no introductory text.`;
             ELSE '£20+'
           END as price_bucket,
           COUNT(*) as event_count,
-          AVG(COALESCE(attendance, 0)) as avg_attendance,
+          AVG(CASE WHEN attendance IS NOT NULL AND attendance > 0 THEN attendance END) as avg_attendance,
           AVG(CASE WHEN capacity > 0 THEN CAST(attendance AS REAL) / CAST(capacity AS REAL) ELSE NULL END) as avg_fill_rate,
           SUM(COALESCE(revenue, 0)) as total_revenue
         FROM platform_events
