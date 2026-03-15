@@ -781,13 +781,13 @@ export function createEventsRouter(
         try {
           const event = store.create({
             title: item.title,
-            description: item.description,
+            description: item.description ?? '',
             start_time: item.start_time,
-            venue: item.venue,
-            price: item.price,
-            capacity: item.capacity,
+            venue: item.venue ?? '',
+            price: item.price ?? 0,
+            capacity: item.capacity ?? 50,
             category: item.category,
-            duration_minutes: item.duration_minutes,
+            duration_minutes: item.duration_minutes ?? 120,
           });
           results.push({ index: i, success: true, id: event.id });
         } catch (err) {
