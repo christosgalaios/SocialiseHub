@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import type {
   SocialiseEvent,
@@ -147,6 +147,36 @@ export function EventDetailPage() {
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [id]);
+
+  // Unsaved changes detection — warn before navigating away
+  const isDirty = useCallback(() => {
+    if (isNew) {
+      // For new events, dirty if any content has been entered
+      return !!(title.trim() || description.trim());
+    }
+    if (!event) return false;
+    return (
+      title !== event.title ||
+      description !== event.description ||
+      venue !== event.venue ||
+      price !== event.price ||
+      capacity !== event.capacity ||
+      durationMinutes !== event.duration_minutes ||
+      (category || '') !== (event.category ?? '') ||
+      startTime !== toDatetimeLocal(event.start_time) ||
+      endTime !== toDatetimeLocal(event.end_time)
+    );
+  }, [event, isNew, title, description, venue, price, capacity, durationMinutes, category, startTime, endTime]);
+
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (isDirty()) {
+        e.preventDefault();
+      }
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isDirty]);
 
   // Auto-trigger optimize if ?optimize=true or magic fill if ?magic=true
   const autoOptimizeTriggered = useRef(false);
@@ -752,8 +782,11 @@ export function EventDetailPage() {
         )}
 
         <div style={styles.formActions}>
-          <button type="submit" disabled={saving} style={styles.saveBtn}>
-            {saving ? 'Saving...' : isNew ? 'Create Event' : 'Save Changes'}
+          <button type="submit" disabled={saving} style={{
+            ...styles.saveBtn,
+            ...(isDirty() && !isNew ? { boxShadow: '0 0 0 2px #f0a500' } : {}),
+          }}>
+            {saving ? 'Saving...' : isNew ? 'Create Event' : isDirty() ? 'Save Changes *' : 'Save Changes'}
           </button>
 
           {!isNew && (

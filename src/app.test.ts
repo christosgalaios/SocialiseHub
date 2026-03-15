@@ -5507,4 +5507,56 @@ describe('App', () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it('POST /api/events rejects description over 5000 characters', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events').send({
+      title: 'Test', description: 'D'.repeat(5001),
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/events rejects venue over 500 characters', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events').send({
+      title: 'Test', description: 'D',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V'.repeat(501), price: 5, capacity: 20,
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('PUT /api/events/:id rejects category over 100 characters', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Cat Test', description: 'D',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).put(`/api/events/${e.body.data.id}`).send({
+      category: 'C'.repeat(101),
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('GET /api/dashboard/health sorts worst-first', async () => {
+    const app = createTestApp();
+    // Event with many fields filled
+    await request(app).post('/api/events').send({
+      title: 'Rich Event With Long Title Here', description: 'A'.repeat(300),
+      start_time: '2030-06-01T19:00:00Z', venue: 'Great Venue', price: 10,
+      capacity: 100, category: 'social',
+    });
+    // Event with minimal fields
+    await request(app).post('/api/events').send({
+      title: 'Min', description: 'X',
+      start_time: '2030-07-01T19:00:00Z', venue: 'V', price: 0, capacity: 5,
+    });
+    const res = await request(app).get('/api/dashboard/health');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+    // Worst (lowest health) should come first
+    expect(res.body.data[0].health).toBeLessThanOrEqual(res.body.data[1].health);
+    expect(res.body.summary.needsWork).toBeGreaterThanOrEqual(0);
+    expect(res.body.summary.healthy).toBeGreaterThanOrEqual(0);
+  });
 });
