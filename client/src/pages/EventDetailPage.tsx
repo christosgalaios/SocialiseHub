@@ -701,12 +701,26 @@ export function EventDetailPage() {
 
           <label style={styles.field}>
             <span style={styles.label}>Category</span>
-            <input
-              style={styles.input}
+            <select
+              style={{ ...styles.input, cursor: 'pointer' }}
               value={category}
               onChange={(e) => setCategory(e.target.value)}
-              placeholder="e.g. workshop, social, networking"
-            />
+            >
+              <option value="">Select category...</option>
+              <option value="Social">Social</option>
+              <option value="Tech">Tech</option>
+              <option value="Food & Drink">Food & Drink</option>
+              <option value="Arts">Arts</option>
+              <option value="Wellness">Wellness</option>
+              <option value="Comedy">Comedy</option>
+              <option value="Business">Business</option>
+              <option value="Outdoor">Outdoor</option>
+              <option value="Music">Music</option>
+              <option value="Sports">Sports</option>
+              <option value="Education">Education</option>
+              <option value="Networking">Networking</option>
+              <option value="Other">Other</option>
+            </select>
           </label>
 
           <label style={styles.field}>
@@ -875,12 +889,18 @@ export function EventDetailPage() {
         <div style={styles.grid}>
           <label style={styles.field}>
             <span style={styles.label}>Age Restriction</span>
-            <input
-              style={styles.input}
+            <select
+              style={{ ...styles.input, cursor: 'pointer' }}
               value={ageRestriction}
-              onChange={(e) => setAgeRestriction(e.target.value.slice(0, 50))}
-              placeholder="e.g. 18+, All ages, 16+"
-            />
+              onChange={(e) => setAgeRestriction(e.target.value)}
+            >
+              <option value="">Not specified</option>
+              <option value="All ages">All ages</option>
+              <option value="14+">14+</option>
+              <option value="16+">16+</option>
+              <option value="18+">18+</option>
+              <option value="21+">21+</option>
+            </select>
           </label>
 
           <label style={styles.field}>
@@ -923,12 +943,18 @@ export function EventDetailPage() {
 
         <label style={styles.field}>
           <span style={styles.label}>Refund Policy</span>
-          <textarea
-            style={{ ...styles.input, minHeight: 72, resize: 'vertical' as const }}
+          <select
+            style={{ ...styles.input, cursor: 'pointer' }}
             value={refundPolicy}
-            onChange={(e) => setRefundPolicy(e.target.value.slice(0, 1000))}
-            placeholder="Describe your refund policy"
-          />
+            onChange={(e) => setRefundPolicy(e.target.value)}
+          >
+            <option value="">Not specified</option>
+            <option value="No refunds">No refunds</option>
+            <option value="Refund up to 1 day before">Refund up to 1 day before</option>
+            <option value="Refund up to 7 days before">Refund up to 7 days before</option>
+            <option value="Refund up to 30 days before">Refund up to 30 days before</option>
+            <option value="Full refund anytime">Full refund anytime</option>
+          </select>
         </label>
 
         <label style={styles.field}>

@@ -240,7 +240,7 @@ export function headfirstPublishSteps(event: SocialiseEvent): AutomationStep[] {
     {
       action: 'fill',
       selector: FORM_SELECTORS.shortDescription,
-      value: (event.description ?? '').slice(0, 200),
+      value: (event.short_description || (event.description ?? '').slice(0, 200)),
       description: 'Setting short description...',
     },
     // Fill the markdown description editor

@@ -114,7 +114,7 @@ export function eventbritePublishSteps(event: SocialiseEvent): AutomationStep[] 
     {
       action: 'fill',
       selector: PUBLISH_SELECTORS.summaryTextarea,
-      value: (event.description ?? '').slice(0, 140),
+      value: (event.short_description || (event.description ?? '').slice(0, 140)),
       description: 'Filling summary...',
     },
     // Description (rich text editor — contenteditable div)
