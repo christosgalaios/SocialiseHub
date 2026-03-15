@@ -1,11 +1,16 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { createApp } from './app.js';
-import { createDatabase } from './data/database.js';
+import { createDatabase, type Database } from './data/database.js';
 
 function createTestApp() {
   const db = createDatabase(':memory:');
   return createApp({ db });
+}
+
+function createTestAppWithDb() {
+  const db = createDatabase(':memory:');
+  return { app: createApp({ db }), db };
 }
 
 describe('App', () => {
@@ -550,5 +555,203 @@ describe('App', () => {
     expect(res.body.data.upcoming).toBe(1);
     expect(res.body.data.past).toBe(1);
     expect(res.body.data.bySyncStatus.local_only).toBe(2);
+  });
+
+  // ── Photos ────────────────────────────────────────────
+
+  it('GET /api/events/:id/photos returns empty array for new event', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Photo Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get(`/api/events/${created.body.data.id}/photos`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+  });
+
+  it('GET /api/events/:id/photos returns inserted photos', async () => {
+    const { app, db } = createTestAppWithDb();
+    const created = await request(app).post('/api/events').send({
+      title: 'With Photos', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const eventId = created.body.data.id;
+    // Insert photos directly into DB
+    db.prepare('INSERT INTO event_photos (event_id, photo_path, source, position, is_cover) VALUES (?, ?, ?, ?, ?)').run(eventId, '/data/photos/test1.jpg', 'upload', 0, 1);
+    db.prepare('INSERT INTO event_photos (event_id, photo_path, source, position, is_cover) VALUES (?, ?, ?, ?, ?)').run(eventId, '/data/photos/test2.jpg', 'unsplash', 1, 0);
+
+    const res = await request(app).get(`/api/events/${eventId}/photos`);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.data[0].url).toBe('/data/photos/test1.jpg');
+    expect(res.body.data[0].isCover).toBe(true);
+    expect(res.body.data[0].position).toBe(0);
+    expect(res.body.data[1].url).toBe('/data/photos/test2.jpg');
+    expect(res.body.data[1].isCover).toBe(false);
+  });
+
+  it('PATCH /api/events/:id/photos/reorder changes photo order', async () => {
+    const { app, db } = createTestAppWithDb();
+    const created = await request(app).post('/api/events').send({
+      title: 'Reorder', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const eventId = created.body.data.id;
+    db.prepare('INSERT INTO event_photos (event_id, photo_path, source, position, is_cover) VALUES (?, ?, ?, ?, ?)').run(eventId, '/photos/a.jpg', 'upload', 0, 1);
+    db.prepare('INSERT INTO event_photos (event_id, photo_path, source, position, is_cover) VALUES (?, ?, ?, ?, ?)').run(eventId, '/photos/b.jpg', 'upload', 1, 0);
+
+    // Get photo IDs
+    const photos = await request(app).get(`/api/events/${eventId}/photos`);
+    const [p1, p2] = photos.body.data;
+
+    // Reverse order
+    const res = await request(app)
+      .patch(`/api/events/${eventId}/photos/reorder`)
+      .send({ order: [p2.id, p1.id] });
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].id).toBe(p2.id);
+    expect(res.body.data[0].isCover).toBe(true); // first is now cover
+    expect(res.body.data[1].id).toBe(p1.id);
+    expect(res.body.data[1].isCover).toBe(false);
+  });
+
+  it('PATCH /api/events/:id/photos/reorder returns 400 for missing order', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Bad Reorder', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app)
+      .patch(`/api/events/${created.body.data.id}/photos/reorder`)
+      .send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('DELETE /api/events/:id/photos/:photoId removes a photo', async () => {
+    const { app, db } = createTestAppWithDb();
+    const created = await request(app).post('/api/events').send({
+      title: 'Delete Photo', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const eventId = created.body.data.id;
+    db.prepare('INSERT INTO event_photos (event_id, photo_path, source, position, is_cover) VALUES (?, ?, ?, ?, ?)').run(eventId, '/photos/del.jpg', 'upload', 0, 1);
+
+    const photos = await request(app).get(`/api/events/${eventId}/photos`);
+    const photoId = photos.body.data[0].id;
+
+    const res = await request(app).delete(`/api/events/${eventId}/photos/${photoId}`);
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+
+    // Verify it's gone
+    const after = await request(app).get(`/api/events/${eventId}/photos`);
+    expect(after.body.data).toHaveLength(0);
+  });
+
+  it('DELETE /api/events/:id/photos/:photoId returns 404 for missing photo', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'No Photo', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).delete(`/api/events/${created.body.data.id}/photos/99999`);
+    expect(res.status).toBe(404);
+  });
+
+  it('DELETE /api/events/:id/photos/:photoId returns 400 for non-numeric id', async () => {
+    const app = createTestApp();
+    const res = await request(app).delete('/api/events/someEvent/photos/notANumber');
+    expect(res.status).toBe(400);
+  });
+
+  // ── Optimize ──────────────────────────────────────────
+
+  it('POST /api/events/:id/optimize returns prompt and saves snapshot', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Optimize Me', description: 'A great event', start_time: '2030-01-01T19:00:00Z',
+      venue: 'Bristol', price: 10, capacity: 50,
+    });
+    const res = await request(app).post(`/api/events/${created.body.data.id}/optimize`);
+    expect(res.status).toBe(200);
+    expect(res.body.prompt).toContain('Optimize Me');
+    expect(res.body.eventId).toBe(created.body.data.id);
+  });
+
+  it('POST /api/events/:id/optimize returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/nonexistent/optimize');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /api/events/:id/optimize/undo restores snapshot', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Original Title', description: 'Original desc', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const id = created.body.data.id;
+    // Create snapshot
+    await request(app).post(`/api/events/${id}/optimize`);
+    // Modify the event
+    await request(app).put(`/api/events/${id}`).send({ title: 'Optimized Title', description: 'Better desc' });
+    // Undo
+    const res = await request(app).post(`/api/events/${id}/optimize/undo`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.title).toBe('Original Title');
+    expect(res.body.data.description).toBe('Original desc');
+  });
+
+  it('POST /api/events/:id/optimize/undo returns 404 with no snapshot', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'No Snapshot', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).post(`/api/events/${created.body.data.id}/optimize/undo`);
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /api/events/:id/magic-fill returns a prompt', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Magic Me', description: 'Fill me', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 5, capacity: 30,
+    });
+    const res = await request(app).post(`/api/events/${created.body.data.id}/magic-fill`);
+    expect(res.status).toBe(200);
+    expect(res.body.prompt).toContain('Magic Me');
+    expect(res.body.eventId).toBe(created.body.data.id);
+  });
+
+  it('POST /api/events/:id/magic-fill returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/nonexistent/magic-fill');
+    expect(res.status).toBe(404);
+  });
+
+  it('POST /api/events/:id/optimize/photos/generate-prompt returns a prompt', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Photo Prompt', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'Bristol Hall', price: 0, capacity: 10,
+    });
+    const res = await request(app).post(`/api/events/${created.body.data.id}/optimize/photos/generate-prompt`);
+    expect(res.status).toBe(200);
+    expect(res.body.prompt).toContain('Photo Prompt');
+    expect(res.body.prompt).toContain('Bristol');
+  });
+
+  it('POST /api/events/:id/optimize/photos/search returns 503 without API key', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Search Photos', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app)
+      .post(`/api/events/${created.body.data.id}/optimize/photos/search`)
+      .send({ query: 'test' });
+    expect(res.status).toBe(503);
+    expect(res.body.error).toContain('UNSPLASH_ACCESS_KEY');
   });
 });
