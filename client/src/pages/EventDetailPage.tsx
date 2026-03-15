@@ -892,9 +892,8 @@ export function EventDetailPage() {
                 onPush={() => handlePushPlatform(ps.platform)}
                 onPull={() => handlePullPlatform(ps.platform)}
                 onView={() => {
-                  const w = window as any;
-                  if (w.electronAPI?.openInAutomationPanel && ps.externalUrl) {
-                    w.electronAPI.openInAutomationPanel(ps.externalUrl);
+                  if (window.electronAPI?.openInAutomationPanel && ps.externalUrl) {
+                    window.electronAPI.openInAutomationPanel(ps.externalUrl);
                   } else if (ps.externalUrl) {
                     window.open(ps.externalUrl, '_blank');
                   }

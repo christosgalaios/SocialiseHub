@@ -24,6 +24,7 @@ declare global {
       resumeAutomation: () => Promise<void>;
       onAutomationStatus: (cb: (status: { step: number; totalSteps: number; description: string; state: string }) => void) => () => void;
       onAutomationResult: (cb: (result: { success: boolean; error?: string; data?: unknown }) => void) => () => void;
+      openInAutomationPanel: (url: string) => Promise<void>;
     };
   }
 }
