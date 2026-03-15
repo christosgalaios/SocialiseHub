@@ -101,6 +101,10 @@ export function createScoreRouter(db: Database, eventStore: SqliteEventStore): R
         return res.status(400).json({ error: 'overall must be a number' });
       }
 
+      if (breakdown !== undefined && (typeof breakdown !== 'object' || breakdown === null || Array.isArray(breakdown))) {
+        return res.status(400).json({ error: 'breakdown must be an object' });
+      }
+
       if (suggestions !== undefined && !Array.isArray(suggestions)) {
         return res.status(400).json({ error: 'suggestions must be an array' });
       }

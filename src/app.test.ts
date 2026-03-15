@@ -5867,4 +5867,59 @@ describe('App', () => {
     expect(res.status).toBe(400);
     expect(res.body.error).toContain('non-empty strings');
   });
+
+  // ── M133: Stability fixes ─────────────────────────────
+
+  it('POST score/save rejects non-object breakdown', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Score Test', description: 'D', start_time: '2030-06-01T18:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${e.body.data.id}/score/save`).send({
+      overall: 75,
+      breakdown: 'not-an-object',
+      suggestions: [],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('breakdown must be an object');
+  });
+
+  it('POST score/save rejects array breakdown', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Score Test 2', description: 'D', start_time: '2030-06-01T18:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).post(`/api/events/${e.body.data.id}/score/save`).send({
+      overall: 75,
+      breakdown: [1, 2, 3],
+      suggestions: [],
+    });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('breakdown must be an object');
+  });
+
+  it('POST recur copies tags to all recurring events', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Recur Tag Test', description: 'D', start_time: '2030-06-01T18:00:00Z',
+      venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    await request(app).put(`/api/events/${id}/tags`).send({ tags: ['weekly', 'social'] });
+
+    const res = await request(app).post(`/api/events/${id}/recur`).send({
+      frequency: 'weekly', count: 2,
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.count).toBe(2);
+
+    // Check tags were copied to each recurring event
+    for (const event of res.body.data) {
+      const tagsRes = await request(app).get(`/api/events/${event.id}/tags`);
+      expect(tagsRes.body.data).toContain('weekly');
+      expect(tagsRes.body.data).toContain('social');
+    }
+  });
 });

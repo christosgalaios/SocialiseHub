@@ -267,7 +267,7 @@ export function createSyncRouter(
                 platform: svc.platform,
                 action: 'pull',
                 status: 'error',
-                message: `Failed to process "${pe.title}" from ${svc.platform}: ${eventErr instanceof Error ? eventErr.message : String(eventErr)}`,
+                message: `Failed to process "${pe?.title ?? 'unknown'}" from ${svc.platform}: ${eventErr instanceof Error ? eventErr.message : String(eventErr)}`,
               });
             }
           }

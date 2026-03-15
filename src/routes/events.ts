@@ -335,7 +335,7 @@ export function createEventsRouter(
           id,
           found: true,
           title: event.title,
-          score: Math.round((passed / total) * 100),
+          score: total > 0 ? Math.round((passed / total) * 100) : 0,
           ready,
           checks,
         };
@@ -939,7 +939,7 @@ export function createEventsRouter(
       res.json({
         data: {
           checks,
-          score: Math.round((passed / total) * 100),
+          score: total > 0 ? Math.round((passed / total) * 100) : 0,
           ready,
         },
       });
@@ -988,6 +988,14 @@ export function createEventsRouter(
       const daysMap: Record<string, number> = { weekly: 7, biweekly: 14, monthly: 0 };
       const created: typeof original[] = [];
 
+      // Hoist tag query and insert outside the loop
+      const sourceTags = db
+        ? (db.prepare('SELECT tag FROM event_tags WHERE event_id = ?').all(req.params.id) as Array<{ tag: string }>)
+        : [];
+      const insertTag = db
+        ? db.prepare('INSERT OR IGNORE INTO event_tags (event_id, tag) VALUES (?, ?)')
+        : null;
+
       for (let i = 1; i <= count; i++) {
         const baseDate = new Date(original.start_time);
         if (frequency === 'monthly') {
@@ -1015,17 +1023,14 @@ export function createEventsRouter(
           category: original.category,
         });
 
-        // Copy tags to recurring events
-        if (db) {
-          const tags = db.prepare(
-            'SELECT tag FROM event_tags WHERE event_id = ?'
-          ).all(req.params.id) as Array<{ tag: string }>;
-          const insertTag = db.prepare(
-            'INSERT OR IGNORE INTO event_tags (event_id, tag) VALUES (?, ?)'
-          );
-          for (const { tag } of tags) {
-            insertTag.run(event.id, tag);
-          }
+        // Copy tags to recurring events (using hoisted prepare)
+        if (insertTag) {
+          const copyTags = db!.transaction(() => {
+            for (const { tag } of sourceTags) {
+              insertTag.run(event.id, tag);
+            }
+          });
+          copyTags();
         }
 
         created.push(event);
