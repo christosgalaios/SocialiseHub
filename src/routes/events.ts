@@ -135,6 +135,36 @@ export function createEventsRouter(
     }
   });
 
+  router.patch('/batch/category', (req, res, next) => {
+    try {
+      const { ids, category } = req.body as { ids?: string[]; category?: string };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+      if (typeof category !== 'string') {
+        return res.status(400).json({ error: 'category must be a string' });
+      }
+
+      const results: { id: string; success: boolean; error?: string }[] = [];
+      for (const id of ids) {
+        const event = store.getById(id);
+        if (!event) {
+          results.push({ id, success: false, error: 'Not found' });
+          continue;
+        }
+        store.update(id, { category: category || undefined });
+        results.push({ id, success: true });
+      }
+
+      res.json({ data: results, updated: results.filter(r => r.success).length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.delete('/batch', (req, res, next) => {
     try {
       const { ids } = req.body as { ids?: string[] };
@@ -203,6 +233,7 @@ export function createEventsRouter(
       const byStatus: Record<string, number> = { draft: 0, published: 0, cancelled: 0 };
       const bySyncStatus: Record<string, number> = { synced: 0, modified: 0, local_only: 0 };
       const byCategory: Record<string, number> = {};
+      const byVenue: Record<string, number> = {};
       let upcoming = 0;
       let past = 0;
       const now = new Date().toISOString();
@@ -213,6 +244,7 @@ export function createEventsRouter(
         bySyncStatus[ss] = (bySyncStatus[ss] ?? 0) + 1;
         const cat = e.category ?? 'uncategorized';
         byCategory[cat] = (byCategory[cat] ?? 0) + 1;
+        if (e.venue) byVenue[e.venue] = (byVenue[e.venue] ?? 0) + 1;
         if (e.start_time > now) upcoming++;
         else past++;
       }
@@ -223,6 +255,7 @@ export function createEventsRouter(
           byStatus,
           bySyncStatus,
           byCategory,
+          byVenue,
           upcoming,
           past,
         },

@@ -153,6 +153,18 @@ describe('App', () => {
     expect(res.body.data.status).toBe('draft');
   });
 
+  it('POST /api/events/:id/duplicate copies category', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Cat Event', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10, category: 'Social',
+    });
+    const res = await request(app).post(`/api/events/${created.body.data.id}/duplicate`);
+    expect(res.status).toBe(201);
+    expect(res.body.data.category).toBe('Social');
+    expect(res.body.data.title).toBe('Copy of Cat Event');
+  });
+
   it('POST /api/events/:id/duplicate returns 404 for missing event', async () => {
     const app = createTestApp();
     const res = await request(app).post('/api/events/nonexistent/duplicate');
@@ -619,6 +631,35 @@ describe('App', () => {
     expect(res.body.updated).toBe(1);
     expect(res.body.data[1].success).toBe(false);
     expect(res.body.data[1].error).toBe('Not found');
+  });
+
+  // ── Batch Category ───────────────────────────────────
+
+  it('PATCH /api/events/batch/category updates category for multiple events', async () => {
+    const app = createTestApp();
+    const e1 = await request(app).post('/api/events').send({
+      title: 'Cat 1', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const e2 = await request(app).post('/api/events').send({
+      title: 'Cat 2', description: 'D', start_time: '2030-01-02T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app)
+      .patch('/api/events/batch/category')
+      .send({ ids: [e1.body.data.id, e2.body.data.id], category: 'Social' });
+    expect(res.status).toBe(200);
+    expect(res.body.updated).toBe(2);
+    // Verify
+    const check1 = await request(app).get(`/api/events/${e1.body.data.id}`);
+    expect(check1.body.data.category).toBe('Social');
+  });
+
+  it('PATCH /api/events/batch/category returns 400 for missing category', async () => {
+    const app = createTestApp();
+    const res = await request(app).patch('/api/events/batch/category').send({ ids: ['x'] });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('category');
   });
 
   // ── Batch Delete ──────────────────────────────────────

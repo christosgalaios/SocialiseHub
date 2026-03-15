@@ -135,6 +135,18 @@ export async function batchUpdateStatus(
   return json(res);
 }
 
+export async function batchUpdateCategory(
+  ids: string[],
+  category: string,
+): Promise<{ data: { id: string; success: boolean; error?: string }[]; updated: number }> {
+  const res = await fetch(`${BASE}/events/batch/category`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids, category }),
+  });
+  return json(res);
+}
+
 export async function batchDeleteEvents(
   ids: string[],
 ): Promise<{ data: { id: string; success: boolean; error?: string }[]; deleted: number }> {
