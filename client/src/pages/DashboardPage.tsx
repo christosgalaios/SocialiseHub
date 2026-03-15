@@ -13,6 +13,7 @@ const SYNC_INTERVAL_MS = 30 * 60 * 1000; // 30 minutes
 
 interface DashboardData {
   attentionItems: AttentionItem[];
+  attentionTotalCount: number;
   upcomingEvents: UpcomingEvent[];
   performance: PerformanceStats;
 }
@@ -44,6 +45,7 @@ export function DashboardPage() {
       ]);
       setData({
         attentionItems: attentionRes.items,
+        attentionTotalCount: attentionRes.count,
         upcomingEvents: upcomingRes.events,
         performance: perfRes.data,
       });
@@ -110,7 +112,7 @@ export function DashboardPage() {
       {/* Content */}
       {!loading && !error && data && (
         <div style={styles.sections}>
-          <AttentionSection items={data.attentionItems} />
+          <AttentionSection items={data.attentionItems} totalCount={data.attentionTotalCount} />
           <UpcomingSection events={data.upcomingEvents} />
           <PerformanceSection stats={data.performance} />
           <SuggestionsSection />

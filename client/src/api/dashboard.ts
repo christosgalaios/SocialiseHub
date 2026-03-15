@@ -24,7 +24,9 @@ export interface UpcomingEvent {
   startTime: string;
   venue: string | null;
   readiness: number;
-  readinessChecks: Record<string, boolean>;
+  passed: number;
+  total: number;
+  missing: string[];
   platforms: string[];
   photoCount: number;
   timeUntil: string;

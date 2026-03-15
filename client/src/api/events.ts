@@ -401,7 +401,7 @@ export async function saveIdeaAsDraft(idea: {
     title: idea.title,
     description: idea.description,
     venue: idea.venue ?? '',
-    start_time: idea.date ? `${idea.date}T19:00:00+01:00` : new Date().toISOString(),
+    start_time: idea.date ? `${idea.date}T19:00:00Z` : new Date().toISOString(),
     duration_minutes: 120,
     price: 0,
     capacity: 50,

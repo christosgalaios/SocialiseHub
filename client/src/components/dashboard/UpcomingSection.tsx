@@ -36,10 +36,8 @@ export function UpcomingSection({ events }: { events: UpcomingEvent[] }) {
       <h2 style={styles.sectionTitle}>Upcoming Events</h2>
       <div style={styles.list}>
         {events.map((ev) => {
-          const missing = (ev as any).missing ?? [];
-          const passed = (ev as any).passed ?? 0;
-          const total = (ev as any).total ?? 7;
-          const readinessPct = Math.round((passed / total) * 100);
+          const { missing = [], passed = 0, total = 7 } = ev;
+          const readinessPct = total > 0 ? Math.round((passed / total) * 100) : 0;
           return (
             <div
               key={ev.eventId}
