@@ -50,12 +50,14 @@ export function SuggestionsSection() {
         prompt,
         responseFormat: 'json',
         onSubmit: async (rawResponse: string) => {
-          const jsonMatch = rawResponse.match(/```json\n?([\s\S]*?)\n?```/) ||
-                            rawResponse.match(/(\[[\s\S]*\])/);
-          if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[1]) as DashboardSuggestion[];
+          try {
+            // Modal already strips code fences for json format
+            const arrayMatch = rawResponse.match(/(\[[\s\S]*\])/);
+            const parsed = JSON.parse(arrayMatch ? arrayMatch[1] : rawResponse) as DashboardSuggestion[];
             await storeSuggestions(parsed);
             await load();
+          } catch (err) {
+            console.error('[suggestions] Failed to parse/store:', err);
           }
         },
       });

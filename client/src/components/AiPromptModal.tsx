@@ -26,15 +26,24 @@ export function AiPromptModal({ title, prompt, responseFormat, onSubmit, onClose
       return;
     }
     if (responseFormat === 'json') {
+      // LLMs often wrap JSON in code fences — extract before validating
+      const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/)?.[1]?.trim();
+      const candidate = fenced ?? trimmed;
       try {
-        JSON.parse(trimmed);
+        JSON.parse(candidate);
       } catch {
         setError('Invalid JSON — make sure you copied the full response');
         return;
       }
     }
     setError(null);
-    onSubmit(trimmed);
+    // For JSON, pass the extracted (unfenced) content so downstream parsers get clean JSON
+    if (responseFormat === 'json') {
+      const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/)?.[1]?.trim();
+      onSubmit(fenced ?? trimmed);
+    } else {
+      onSubmit(trimmed);
+    }
   };
 
   return (
