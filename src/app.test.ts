@@ -4905,4 +4905,392 @@ describe('App', () => {
       expect(res.body.data[1].success).toBe(true);
     });
   });
+
+  // ── Event Update Partial Fields ──────────────────────────
+
+  describe('Event update partial fields', () => {
+    it('PUT /api/events/:id updating only capacity leaves other fields unchanged', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Capacity Test', description: 'Original desc',
+        start_time: '2030-06-01T19:00:00Z', venue: 'Original Venue', price: 10, capacity: 50,
+      });
+      const id = created.body.data.id;
+      const res = await request(app).put(`/api/events/${id}`).send({ capacity: 100 });
+      expect(res.status).toBe(200);
+      expect(res.body.data.capacity).toBe(100);
+      expect(res.body.data.title).toBe('Capacity Test');
+      expect(res.body.data.description).toBe('Original desc');
+      expect(res.body.data.venue).toBe('Original Venue');
+      expect(res.body.data.price).toBe(10);
+    });
+
+    it('PUT /api/events/:id updating only venue leaves other fields unchanged', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Venue Test', description: 'Desc',
+        start_time: '2030-06-01T19:00:00Z', venue: 'Old Venue', price: 5, capacity: 30,
+      });
+      const id = created.body.data.id;
+      const res = await request(app).put(`/api/events/${id}`).send({ venue: 'New Venue' });
+      expect(res.status).toBe(200);
+      expect(res.body.data.venue).toBe('New Venue');
+      expect(res.body.data.title).toBe('Venue Test');
+      expect(res.body.data.price).toBe(5);
+    });
+
+    it('PUT /api/events/:id updating only description leaves other fields unchanged', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Desc Test', description: 'Short desc',
+        start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 0, capacity: 20,
+      });
+      const id = created.body.data.id;
+      const res = await request(app).put(`/api/events/${id}`).send({
+        description: 'A much longer and better description for this event',
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.data.description).toBe('A much longer and better description for this event');
+      expect(res.body.data.title).toBe('Desc Test');
+      expect(res.body.data.venue).toBe('V');
+      expect(res.body.data.capacity).toBe(20);
+    });
+
+    it('PUT /api/events/:id rejects capacity above 10000', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Big Capacity', description: 'D',
+        start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 0, capacity: 50,
+      });
+      const res = await request(app).put(`/api/events/${created.body.data.id}`).send({ capacity: 10001 });
+      expect(res.status).toBe(400);
+    });
+
+    it('PUT /api/events/:id rejects title exceeding 200 characters', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Title Length Test', description: 'D',
+        start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 0, capacity: 20,
+      });
+      const res = await request(app).put(`/api/events/${created.body.data.id}`).send({
+        title: 'A'.repeat(201),
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ── Dashboard Conflicts Structure ───────────────────────
+
+  describe('Dashboard conflicts response structure', () => {
+    it('GET /api/dashboard/conflicts returns data array and total', async () => {
+      const app = createTestApp();
+      const res = await request(app).get('/api/dashboard/conflicts');
+      expect(res.status).toBe(200);
+      expect(Array.isArray(res.body.data)).toBe(true);
+      expect(typeof res.body.total).toBe('number');
+    });
+
+    it('GET /api/dashboard/conflicts conflict entries have correct shape', async () => {
+      const app = createTestApp();
+      await request(app).post('/api/events').send({
+        title: 'Conflict Alpha', description: 'D', start_time: '2030-09-01T19:00:00Z',
+        venue: 'Venue A', price: 5, capacity: 20,
+      });
+      await request(app).post('/api/events').send({
+        title: 'Conflict Beta', description: 'D', start_time: '2030-09-01T19:00:00Z',
+        venue: 'Venue B', price: 10, capacity: 30,
+      });
+      const res = await request(app).get('/api/dashboard/conflicts');
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBeGreaterThanOrEqual(1);
+      const conflict = res.body.data[0];
+      expect(Array.isArray(conflict.events)).toBe(true);
+      expect(conflict.events).toHaveLength(2);
+      // Each event entry should have id, title, start_time, venue
+      const entry = conflict.events[0];
+      expect(typeof entry.id).toBe('string');
+      expect(typeof entry.title).toBe('string');
+      expect(typeof entry.start_time).toBe('string');
+      expect(typeof entry.venue).toBe('string');
+      expect(conflict.reason).toBe('same_start_time');
+    });
+
+    it('GET /api/dashboard/conflicts detects overlapping (not just same-start) events', async () => {
+      const app = createTestApp();
+      // Event A starts at 18:00 with default 120 min duration, ends at 20:00
+      // Event B starts at 19:00 — overlaps
+      await request(app).post('/api/events').send({
+        title: 'Long Event', description: 'D', start_time: '2030-10-01T18:00:00Z',
+        venue: 'V1', price: 5, capacity: 20, duration_minutes: 120,
+      });
+      await request(app).post('/api/events').send({
+        title: 'Overlapping Event', description: 'D', start_time: '2030-10-01T19:00:00Z',
+        venue: 'V2', price: 5, capacity: 20,
+      });
+      const res = await request(app).get('/api/dashboard/conflicts');
+      expect(res.status).toBe(200);
+      // Should detect the overlap (either same_start_time or overlapping)
+      expect(res.body.total).toBeGreaterThanOrEqual(1);
+    });
+
+    it('GET /api/dashboard/conflicts excludes archived events', async () => {
+      const app = createTestApp();
+      const e1 = await request(app).post('/api/events').send({
+        title: 'Archived Conflict A', description: 'D', start_time: '2030-11-01T19:00:00Z',
+        venue: 'V1', price: 5, capacity: 20,
+      });
+      await request(app).post('/api/events').send({
+        title: 'Archived Conflict B', description: 'D', start_time: '2030-11-01T19:00:00Z',
+        venue: 'V2', price: 5, capacity: 20,
+      });
+      // Archive first event
+      await request(app).post('/api/events/batch/archive').send({ ids: [e1.body.data.id] });
+      const res = await request(app).get('/api/dashboard/conflicts');
+      expect(res.status).toBe(200);
+      // No conflict since one is archived
+      expect(res.body.total).toBe(0);
+    });
+  });
+
+  // ── Analytics Date Range Filtering ──────────────────────
+
+  describe('Analytics date range filtering', () => {
+    it('GET /api/analytics/trends with startDate filters out earlier data', async () => {
+      const { app, db } = createTestAppWithDb();
+      const now = new Date().toISOString();
+      // Insert a 2025 event and a 2030 event
+      db.prepare(`INSERT INTO platform_events (id, platform, external_id, title, date, status, synced_at, attendance, capacity)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        'pe-date-old', 'meetup', 'ext-do', 'Old Event', '2025-01-15T19:00:00Z', 'active', now, 30, 50
+      );
+      db.prepare(`INSERT INTO platform_events (id, platform, external_id, title, date, status, synced_at, attendance, capacity)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        'pe-date-new', 'meetup', 'ext-dn', 'New Event', '2030-06-15T19:00:00Z', 'active', now, 40, 60
+      );
+      // Filter to only include 2030 data
+      const res = await request(app).get('/api/analytics/trends?startDate=2030-01-01');
+      expect(res.status).toBe(200);
+      const months = res.body.data.attendanceByMonth.map((m: { month: string }) => m.month);
+      // Should not include 2025 data
+      expect(months.every((m: string) => m >= '2030-01')).toBe(true);
+    });
+
+    it('GET /api/analytics/trends with endDate filters out later data', async () => {
+      const { app, db } = createTestAppWithDb();
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO platform_events (id, platform, external_id, title, date, status, synced_at, attendance, capacity)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        'pe-end-early', 'meetup', 'ext-ee', 'Early Event', '2025-03-10T19:00:00Z', 'active', now, 20, 30
+      );
+      db.prepare(`INSERT INTO platform_events (id, platform, external_id, title, date, status, synced_at, attendance, capacity)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        'pe-end-late', 'meetup', 'ext-el', 'Late Event', '2030-06-10T19:00:00Z', 'active', now, 50, 70
+      );
+      // Filter to only include data up to end of 2025
+      const res = await request(app).get('/api/analytics/trends?endDate=2025-12-31');
+      expect(res.status).toBe(200);
+      const months = res.body.data.attendanceByMonth.map((m: { month: string }) => m.month);
+      // Should not include 2030 data
+      expect(months.every((m: string) => m <= '2025-12')).toBe(true);
+    });
+
+    it('GET /api/analytics/summary reflects platform event attendance and revenue', async () => {
+      const { app, db } = createTestAppWithDb();
+      const now = new Date().toISOString();
+      db.prepare(`INSERT INTO platform_events (id, platform, external_id, title, date, status, synced_at, attendance, capacity, revenue)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        'pe-sum-1', 'meetup', 'ext-s1', 'Event 1', now, 'active', now, 25, 40, 125.00
+      );
+      db.prepare(`INSERT INTO platform_events (id, platform, external_id, title, date, status, synced_at, attendance, capacity, revenue)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        'pe-sum-2', 'eventbrite', 'ext-s2', 'Event 2', now, 'active', now, 35, 50, 350.00
+      );
+      const res = await request(app).get('/api/analytics/summary');
+      expect(res.status).toBe(200);
+      expect(res.body.data.total_attendees).toBe(60);
+      expect(res.body.data.total_revenue).toBe(475);
+      expect(res.body.data.avg_fill_rate).toBeGreaterThan(0);
+    });
+  });
+
+  // ── Event Notes Edge Cases ───────────────────────────────
+
+  describe('Event notes boundary conditions', () => {
+    it('POST /api/events/:id/notes accepts content at exactly 5000 chars', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Boundary Note', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 5, capacity: 20,
+      });
+      const res = await request(app).post(`/api/events/${created.body.data.id}/notes`).send({
+        content: 'x'.repeat(5000),
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.data.content).toHaveLength(5000);
+    });
+
+    it('GET /api/events/:id/notes returns empty array for nonexistent event (no 404 check)', async () => {
+      const app = createTestApp();
+      const res = await request(app).get('/api/events/nonexistent/notes');
+      // Notes route queries DB directly without event existence check — returns empty list
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual([]);
+      expect(res.body.total).toBe(0);
+    });
+
+    it('POST /api/events/:id/notes with whitespace-only author falls back to manager', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Author Fallback', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 5, capacity: 20,
+      });
+      const res = await request(app).post(`/api/events/${created.body.data.id}/notes`).send({
+        content: 'Valid content', author: '',
+      });
+      // Empty author string should fall back to default 'manager'
+      expect(res.status).toBe(201);
+      expect(res.body.data.author).toBe('manager');
+    });
+
+    it('POST /api/events/:id/notes trims whitespace-only content', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Whitespace Note', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 5, capacity: 20,
+      });
+      const res = await request(app).post(`/api/events/${created.body.data.id}/notes`).send({
+        content: '   ',
+      });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  // ── Event Creation Validation Edge Cases ─────────────────
+
+  describe('Event creation validation edge cases', () => {
+    it('POST /api/events rejects negative price', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/events').send({
+        title: 'Negative Price', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: -5, capacity: 20,
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('POST /api/events rejects zero capacity', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/events').send({
+        title: 'Zero Cap', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 0, capacity: 0,
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('POST /api/events rejects duration_minutes below 1', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/events').send({
+        title: 'Short Duration', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 0, capacity: 20, duration_minutes: 0,
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('POST /api/events rejects duration_minutes above 1440', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/events').send({
+        title: 'Long Duration', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 0, capacity: 20, duration_minutes: 1441,
+      });
+      expect(res.status).toBe(400);
+    });
+
+    it('POST /api/events accepts event with all optional fields', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/events').send({
+        title: 'Full Event', description: 'Complete description',
+        start_time: '2030-06-01T19:00:00Z', end_time: '2030-06-01T21:00:00Z',
+        venue: 'Test Venue', price: 15.50, capacity: 100,
+        duration_minutes: 120, category: 'workshop',
+        actual_attendance: 50, actual_revenue: 775,
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.data.category).toBe('workshop');
+      expect(res.body.data.duration_minutes).toBe(120);
+      expect(res.body.data.price).toBe(15.50);
+    });
+  });
+
+  // ── Batch Delete Data Integrity ──────────────────────────
+
+  describe('Batch delete data integrity', () => {
+    it('DELETE /api/events/batch deletes only specified events', async () => {
+      const app = createTestApp();
+      const e1 = await request(app).post('/api/events').send({
+        title: 'Keep Me', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 0, capacity: 20,
+      });
+      const e2 = await request(app).post('/api/events').send({
+        title: 'Delete Me', description: 'D', start_time: '2030-06-02T19:00:00Z',
+        venue: 'V', price: 0, capacity: 20,
+      });
+      const e3 = await request(app).post('/api/events').send({
+        title: 'Also Keep', description: 'D', start_time: '2030-06-03T19:00:00Z',
+        venue: 'V', price: 0, capacity: 20,
+      });
+      await request(app).delete('/api/events/batch').send({ ids: [e2.body.data.id] });
+      const list = await request(app).get('/api/events');
+      expect(list.body.data).toHaveLength(2);
+      const titles = list.body.data.map((e: { title: string }) => e.title);
+      expect(titles).toContain('Keep Me');
+      expect(titles).toContain('Also Keep');
+      expect(titles).not.toContain('Delete Me');
+    });
+
+    it('DELETE /api/events/batch with nonexistent id does not fail', async () => {
+      const app = createTestApp();
+      const res = await request(app).delete('/api/events/batch').send({
+        ids: ['nonexistent-uuid'],
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.deleted).toBe(0);
+    });
+  });
+
+  // ── Platform Events via Sync ─────────────────────────────
+
+  describe('Platform event store via API', () => {
+    it('GET /api/events/:id/platforms returns empty for event with no platform links', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'No Platforms', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 0, capacity: 20,
+      });
+      const res = await request(app).get(`/api/events/${created.body.data.id}/platforms`);
+      expect(res.status).toBe(200);
+      expect(res.body.data).toEqual([]);
+    });
+  });
+
+  // ── Services API ─────────────────────────────────────────
+
+  describe('Services API edge cases', () => {
+    it('GET /api/services returns all three platforms', async () => {
+      const app = createTestApp();
+      const res = await request(app).get('/api/services');
+      expect(res.status).toBe(200);
+      expect(res.body.data.length).toBeGreaterThanOrEqual(3);
+      const platforms = res.body.data.map((s: { platform: string }) => s.platform);
+      expect(platforms).toContain('meetup');
+      expect(platforms).toContain('eventbrite');
+      expect(platforms).toContain('headfirst');
+    });
+
+    it('POST /api/services/:platform/disconnect returns updated service', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/services/meetup/disconnect');
+      expect(res.status).toBe(200);
+      expect(res.body.data.platform).toBe('meetup');
+      expect(res.body.data.connected).toBe(false);
+    });
+  });
 });
