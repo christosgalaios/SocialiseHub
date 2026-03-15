@@ -167,3 +167,16 @@ npx vitest --watch         # Watch mode
 - Per-event photo limit enforced at 50 photos (photo/auto endpoint, batch operations)
 - Generator ideas field sanitizes length to prevent excessively long values
 - Consistent ID type validation across all batch endpoints (readiness, archive now match status/category/venue pattern)
+- Migration v15 adds expanded event fields: short_description, doors_open_time, age_restriction, event_type, online_url, parking_info, refund_policy, allow_guests, rsvp_open, rsvp_close
+- Migration v16 adds organizer_name to platform_events and events tables
+- Analytics endpoints: summary, trends, pricing, venues, roi, organizers, categories, drill-down, day-of-week, top-events, pricing-effectiveness
+- Meetup scrape includes `hosts { name }` for organizer data
+- Eventbrite/Headfirst organizer is always "Ben" (single org owner)
+- Revenue computed as ticketPrice × attendance for Meetup (Eventbrite computes in scrape)
+- Conflict detection uses cross-platform field comparison, not scheduling overlap
+- Event fields are the union of all platform fields (Meetup, Eventbrite, Headfirst) — even if a field is irrelevant to one platform, it exists in the hub
+- event_type validates to 'in_person', 'online', or 'hybrid'
+- Data management endpoints: DELETE /api/data/all (clears all tables), DELETE /api/data/:category (events, platforms, templates, ideas, market, dashboard)
+- Services table uses UPDATE (not DELETE) when clearing data — preserves 3 seed rows required by app
+- Data route /all registered before /:category to prevent Express param shadowing
+- Conflict detection skips events with empty/invalid start_time to prevent NaN comparison cascades
