@@ -93,12 +93,12 @@ npm run build:all          # Build server + electron + client
 ## Testing
 
 - **Framework:** Vitest
-- **Test count:** 320+ tests across 24 files
+- **Test count:** 344+ tests across 25 files
 - **Database:** Tests use in-memory SQLite (`:memory:`)
 - **HTTP:** Route tests use supertest
 
 ### Test Coverage
-- All data stores (events, platform events, services, templates, sync log, ideas)
+- All data stores (events, platform events, services, templates, sync log, sync snapshots, ideas)
 - All API routes (events CRUD/batch/sort/paginate/export/stats/log/photos/optimize/score, sync, dashboard, analytics, generator, templates, services)
 - Core libraries (validation, event readiness)
 - Automation clients and engine
@@ -131,3 +131,6 @@ npx vitest --watch         # Watch mode
 - Events API supports sorting (sort_by + order), pagination (page + per_page), batch operations, CSV export, and per-event sync log/platform history
 - Batch operations validate individual ids are non-empty strings
 - Platform event store uses safe JSON.parse to prevent corrupt image_urls from crashing sync
+- Service store uses safe JSON.parse for extra data
+- Calendar endpoint groups events by date with optional month filter
+- Per-event sync log and platform detail endpoints for event history tracking
