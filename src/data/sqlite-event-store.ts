@@ -68,12 +68,16 @@ export class SqliteEventStore {
       )
       .all(row.id);
 
+    const eventSyncStatus = row.sync_status as string | null;
     const platforms: PlatformPublishStatus[] = platformRows.map((pr) => ({
       platform: pr.platform as PlatformName,
-      published: pr.published_at != null,
+      published: pr.published_at != null || eventSyncStatus === 'synced',
       externalId: pr.external_id,
       externalUrl: pr.external_url ?? undefined,
       publishedAt: pr.published_at ?? undefined,
+      syncStatus: eventSyncStatus === 'synced' ? 'synced'
+        : eventSyncStatus === 'modified' ? 'modified'
+        : undefined,
     }));
 
     // Get cover photo URL
@@ -126,16 +130,10 @@ export class SqliteEventStore {
       `SELECT event_id, platform, external_id, external_url, published_at
        FROM platform_events WHERE event_id IS NOT NULL`,
     ).all();
-    const platformsByEvent = new Map<string, PlatformPublishStatus[]>();
+    const rawPlatformsByEvent = new Map<string, Array<PlatformEventRow & { event_id: string }>>();
     for (const pr of allPlatformRows) {
-      if (!platformsByEvent.has(pr.event_id)) platformsByEvent.set(pr.event_id, []);
-      platformsByEvent.get(pr.event_id)!.push({
-        platform: pr.platform as PlatformName,
-        published: pr.published_at != null,
-        externalId: pr.external_id,
-        externalUrl: pr.external_url ?? undefined,
-        publishedAt: pr.published_at ?? undefined,
-      });
+      if (!rawPlatformsByEvent.has(pr.event_id)) rawPlatformsByEvent.set(pr.event_id, []);
+      rawPlatformsByEvent.get(pr.event_id)!.push(pr);
     }
 
     // Batch-load all cover photos
@@ -185,7 +183,16 @@ export class SqliteEventStore {
       allow_guests: row.allow_guests ?? undefined,
       rsvp_open: row.rsvp_open ?? undefined,
       rsvp_close: row.rsvp_close ?? undefined,
-      platforms: platformsByEvent.get(row.id) ?? [],
+      platforms: (rawPlatformsByEvent.get(row.id) ?? []).map((pr) => ({
+        platform: pr.platform as PlatformName,
+        published: pr.published_at != null || row.sync_status === 'synced',
+        externalId: pr.external_id,
+        externalUrl: pr.external_url ?? undefined,
+        publishedAt: pr.published_at ?? undefined,
+        syncStatus: row.sync_status === 'synced' ? 'synced' as const
+          : row.sync_status === 'modified' ? 'modified' as const
+          : undefined,
+      })),
       notesCount: notesCounts.get(row.id) ?? 0,
       checklistTotal: checklistProgress.get(row.id)?.total ?? 0,
       checklistDone: checklistProgress.get(row.id)?.done ?? 0,
