@@ -84,7 +84,7 @@ export class EventbriteAutomationClient implements PlatformClient {
       externalUrl: String(e.url ?? ''),
       date: dateStr,
       venue: String(e.venue ?? ''),
-      status: (e.status === 'past' ? 'past' : 'active') as 'active' | 'past',
+      status: (e.status === 'past' ? 'past' : e.status === 'draft' ? 'draft' : e.status === 'cancelled' ? 'cancelled' : 'active') as 'active' | 'draft' | 'cancelled' | 'past',
       syncedAt: new Date().toISOString(),
       attendance: typeof e.attendance === 'number' ? e.attendance : undefined,
       capacity: typeof e.capacity === 'number' ? e.capacity : undefined,
