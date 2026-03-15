@@ -176,3 +176,29 @@ npx vitest --watch         # Watch mode
 - EventsPage has JSON import modal supporting paste or .json file upload with results summary
 - CalendarPage retry handler properly extracted to reusable load function (no stale cancelled flag)
 - Analytics test coverage: 36 tests including pricing/venue/ROI query validation (750 total)
+
+## Nightshift Session Log
+
+### 2026-03-15 Mixed Mode (6 milestones, 2703 lines added, 750 tests passing)
+
+**Commits:** fcc0b79 → 61c6962 (6 commits on claude/manager-oversight-LQ67o)
+
+**What shipped:**
+- M1-M2: Stability — CalendarPage retry bug fix, ESLint cleanup (20 errors)
+- M3: Feature — HealthSection + PortfolioSection on Dashboard (wired to existing `/health` and `/portfolio` endpoints)
+- M4: Feature — 3 new Analytics tabs (Pricing, Venues, ROI) wired to existing backend
+- M5: Feature — Batch operations (multi-select, status/category/delete) + JSON import modal on EventsPage
+- M6: Tests — 17 new analytics route tests (pricing, venue, ROI queries)
+
+**What went well:**
+- Parallel subagent dispatch for 3 analytics tabs (PricingTab, VenueTab, ROITab) — each ~350 lines, all worked first try
+- Stability-first start caught CalendarPage stale closure bug before it compounded
+- Orphaned endpoint strategy (backend exists → build frontend) was high-ROI, minimal risk
+- Zero regressions across all 6 commits (tsc + vitest + eslint clean throughout)
+
+**What to improve next session:**
+- Commit granularity: fcc0b79 was 739 lines (2 sections + bug fix), 3ed3e8e was 1094 lines (3 tabs). Target 200-500 lines per commit
+- Write tests in same milestone as features, not a separate milestone after
+- No frontend component tests yet — complex components like batch toolbar and import modal should have basic render tests
+- Launch review/retrospective agent mid-session, not at end (runs out of context)
+- Component style duplication across analytics tabs is acceptable but worth noting — each file has its own `Record<string, CSSProperties>` block
