@@ -174,6 +174,36 @@ export function createEventsRouter(
     }
   });
 
+  router.patch('/batch/venue', (req, res, next) => {
+    try {
+      const { ids, venue } = req.body as { ids?: string[]; venue?: string };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+      if (typeof venue !== 'string' || !venue.trim()) {
+        return res.status(400).json({ error: 'venue must be a non-empty string' });
+      }
+
+      const results: { id: string; success: boolean; error?: string }[] = [];
+      for (const id of ids) {
+        const event = store.getById(id);
+        if (!event) {
+          results.push({ id, success: false, error: 'Not found' });
+          continue;
+        }
+        store.update(id, { venue: venue.trim() });
+        results.push({ id, success: true });
+      }
+
+      res.json({ data: results, updated: results.filter(r => r.success).length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.delete('/batch', (req, res, next) => {
     try {
       const { ids } = req.body as { ids?: string[] };

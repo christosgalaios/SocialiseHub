@@ -692,6 +692,41 @@ describe('App', () => {
     expect(res.body.error).toContain('category');
   });
 
+  // ── Batch Venue ──────────────────────────────────────
+
+  it('PATCH /api/events/batch/venue updates venue for multiple events', async () => {
+    const app = createTestApp();
+    const e1 = await request(app).post('/api/events').send({
+      title: 'Venue Move 1', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'Old Place', price: 5, capacity: 20,
+    });
+    const e2 = await request(app).post('/api/events').send({
+      title: 'Venue Move 2', description: 'D', start_time: '2030-01-02T19:00:00Z',
+      venue: 'Old Place', price: 5, capacity: 20,
+    });
+    const res = await request(app)
+      .patch('/api/events/batch/venue')
+      .send({ ids: [e1.body.data.id, e2.body.data.id], venue: 'New Venue' });
+    expect(res.status).toBe(200);
+    expect(res.body.updated).toBe(2);
+    // Verify
+    const check = await request(app).get(`/api/events/${e1.body.data.id}`);
+    expect(check.body.data.venue).toBe('New Venue');
+  });
+
+  it('PATCH /api/events/batch/venue returns 400 for empty venue', async () => {
+    const app = createTestApp();
+    const res = await request(app).patch('/api/events/batch/venue').send({ ids: ['x'], venue: '' });
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain('venue');
+  });
+
+  it('PATCH /api/events/batch/venue returns 400 for missing ids', async () => {
+    const app = createTestApp();
+    const res = await request(app).patch('/api/events/batch/venue').send({ venue: 'V' });
+    expect(res.status).toBe(400);
+  });
+
   // ── Batch Delete ──────────────────────────────────────
 
   it('DELETE /api/events/batch deletes multiple events', async () => {

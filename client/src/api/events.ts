@@ -309,11 +309,11 @@ export async function cloneEvent(
   return body.data;
 }
 
-export async function batchDeleteEvents(ids: string[]): Promise<{ deleted: number; total: number }> {
-  const res = await fetch(`${BASE}/events/batch/delete`, {
-    method: 'POST',
+export async function batchUpdateVenue(ids: string[], venue: string): Promise<{ updated: number }> {
+  const res = await fetch(`${BASE}/events/batch/venue`, {
+    method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ids }),
+    body: JSON.stringify({ ids, venue }),
   });
   return json(res);
 }
