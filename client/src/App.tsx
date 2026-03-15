@@ -15,6 +15,7 @@ import { ToastProvider } from './context/ToastContext';
 import { ToastContainer } from './components/Toast';
 import { SyncStatus } from './components/SyncStatus';
 import { SettingsPage } from './pages/SettingsPage';
+import { ConflictResolutionPage } from './pages/ConflictResolutionPage';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Typed Electron API exposed via preload
@@ -238,6 +239,7 @@ export function App() {
               <Route path="/services" element={<ServicesPage />} />
               <Route path="/sync-log" element={<SyncLogPage />} />
               <Route path="/settings" element={<SettingsPage />} />
+              <Route path="/conflicts/:id" element={<ConflictResolutionPage />} />
               <Route path="/tester" element={<AppTesterPage />} />
             </Routes>
             </ErrorBoundary>
