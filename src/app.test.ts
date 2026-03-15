@@ -2675,6 +2675,54 @@ describe('App', () => {
     expect(timestamps).toEqual(sorted);
   });
 
+  it('GET /api/events/:id/timeline includes score entry', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Scored Timeline', description: 'Event with score',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    await request(app).post(`/api/events/${id}/score/save`).send({
+      overall: 85, breakdown: { seo: 80, timing: 90 }, suggestions: [],
+    });
+
+    const res = await request(app).get(`/api/events/${id}/timeline`);
+    expect(res.status).toBe(200);
+    const scoreEntry = res.body.data.find((e: { type: string }) => e.type === 'score');
+    expect(scoreEntry).toBeDefined();
+    expect(scoreEntry.summary).toContain('85');
+    expect(scoreEntry.details.overall).toBe(85);
+  });
+
+  it('POST /api/events/:id/score/save upserts on subsequent calls', async () => {
+    const app = createTestApp();
+    const e = await request(app).post('/api/events').send({
+      title: 'Score Upsert', description: 'Test upsert behavior',
+      start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const id = e.body.data.id;
+    await request(app).post(`/api/events/${id}/score/save`).send({
+      overall: 50, breakdown: {}, suggestions: [],
+    });
+    await request(app).post(`/api/events/${id}/score/save`).send({
+      overall: 90, breakdown: { seo: 95 }, suggestions: [],
+    });
+
+    const res = await request(app).get(`/api/events/${id}/score`);
+    expect(res.body.score.overall).toBe(90);
+    expect(res.body.score.breakdown.seo).toBe(95);
+  });
+
+  it('GET /api/services lists all platform services', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/services/meetup/connect').send({});
+    const res = await request(app).get('/api/services');
+    expect(res.status).toBe(200);
+    const meetup = res.body.data.find((s: { platform: string }) => s.platform === 'meetup');
+    expect(meetup).toBeDefined();
+    expect(meetup.connected).toBe(true);
+  });
+
   // ── Batch Readiness ─────────────────────────────────────
 
   it('POST /api/events/batch/readiness checks multiple events', async () => {
