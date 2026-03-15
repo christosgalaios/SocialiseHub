@@ -35,6 +35,9 @@ export interface SocialiseEvent {
   actual_attendance?: number;
   actual_revenue?: number;
   platforms: PlatformPublishStatus[];
+  notesCount?: number;
+  checklistTotal?: number;
+  checklistDone?: number;
   createdAt: string;
   updatedAt: string;
 }

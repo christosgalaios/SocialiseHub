@@ -122,6 +122,20 @@ export class SqliteEventStore {
     ).all();
     for (const p of photoRows) coverPhotos.set(p.event_id, p.photo_path);
 
+    // Batch-load notes counts
+    const notesCounts = new Map<string, number>();
+    const notesRows = this.db.prepare<[], { event_id: string; cnt: number }>(
+      'SELECT event_id, COUNT(*) as cnt FROM event_notes GROUP BY event_id',
+    ).all();
+    for (const r of notesRows) notesCounts.set(r.event_id, r.cnt);
+
+    // Batch-load checklist progress
+    const checklistProgress = new Map<string, { total: number; done: number }>();
+    const checklistRows = this.db.prepare<[], { event_id: string; total: number; done: number }>(
+      'SELECT event_id, COUNT(*) as total, SUM(CASE WHEN completed = 1 THEN 1 ELSE 0 END) as done FROM event_checklist GROUP BY event_id',
+    ).all();
+    for (const r of checklistRows) checklistProgress.set(r.event_id, { total: r.total, done: r.done });
+
     return rows.map((row) => ({
       id: row.id,
       title: row.title,
@@ -139,6 +153,9 @@ export class SqliteEventStore {
       actual_attendance: row.actual_attendance ?? undefined,
       actual_revenue: row.actual_revenue ?? undefined,
       platforms: platformsByEvent.get(row.id) ?? [],
+      notesCount: notesCounts.get(row.id) ?? 0,
+      checklistTotal: checklistProgress.get(row.id)?.total ?? 0,
+      checklistDone: checklistProgress.get(row.id)?.done ?? 0,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     }));
