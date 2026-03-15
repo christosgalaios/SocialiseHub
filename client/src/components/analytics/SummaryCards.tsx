@@ -6,6 +6,10 @@ export interface AnalyticsSummary {
   total_revenue: number;
   avg_fill_rate: number;
   revenue_per_attendee?: number;
+  total_organizers?: number;
+  avg_ticket_price?: number;
+  paid_events_count?: number;
+  free_events_count?: number;
 }
 
 interface CardProps {
@@ -70,6 +74,22 @@ export function SummaryCards({ summary }: Props) {
           value={`£${summary.revenue_per_attendee.toFixed(2)}`}
           sub="ticket yield"
           color="#ef4444"
+        />
+      )}
+      {summary.avg_ticket_price != null && summary.avg_ticket_price > 0 && (
+        <Card
+          label="Avg Ticket Price"
+          value={`£${summary.avg_ticket_price.toFixed(2)}`}
+          sub={summary.paid_events_count != null ? `${summary.paid_events_count} paid / ${summary.free_events_count ?? 0} free` : undefined}
+          color="#E2725B"
+        />
+      )}
+      {summary.total_organizers != null && summary.total_organizers > 0 && (
+        <Card
+          label="Organizers"
+          value={String(summary.total_organizers)}
+          sub="tracked organizers"
+          color="#06b6d4"
         />
       )}
     </div>
