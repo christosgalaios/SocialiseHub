@@ -112,6 +112,17 @@ export async function batchDeleteEvents(
   return json(res);
 }
 
+export interface CalendarDay {
+  date: string;
+  events: { id: string; title: string; start_time: string; status: string; venue: string }[];
+}
+
+export async function getCalendar(month?: string): Promise<{ data: CalendarDay[]; totalDays: number; totalEvents: number }> {
+  const qs = month ? `?month=${month}` : '';
+  const res = await fetch(`${BASE}/events/calendar${qs}`);
+  return json(res);
+}
+
 export async function getEventPlatforms(id: string): Promise<import('@shared/types').PlatformEvent[]> {
   const res = await fetch(`${BASE}/events/${id}/platforms`);
   const body = await json<{ data: import('@shared/types').PlatformEvent[] }>(res);

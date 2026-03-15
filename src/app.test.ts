@@ -580,6 +580,56 @@ describe('App', () => {
     expect(lines).toHaveLength(1); // header only
   });
 
+  // ── Calendar ──────────────────────────────────────────
+
+  it('GET /api/events/calendar returns events grouped by date', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Morning', description: 'D', start_time: '2030-03-15T10:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Evening', description: 'D', start_time: '2030-03-15T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Next Day', description: 'D', start_time: '2030-03-16T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get('/api/events/calendar');
+    expect(res.status).toBe(200);
+    expect(res.body.totalDays).toBe(2);
+    expect(res.body.totalEvents).toBe(3);
+    expect(res.body.data[0].date).toBe('2030-03-15');
+    expect(res.body.data[0].events).toHaveLength(2);
+    expect(res.body.data[1].date).toBe('2030-03-16');
+    expect(res.body.data[1].events).toHaveLength(1);
+  });
+
+  it('GET /api/events/calendar?month=2030-03 filters by month', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'March', description: 'D', start_time: '2030-03-15T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    await request(app).post('/api/events').send({
+      title: 'April', description: 'D', start_time: '2030-04-15T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get('/api/events/calendar?month=2030-03');
+    expect(res.body.totalEvents).toBe(1);
+    expect(res.body.data[0].events[0].title).toBe('March');
+  });
+
+  it('GET /api/events/calendar returns empty for no events', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/events/calendar');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.totalDays).toBe(0);
+    expect(res.body.totalEvents).toBe(0);
+  });
+
   // ── Stats ─────────────────────────────────────────────
 
   it('GET /api/events/stats returns zeroes when empty', async () => {

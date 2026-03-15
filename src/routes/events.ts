@@ -139,6 +139,43 @@ export function createEventsRouter(
     }
   });
 
+  router.get('/calendar', (req, res, next) => {
+    try {
+      let events = store.getAll();
+
+      // Optional month filter: ?month=2030-01
+      const month = req.query.month as string | undefined;
+      if (month && /^\d{4}-\d{2}$/.test(month)) {
+        events = events.filter(e => e.start_time.startsWith(month));
+      }
+
+      // Group by date (YYYY-MM-DD)
+      const byDate: Record<string, { id: string; title: string; start_time: string; status: string; venue: string }[]> = {};
+      for (const e of events) {
+        const date = e.start_time.slice(0, 10);
+        if (!byDate[date]) byDate[date] = [];
+        byDate[date].push({
+          id: e.id,
+          title: e.title,
+          start_time: e.start_time,
+          status: e.status,
+          venue: e.venue,
+        });
+      }
+
+      // Sort dates
+      const sortedDates = Object.keys(byDate).sort();
+      const calendar = sortedDates.map(date => ({
+        date,
+        events: byDate[date],
+      }));
+
+      res.json({ data: calendar, totalDays: calendar.length, totalEvents: events.length });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.get('/stats', (_req, res, next) => {
     try {
       const events = store.getAll();
