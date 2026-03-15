@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+# Post-commit hook: auto-bump VERSION on develop branch.
+# VERSION = total commit count. Updated after each commit.
+
+BRANCH=$(git rev-parse --abbrev-ref HEAD 2>/dev/null)
+
+# Only bump on develop
+if [ "$BRANCH" != "develop" ]; then
+  exit 0
+fi
+
+# Get current commit count
+COUNT=$(git rev-list --count HEAD)
+
+# Read current VERSION file
+CURRENT=""
+if [ -f "VERSION" ]; then
+  CURRENT=$(cat VERSION | tr -d '[:space:]')
+fi
+
+# Only amend if VERSION is different
+if [ "$COUNT" != "$CURRENT" ]; then
+  echo "$COUNT" > VERSION
+  git add VERSION
+  # Amend the current commit to include the VERSION bump
+  # Use --no-verify to avoid re-triggering hooks
+  git commit --amend --no-edit --no-verify >/dev/null 2>&1
+fi
+
+exit 0
