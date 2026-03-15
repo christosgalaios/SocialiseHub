@@ -226,8 +226,9 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
    * GET /api/dashboard/upcoming
    * Next 5 upcoming events with readiness score.
    */
-  router.get('/upcoming', (_req, res, next) => {
+  router.get('/upcoming', (req, res, next) => {
     try {
+      const limit = Math.min(Math.max(parseInt(String(req.query.limit)) || 5, 1), 50);
       const events = db.prepare(`
         SELECT
           e.id,
@@ -244,8 +245,8 @@ export function createDashboardRouter(db: Database, eventStore: SqliteEventStore
           AND e.status != 'cancelled'
         GROUP BY e.id
         ORDER BY e.start_time ASC
-        LIMIT 5
-      `).all() as Array<{
+        LIMIT ?
+      `).all(limit) as Array<{
         id: string;
         title: string;
         description: string | null;

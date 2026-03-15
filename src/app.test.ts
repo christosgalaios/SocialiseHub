@@ -5293,4 +5293,72 @@ describe('App', () => {
       expect(res.body.data.connected).toBe(false);
     });
   });
+
+  // ── Stats byTag ────────────────────────────────────────
+
+  describe('Stats byTag breakdown', () => {
+    it('GET /api/events/stats includes byTag field', async () => {
+      const app = createTestApp();
+      const res = await request(app).get('/api/events/stats');
+      expect(res.status).toBe(200);
+      expect(res.body.data).toHaveProperty('byTag');
+      expect(typeof res.body.data.byTag).toBe('object');
+    });
+
+    it('GET /api/events/stats byTag reflects tagged events', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Tagged Event', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 0, capacity: 20,
+      });
+      await request(app).post(`/api/events/${created.body.data.id}/tags`).send({ tag: 'music' });
+      await request(app).post(`/api/events/${created.body.data.id}/tags`).send({ tag: 'outdoor' });
+      const res = await request(app).get('/api/events/stats');
+      expect(res.status).toBe(200);
+      expect(res.body.data.byTag.music).toBe(1);
+      expect(res.body.data.byTag.outdoor).toBe(1);
+    });
+  });
+
+  // ── Category in Events ─────────────────────────────────
+
+  describe('Category in events', () => {
+    it('POST /api/events with category stores it', async () => {
+      const app = createTestApp();
+      const res = await request(app).post('/api/events').send({
+        title: 'Categorized', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 0, capacity: 20, category: 'workshop',
+      });
+      expect(res.status).toBe(201);
+      expect(res.body.data.category).toBe('workshop');
+    });
+
+    it('PUT /api/events/:id can update category', async () => {
+      const app = createTestApp();
+      const created = await request(app).post('/api/events').send({
+        title: 'Update Cat', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 0, capacity: 20,
+      });
+      const res = await request(app).put(`/api/events/${created.body.data.id}`).send({
+        category: 'social',
+      });
+      expect(res.status).toBe(200);
+      expect(res.body.data.category).toBe('social');
+    });
+
+    it('GET /api/events/stats byCategory counts categorized events', async () => {
+      const app = createTestApp();
+      await request(app).post('/api/events').send({
+        title: 'Cat Event 1', description: 'D', start_time: '2030-06-01T19:00:00Z',
+        venue: 'V', price: 0, capacity: 20, category: 'networking',
+      });
+      await request(app).post('/api/events').send({
+        title: 'Cat Event 2', description: 'D', start_time: '2030-06-02T19:00:00Z',
+        venue: 'V', price: 0, capacity: 20, category: 'networking',
+      });
+      const res = await request(app).get('/api/events/stats');
+      expect(res.status).toBe(200);
+      expect(res.body.data.byCategory.networking).toBe(2);
+    });
+  });
 });

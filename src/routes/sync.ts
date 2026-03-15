@@ -122,8 +122,13 @@ export function createSyncRouter(
    * POST /api/sync/pull
    * Pulls events from all connected platforms.
    */
-  router.post('/pull', async (_req, res, next) => {
+  router.post('/pull', async (req, res, next) => {
     try {
+      const platformFilter = typeof req.query.platform === 'string' ? req.query.platform as PlatformName : undefined;
+      if (platformFilter && !VALID_PLATFORMS.includes(platformFilter)) {
+        return res.status(400).json({ error: `Invalid platform: ${platformFilter}` });
+      }
+
       const services = serviceStore.getAll();
       let totalPulled = 0;
       let totalUpdated = 0;
@@ -131,6 +136,7 @@ export function createSyncRouter(
 
       for (const svc of services) {
         if (!svc.connected) continue;
+        if (platformFilter && svc.platform !== platformFilter) continue;
         const client = publishService.getClient(svc.platform);
         if (!client) continue;
 
