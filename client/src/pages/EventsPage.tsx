@@ -22,6 +22,8 @@ export function EventsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [tagFilter, setTagFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
+  const [sortBy, setSortBy] = useState('start_time');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
   const [availableTags, setAvailableTags] = useState<Array<{ tag: string; count: number }>>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
@@ -40,8 +42,11 @@ export function EventsPage() {
     try {
       setLoading(true);
       setError(null);
-      const filters = tagFilter ? { tag: tagFilter } : undefined;
-      const { data } = await getEvents(filters);
+      const filters: Record<string, string> = {};
+      if (tagFilter) filters.tag = tagFilter;
+      if (sortBy) filters.sort_by = sortBy;
+      if (sortOrder) filters.order = sortOrder;
+      const { data } = await getEvents(Object.keys(filters).length > 0 ? filters : undefined);
       setEvents(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load events');
@@ -52,7 +57,7 @@ export function EventsPage() {
 
   useEffect(() => {
     load();
-  }, [tagFilter]);
+  }, [tagFilter, sortBy, sortOrder]);
 
   useEffect(() => {
     getTemplates().then(setTemplates).catch(() => {});
@@ -316,6 +321,23 @@ export function EventsPage() {
             ))}
           </select>
         )}
+        <select
+          style={styles.tagSelect}
+          value={`${sortBy}:${sortOrder}`}
+          onChange={(e) => {
+            const [field, ord] = e.target.value.split(':');
+            setSortBy(field);
+            setSortOrder(ord as 'asc' | 'desc');
+          }}
+        >
+          <option value="start_time:desc">Date (newest)</option>
+          <option value="start_time:asc">Date (oldest)</option>
+          <option value="title:asc">Title (A-Z)</option>
+          <option value="title:desc">Title (Z-A)</option>
+          <option value="created_at:desc">Created (newest)</option>
+          <option value="price:desc">Price (high-low)</option>
+          <option value="capacity:desc">Capacity (high-low)</option>
+        </select>
         {(searchQuery || tagFilter || categoryFilter) && (
           <button style={styles.clearBtn} onClick={() => { setSearchQuery(''); setTagFilter(''); setCategoryFilter(''); }}>Clear</button>
         )}
