@@ -67,7 +67,7 @@ export function createPhotosRouter(db: Database): Router {
         'SELECT COUNT(*) as cnt FROM event_photos WHERE event_id = ?'
       ).get(eventId);
       if (countRow && countRow.cnt >= 50) {
-        try { unlinkSync(req.file.path); } catch {}
+        try { unlinkSync(req.file.path); } catch { /* cleanup failed, ignore */ }
         return res.status(400).json({ error: 'Maximum 50 photos per event' });
       }
 

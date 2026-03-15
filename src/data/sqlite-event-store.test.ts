@@ -2,7 +2,7 @@ import { beforeEach, afterEach, describe, it, expect } from 'vitest';
 import { createDatabase } from './database.js';
 import type { Database } from './database.js';
 import { SqliteEventStore } from './sqlite-event-store.js';
-import type { SocialiseEvent } from '../shared/types.js';
+
 
 const validInput = {
   title: 'Test Event',

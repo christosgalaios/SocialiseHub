@@ -295,7 +295,6 @@ function showAutomationView(win: BaseWindow, panelWidth: number): void {
   automationView.setBounds({ x: appWidth, y: 0, width: actualPanelWidth, height });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used in Task 14
 function hideAutomationView(win: BaseWindow, config: AppConfig): void {
   if (!automationView || !automationViewAttached) return;
   win.contentView.removeChildView(automationView);

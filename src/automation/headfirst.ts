@@ -2,7 +2,7 @@
 import type { AutomationStep } from './types.js';
 import type { SocialiseEvent } from '../shared/types.js';
 
-const SELECTORS = {
+const _SELECTORS = {
   loggedInIndicator: '.user-menu, .account-nav, a[href*="/logout"], a[href*="/account"]',
 };
 

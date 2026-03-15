@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import express from 'express';
 import { createDatabase } from '../data/database.js';
@@ -62,7 +62,7 @@ describe('Dashboard routes', () => {
     });
 
     it('flags events missing description (< 20 chars)', async () => {
-      const { app, db, eventStore } = createTestApp();
+      const { app, db: _db, eventStore } = createTestApp();
 
       // Event with short description
       const event = eventStore.create({

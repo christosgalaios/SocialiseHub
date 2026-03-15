@@ -1,7 +1,7 @@
 import type { AutomationStep } from './types.js';
 import type { SocialiseEvent } from '../shared/types.js';
 
-const SELECTORS = {
+const _SELECTORS = {
   loggedInAvatar: '[data-testid="avatar"], .member-menu, img[alt*="profile"]',
   groupLink: 'a[href*="/groups/"]',
   groupName: '[data-testid="group-name"], .groupHomeHeader-groupName, h1',

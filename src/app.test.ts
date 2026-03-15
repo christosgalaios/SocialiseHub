@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import request from 'supertest';
 import { createApp } from './app.js';
-import { createDatabase, type Database } from './data/database.js';
+import { createDatabase } from './data/database.js';
 
 function createTestApp() {
   const db = createDatabase(':memory:');
@@ -2010,7 +2010,7 @@ describe('App', () => {
 
   it('GET /api/events?status=archived only returns archived events', async () => {
     const app = createTestApp();
-    const c1 = await request(app).post('/api/events').send({
+    const _c1 = await request(app).post('/api/events').send({
       title: 'Active Event', description: 'Still active',
       start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
     });
@@ -2512,7 +2512,7 @@ describe('App', () => {
 
   it('GET /api/events/calendar excludes archived events', async () => {
     const app = createTestApp();
-    const c1 = await request(app).post('/api/events').send({
+    const _c1 = await request(app).post('/api/events').send({
       title: 'Active Calendar', description: 'Visible',
       start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
     });
@@ -3956,7 +3956,7 @@ describe('App', () => {
       title: 'Tagged Event', description: 'D', start_time: '2030-01-01T19:00:00Z',
       venue: 'V', price: 5, capacity: 20,
     });
-    const e2 = await request(app).post('/api/events').send({
+    const _e2 = await request(app).post('/api/events').send({
       title: 'Untagged Event', description: 'D', start_time: '2030-01-02T19:00:00Z',
       venue: 'V', price: 5, capacity: 20,
     });
@@ -4173,7 +4173,7 @@ describe('App', () => {
   });
 
   it('GET /api/dashboard/week returns events within 7 days grouped by day', async () => {
-    const { app, db } = createTestAppWithDb();
+    const { app, db: _db } = createTestAppWithDb();
 
     // Create events: one today+1 day, one today+3 days, one today+10 days (outside range)
     const now = new Date();
@@ -4212,7 +4212,7 @@ describe('App', () => {
   });
 
   it('GET /api/dashboard/week includes checklist progress', async () => {
-    const { app, db } = createTestAppWithDb();
+    const { app, db: _db } = createTestAppWithDb();
 
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -4243,7 +4243,7 @@ describe('App', () => {
   });
 
   it('GET /api/dashboard/week excludes cancelled and archived events', async () => {
-    const { app, db } = createTestAppWithDb();
+    const { app, db: _db } = createTestAppWithDb();
 
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -5293,7 +5293,7 @@ describe('App', () => {
   describe('Batch delete data integrity', () => {
     it('DELETE /api/events/batch deletes only specified events', async () => {
       const app = createTestApp();
-      const e1 = await request(app).post('/api/events').send({
+      const _e1 = await request(app).post('/api/events').send({
         title: 'Keep Me', description: 'D', start_time: '2030-06-01T19:00:00Z',
         venue: 'V', price: 0, capacity: 20,
       });
@@ -5301,7 +5301,7 @@ describe('App', () => {
         title: 'Delete Me', description: 'D', start_time: '2030-06-02T19:00:00Z',
         venue: 'V', price: 0, capacity: 20,
       });
-      const e3 = await request(app).post('/api/events').send({
+      const _e3 = await request(app).post('/api/events').send({
         title: 'Also Keep', description: 'D', start_time: '2030-06-03T19:00:00Z',
         venue: 'V', price: 0, capacity: 20,
       });
@@ -5686,7 +5686,7 @@ describe('App', () => {
 
   // M126 tests
   it('PATCH checklist reorder rejects duplicate IDs', async () => {
-    const { app, db } = createTestAppWithDb();
+    const { app, db: _db } = createTestAppWithDb();
     const ev = await request(app).post('/api/events').send({
       title: 'Checklist Dup', description: 'D',
       start_time: '2030-06-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,

@@ -191,7 +191,6 @@ export function EventDetailPage() {
         handleMagicFill();
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, loading, event]);
 
   /** Score — check cache first, compose prompt if miss, open modal, save result on submit */

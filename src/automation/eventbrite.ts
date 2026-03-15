@@ -2,7 +2,7 @@
 import type { AutomationStep } from './types.js';
 import type { SocialiseEvent } from '../shared/types.js';
 
-const SELECTORS = {
+const _SELECTORS = {
   loggedInNav: '[data-testid="user-nav"], .global-header__avatar, .user-menu',
   orgIdLink: 'a[href*="/organizations/"]',
 };

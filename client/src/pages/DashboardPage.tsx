@@ -85,7 +85,7 @@ export function DashboardPage() {
     if (Date.now() - lastSync > SYNC_INTERVAL_MS) {
       handleSync();
     }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div>

@@ -31,7 +31,6 @@ export interface AutomationStatus {
   state: 'running' | 'paused' | 'waiting_for_user' | 'completed' | 'failed';
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface AutomationRequest {
   platform: PlatformName;
   action: 'connect' | 'publish' | 'update' | 'cancel' | 'scrape';
