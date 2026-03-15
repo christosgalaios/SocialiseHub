@@ -421,6 +421,13 @@ export function createEventsRouter(
         else past++;
       }
 
+      // Activity stats
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const createdLast7 = events.filter(e => e.createdAt > sevenDaysAgo).length;
+      const createdLast30 = events.filter(e => e.createdAt > thirtyDaysAgo).length;
+      const modifiedLast7 = events.filter(e => e.updatedAt > sevenDaysAgo && e.updatedAt !== e.createdAt).length;
+
       res.json({
         data: {
           total: events.length,
@@ -430,6 +437,11 @@ export function createEventsRouter(
           byVenue,
           upcoming,
           past,
+          activity: {
+            createdLast7,
+            createdLast30,
+            modifiedLast7,
+          },
         },
       });
     } catch (err) {

@@ -952,6 +952,19 @@ describe('App', () => {
     expect(res.body.data.byCategory).toEqual({ Social: 2, Tech: 1 });
   });
 
+  it('GET /api/events/stats includes activity data', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Recent Event', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get('/api/events/stats');
+    expect(res.body.data.activity).toBeDefined();
+    expect(res.body.data.activity.createdLast7).toBe(1);
+    expect(res.body.data.activity.createdLast30).toBe(1);
+    expect(res.body.data.activity.modifiedLast7).toBe(0); // Just created, not modified
+  });
+
   // ── Photos ────────────────────────────────────────────
 
   it('GET /api/events/:id/photos returns empty array for new event', async () => {
