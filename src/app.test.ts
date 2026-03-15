@@ -356,6 +356,21 @@ describe('App', () => {
     expect(res.body.data[0].title).toBe('Board Game Night');
   });
 
+  it('GET /api/events?search=calm also searches descriptions', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'Evening Walk', description: 'A calm relaxing stroll', start_time: '2030-01-01T19:00:00Z',
+      venue: 'Park', price: 0, capacity: 20,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Punk Show', description: 'Loud music', start_time: '2030-01-02T19:00:00Z',
+      venue: 'Venue', price: 10, capacity: 50,
+    });
+    const res = await request(app).get('/api/events?search=calm');
+    expect(res.body.data).toHaveLength(1);
+    expect(res.body.data[0].title).toBe('Evening Walk');
+  });
+
   it('GET /api/events?upcoming=true filters to future events', async () => {
     const app = createTestApp();
     await request(app).post('/api/events').send({
