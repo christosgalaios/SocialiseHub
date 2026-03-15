@@ -54,4 +54,13 @@ export class SyncLogStore {
       .all(limit);
     return rows.map(rowToEntry);
   }
+
+  getByEventId(eventId: string, limit = 50): SyncLogEntry[] {
+    const rows = this.db
+      .prepare<[string, number], SyncLogRow>(
+        'SELECT * FROM sync_log WHERE event_id = ? ORDER BY id DESC LIMIT ?',
+      )
+      .all(eventId, limit);
+    return rows.map(rowToEntry);
+  }
 }

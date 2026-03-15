@@ -328,6 +328,21 @@ describe('App', () => {
     expect(res.body.data[1].title).toBe('Cheap');
   });
 
+  it('GET /api/events?sort_by=created_at&order=asc sorts by creation date', async () => {
+    const app = createTestApp();
+    await request(app).post('/api/events').send({
+      title: 'First Created', description: 'D', start_time: '2030-06-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    await request(app).post('/api/events').send({
+      title: 'Second Created', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get('/api/events?sort_by=created_at&order=asc');
+    expect(res.body.data[0].title).toBe('First Created');
+    expect(res.body.data[1].title).toBe('Second Created');
+  });
+
   it('GET /api/events?sort_by=invalid ignores invalid sort field', async () => {
     const app = createTestApp();
     await request(app).post('/api/events').send({
@@ -749,6 +764,26 @@ describe('App', () => {
     expect(res.status).toBe(200);
     expect(res.body.prompt).toContain('Photo Prompt');
     expect(res.body.prompt).toContain('Bristol');
+  });
+
+  // ── Event Log ──────────────────────────────────────────
+
+  it('GET /api/events/:id/log returns empty log for new event', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Log Test', description: 'D', start_time: '2030-01-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10,
+    });
+    const res = await request(app).get(`/api/events/${created.body.data.id}/log`);
+    expect(res.status).toBe(200);
+    expect(res.body.data).toEqual([]);
+    expect(res.body.total).toBe(0);
+  });
+
+  it('GET /api/events/:id/log returns 404 for missing event', async () => {
+    const app = createTestApp();
+    const res = await request(app).get('/api/events/nonexistent/log');
+    expect(res.status).toBe(404);
   });
 
   it('POST /api/events/:id/optimize/photos/search returns 503 without API key', async () => {

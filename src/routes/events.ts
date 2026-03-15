@@ -46,11 +46,16 @@ export function createEventsRouter(
       // Sorting
       const sortBy = req.query.sort_by as string | undefined;
       const order = req.query.order === 'asc' ? 'asc' : 'desc';
-      const validSortFields = new Set(['title', 'start_time', 'created_at', 'updated_at', 'price', 'capacity', 'status']);
-      if (sortBy && validSortFields.has(sortBy)) {
+      const sortFieldMap: Record<string, string> = {
+        title: 'title', start_time: 'start_time', price: 'price',
+        capacity: 'capacity', status: 'status',
+        created_at: 'createdAt', updated_at: 'updatedAt',
+      };
+      const mappedField = sortBy ? sortFieldMap[sortBy] : undefined;
+      if (mappedField) {
         events.sort((a, b) => {
-          const aVal = (a as Record<string, unknown>)[sortBy];
-          const bVal = (b as Record<string, unknown>)[sortBy];
+          const aVal = (a as Record<string, unknown>)[mappedField];
+          const bVal = (b as Record<string, unknown>)[mappedField];
           if (aVal == null && bVal == null) return 0;
           if (aVal == null) return 1;
           if (bVal == null) return -1;
@@ -203,6 +208,18 @@ export function createEventsRouter(
       const event = store.getById(req.params.id);
       if (!event) return res.status(404).json({ error: 'Event not found' });
       res.json({ data: event });
+    } catch (err) {
+      next(err);
+    }
+  });
+
+  router.get('/:id/log', (req, res, next) => {
+    try {
+      const event = store.getById(req.params.id);
+      if (!event) return res.status(404).json({ error: 'Event not found' });
+      const limit = Math.min(Math.max(1, Number(req.query.limit) || 50), 200);
+      const entries = syncLogStore.getByEventId(req.params.id, limit);
+      res.json({ data: entries, total: entries.length });
     } catch (err) {
       next(err);
     }
