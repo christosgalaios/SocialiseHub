@@ -127,7 +127,7 @@ describe('Generator Router', () => {
       expect(res.body.data.id).toBeTruthy();
     });
 
-    it('prepends category to description when provided', async () => {
+    it('saves category as a separate field when provided', async () => {
       const { app } = createTestApp(db);
       const res = await request(app).post('/save').send({
         title: 'Comedy Night',
@@ -135,7 +135,8 @@ describe('Generator Router', () => {
         category: 'Comedy',
       });
       expect(res.status).toBe(201);
-      expect(res.body.data.description).toBe('[Comedy] Laughs all around.');
+      expect(res.body.data.description).toBe('Laughs all around.');
+      expect(res.body.data.category).toBe('Comedy');
     });
 
     it('uses description as-is when no category is provided', async () => {
@@ -365,7 +366,8 @@ describe('Generator Router', () => {
 
       const event = eventStore.getById(res.body.eventId);
       expect(event).toBeDefined();
-      expect(event!.description).toBe('[Comedy] Laugh out loud.');
+      expect(event!.description).toBe('Laugh out loud.');
+      expect(event!.category).toBe('Comedy');
     });
 
     it('sets start_time from suggestedDate when provided', async () => {

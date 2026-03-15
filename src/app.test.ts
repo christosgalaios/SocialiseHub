@@ -773,6 +773,7 @@ describe('App', () => {
     expect(res.body.data.total).toBe(0);
     expect(res.body.data.byStatus).toEqual({ draft: 0, published: 0, cancelled: 0 });
     expect(res.body.data.bySyncStatus).toEqual({ synced: 0, modified: 0, local_only: 0 });
+    expect(res.body.data.byCategory).toEqual({});
     expect(res.body.data.upcoming).toBe(0);
     expect(res.body.data.past).toBe(0);
   });
@@ -781,18 +782,23 @@ describe('App', () => {
     const app = createTestApp();
     await request(app).post('/api/events').send({
       title: 'Future Draft', description: 'D', start_time: '2030-01-01T19:00:00Z',
-      venue: 'V', price: 0, capacity: 10,
+      venue: 'V', price: 0, capacity: 10, category: 'Social',
     });
     await request(app).post('/api/events').send({
       title: 'Past Draft', description: 'D', start_time: '2020-01-01T19:00:00Z',
-      venue: 'V', price: 0, capacity: 10,
+      venue: 'V', price: 0, capacity: 10, category: 'Social',
+    });
+    await request(app).post('/api/events').send({
+      title: 'Tech Event', description: 'D', start_time: '2030-02-01T19:00:00Z',
+      venue: 'V', price: 0, capacity: 10, category: 'Tech',
     });
     const res = await request(app).get('/api/events/stats');
-    expect(res.body.data.total).toBe(2);
-    expect(res.body.data.byStatus.draft).toBe(2);
-    expect(res.body.data.upcoming).toBe(1);
+    expect(res.body.data.total).toBe(3);
+    expect(res.body.data.byStatus.draft).toBe(3);
+    expect(res.body.data.upcoming).toBe(2);
     expect(res.body.data.past).toBe(1);
-    expect(res.body.data.bySyncStatus.local_only).toBe(2);
+    expect(res.body.data.bySyncStatus.local_only).toBe(3);
+    expect(res.body.data.byCategory).toEqual({ Social: 2, Tech: 1 });
   });
 
   // ── Photos ────────────────────────────────────────────

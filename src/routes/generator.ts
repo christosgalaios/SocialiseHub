@@ -92,12 +92,13 @@ export function createGeneratorRouter(
 
       const event = eventStore.create({
         title,
-        description: category ? `[${category}] ${description}` : description,
+        description,
         venue: venue ?? '',
         start_time: date ? `${date}T19:00:00+00:00` : new Date().toISOString(),
         duration_minutes: 120,
         price: 0,
         capacity: 50,
+        category,
       });
 
       res.status(201).json({ data: event });
@@ -181,9 +182,7 @@ export function createGeneratorRouter(
 
       const event = eventStore.create({
         title: idea.title,
-        description: idea.shortDescription
-          ? (idea.category ? `[${idea.category}] ${idea.shortDescription}` : idea.shortDescription)
-          : '',
+        description: idea.shortDescription ?? '',
         venue: '',
         start_time: validDate
           ? `${validDate}T19:00:00+00:00`
@@ -191,6 +190,7 @@ export function createGeneratorRouter(
         duration_minutes: 120,
         price: 0,
         capacity: 50,
+        category: idea.category,
       });
 
       res.status(201).json({ eventId: event.id });
