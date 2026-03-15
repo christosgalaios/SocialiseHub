@@ -19,6 +19,7 @@ export function EventsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [templates, setTemplates] = useState<Template[]>([]);
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showIdeaModal, setShowIdeaModal] = useState(false);
@@ -179,9 +180,17 @@ export function EventsPage() {
   };
 
   const filtered = events.filter((e) => {
-    if (activeTab === 'draft') return e.status === 'draft';
-    if (activeTab === 'published') return e.status === 'published' && !isPast(e);
-    if (activeTab === 'past') return isPast(e);
+    if (activeTab === 'draft' && e.status !== 'draft') return false;
+    if (activeTab === 'published' && (e.status !== 'published' || isPast(e))) return false;
+    if (activeTab === 'past' && !isPast(e)) return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      if (!e.title.toLowerCase().includes(q) &&
+          !e.description?.toLowerCase().includes(q) &&
+          !e.venue?.toLowerCase().includes(q)) {
+        return false;
+      }
+    }
     return true;
   });
 
@@ -256,6 +265,19 @@ export function EventsPage() {
         ))}
       </div>
 
+      <div style={styles.searchRow}>
+        <input
+          style={styles.searchInput}
+          type="text"
+          placeholder="Search events by title, description, or venue..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        {searchQuery && (
+          <button style={styles.clearBtn} onClick={() => setSearchQuery('')}>Clear</button>
+        )}
+      </div>
+
       {error && <div style={styles.error}>{error}</div>}
 
       {loading ? (
@@ -307,6 +329,31 @@ export function EventsPage() {
 }
 
 const styles: Record<string, React.CSSProperties> = {
+  searchRow: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 16,
+  },
+  searchInput: {
+    flex: 1,
+    border: '1px solid #e8e6e1',
+    borderRadius: 12,
+    padding: '10px 16px',
+    fontSize: 14,
+    outline: 'none',
+    background: '#fff',
+    fontFamily: 'inherit',
+  },
+  clearBtn: {
+    background: '#f0f0f0',
+    border: '1px solid #ddd',
+    borderRadius: 8,
+    padding: '8px 14px',
+    fontSize: 13,
+    cursor: 'pointer',
+    color: '#555',
+  },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
