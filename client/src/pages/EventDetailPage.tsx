@@ -75,6 +75,8 @@ export function EventDetailPage() {
   const [venue, setVenue] = useState('');
   const [price, setPrice] = useState(0);
   const [capacity, setCapacity] = useState(50);
+  const [actualAttendance, setActualAttendance] = useState<number | undefined>(undefined);
+  const [actualRevenue, setActualRevenue] = useState<number | undefined>(undefined);
   const [selectedPlatforms, setSelectedPlatforms] = useState<PlatformName[]>([]);
 
   // Pre-fill date from query param (calendar day click)
@@ -128,6 +130,8 @@ export function EventDetailPage() {
         setVenue(ev.venue);
         setPrice(ev.price);
         setCapacity(ev.capacity);
+        setActualAttendance(ev.actual_attendance);
+        setActualRevenue(ev.actual_revenue);
         setSelectedPlatforms(ev.platforms.map((p) => p.platform));
       })
       .catch((err: unknown) =>
@@ -253,7 +257,11 @@ export function EventDetailPage() {
         showToast('Event created', 'success');
         nav(`/events/${created.id}`);
       } else {
-        const updated = await updateEvent(id!, buildInput());
+        const updated = await updateEvent(id!, {
+          ...buildInput(),
+          actual_attendance: actualAttendance,
+          actual_revenue: actualRevenue,
+        } as CreateEventInput);
         setEvent(updated);
         showToast('Changes saved', 'success');
       }
@@ -428,6 +436,8 @@ export function EventDetailPage() {
     setVenue(ev.venue);
     setPrice(ev.price);
     setCapacity(ev.capacity);
+    setActualAttendance(ev.actual_attendance);
+    setActualRevenue(ev.actual_revenue);
     setSelectedPlatforms(ev.platforms.map((p) => p.platform));
   };
 
@@ -587,6 +597,35 @@ export function EventDetailPage() {
             />
           </label>
         </div>
+
+        {!isNew && (
+          <div style={styles.row}>
+            <label style={styles.field}>
+              <span style={styles.label}>Actual Attendance</span>
+              <input
+                style={styles.input}
+                type="number"
+                min="0"
+                value={actualAttendance ?? ''}
+                onChange={(e) => setActualAttendance(e.target.value ? Number(e.target.value) : undefined)}
+                placeholder="After event"
+              />
+            </label>
+
+            <label style={styles.field}>
+              <span style={styles.label}>Actual Revenue</span>
+              <input
+                style={styles.input}
+                type="number"
+                min="0"
+                step="0.01"
+                value={actualRevenue ?? ''}
+                onChange={(e) => setActualRevenue(e.target.value ? Number(e.target.value) : undefined)}
+                placeholder="After event"
+              />
+            </label>
+          </div>
+        )}
 
         <label style={styles.field}>
           <span style={styles.label}>Description</span>
