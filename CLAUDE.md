@@ -93,7 +93,7 @@ npm run build:all          # Build server + electron + client
 ## Testing
 
 - **Framework:** Vitest
-- **Test count:** 344+ tests across 25 files
+- **Test count:** 689+ tests across 25 files
 - **Database:** Tests use in-memory SQLite (`:memory:`)
 - **HTTP:** Route tests use supertest
 
@@ -134,3 +134,12 @@ npx vitest --watch         # Watch mode
 - Service store uses safe JSON.parse for extra data
 - Calendar endpoint groups events by date with optional month filter
 - Per-event sync log and platform detail endpoints for event history tracking
+- Category field is now editable in EventDetailPage form (was missing previously)
+- Description character counter shows color-coded guidance (red < 100, yellow < 250, green 250+)
+- Stats endpoint includes `byTag` breakdown alongside `byCategory` and `byVenue`
+- Analytics summary includes `revenue_per_attendee` metric
+- Dashboard `/upcoming` accepts `?limit=` param (default 5, max 50)
+- Dashboard `/attention` accepts `?limit=` param (default 10, max 50)
+- Sync `/pull` accepts `?platform=meetup|eventbrite|headfirst` to pull from a single platform
+- React ErrorBoundary wraps all routes in App.tsx
+- All pages use cancelled-flag cleanup pattern for unmount safety
