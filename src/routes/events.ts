@@ -198,6 +198,54 @@ export function createEventsRouter(
     }
   });
 
+  router.post('/batch/readiness', (req, res, next) => {
+    try {
+      const { ids } = req.body as { ids?: string[] };
+      if (!Array.isArray(ids) || ids.length === 0) {
+        return res.status(400).json({ error: 'ids must be a non-empty array' });
+      }
+      if (ids.length > 100) {
+        return res.status(400).json({ error: 'Maximum 100 events per batch' });
+      }
+
+      const results = ids.map(id => {
+        const event = store.getById(id);
+        if (!event) return { id, found: false, score: 0, ready: false, checks: [] };
+
+        const checks = checkEventReadiness(event);
+        const passed = checks.filter(c => c.passed).length;
+        const total = checks.length;
+        const ready = checks.filter(c => c.severity === 'required').every(c => c.passed);
+
+        return {
+          id,
+          found: true,
+          title: event.title,
+          score: Math.round((passed / total) * 100),
+          ready,
+          checks,
+        };
+      });
+
+      const avgScore = results.filter(r => r.found).length > 0
+        ? Math.round(results.filter(r => r.found).reduce((s, r) => s + r.score, 0) / results.filter(r => r.found).length)
+        : 0;
+
+      res.json({
+        data: results,
+        summary: {
+          total: results.length,
+          ready: results.filter(r => r.ready).length,
+          notReady: results.filter(r => r.found && !r.ready).length,
+          notFound: results.filter(r => !r.found).length,
+          averageScore: avgScore,
+        },
+      });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.post('/batch/archive', (req, res, next) => {
     try {
       const { ids, unarchive } = req.body as { ids?: string[]; unarchive?: boolean };

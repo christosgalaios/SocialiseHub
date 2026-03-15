@@ -2470,4 +2470,49 @@ describe('App', () => {
     const count = db.prepare('SELECT COUNT(*) as cnt FROM event_notes WHERE event_id = ?').get(id) as { cnt: number };
     expect(count.cnt).toBe(0);
   });
+
+  // ── Batch Readiness ─────────────────────────────────────
+
+  it('POST /api/events/batch/readiness checks multiple events', async () => {
+    const app = createTestApp();
+    const c1 = await request(app).post('/api/events').send({
+      title: 'Ready Event With Long Enough Title',
+      description: 'A comprehensive description that is long enough to pass the readiness check for description quality. It should be at least one hundred characters.',
+      start_time: '2030-06-01T19:00:00Z', venue: 'Bristol Pub', price: 10, capacity: 30,
+    });
+    const c2 = await request(app).post('/api/events').send({
+      title: 'Sparse Event',
+      description: 'Minimal description',
+      start_time: '2030-06-02T19:00:00Z', venue: 'TBD', price: 0, capacity: 10,
+    });
+
+    const res = await request(app).post('/api/events/batch/readiness').send({
+      ids: [c1.body.data.id, c2.body.data.id],
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+    expect(res.body.summary.total).toBe(2);
+    expect(typeof res.body.summary.averageScore).toBe('number');
+
+    // First event should have higher readiness
+    const first = res.body.data.find((r: { id: string }) => r.id === c1.body.data.id);
+    const second = res.body.data.find((r: { id: string }) => r.id === c2.body.data.id);
+    expect(first.score).toBeGreaterThan(second.score);
+  });
+
+  it('POST /api/events/batch/readiness handles missing events', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/batch/readiness').send({
+      ids: ['nonexistent-id'],
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.data[0].found).toBe(false);
+    expect(res.body.summary.notFound).toBe(1);
+  });
+
+  it('POST /api/events/batch/readiness returns 400 without ids', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/batch/readiness').send({});
+    expect(res.status).toBe(400);
+  });
 });

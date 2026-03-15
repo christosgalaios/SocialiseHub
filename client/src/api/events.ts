@@ -193,6 +193,20 @@ export async function getEventReadiness(id: string): Promise<ReadinessResult> {
   return body.data;
 }
 
+export async function batchReadiness(
+  ids: string[],
+): Promise<{
+  data: Array<{ id: string; found: boolean; title?: string; score: number; ready: boolean }>;
+  summary: { total: number; ready: number; notReady: number; notFound: number; averageScore: number };
+}> {
+  const res = await fetch(`${BASE}/events/batch/readiness`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ids }),
+  });
+  return json(res);
+}
+
 export async function getEventPlatforms(id: string): Promise<import('@shared/types').PlatformEvent[]> {
   const res = await fetch(`${BASE}/events/${id}/platforms`);
   const body = await json<{ data: import('@shared/types').PlatformEvent[] }>(res);
