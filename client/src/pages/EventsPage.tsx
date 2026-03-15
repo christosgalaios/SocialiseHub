@@ -224,6 +224,7 @@ export function EventsPage() {
       const result = await batchUpdateStatus(Array.from(selectedIds), batchStatus);
       showToast(`Updated status for ${result.updated} event${result.updated !== 1 ? 's' : ''}`, 'success');
       setSelectedIds(new Set());
+      setBatchStatus('draft');
       load();
     } catch (err) {
       showToast(err instanceof Error ? err.message : 'Batch status update failed', 'error');
