@@ -2538,4 +2538,47 @@ describe('App', () => {
     expect(res.status).toBe(200);
     expect(res.body.prompt).toContain('Digest Test Event');
   });
+
+  // ── Quick Create ────────────────────────────────────────
+
+  it('POST /api/events/quick-create creates event with defaults', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/quick-create').send({
+      title: 'Quick Event',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data.title).toBe('Quick Event');
+    expect(res.body.data.venue).toBe('TBD');
+    expect(res.body.data.price).toBe(0);
+    expect(res.body.data.capacity).toBe(50);
+    expect(res.body.data.status).toBe('draft');
+  });
+
+  it('POST /api/events/quick-create with date and category', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/quick-create').send({
+      title: 'Dated Quick Event',
+      date: '2030-07-15',
+      category: 'Social',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data.title).toBe('Dated Quick Event');
+    expect(res.body.data.start_time).toContain('2030-07-15');
+    expect(res.body.data.category).toBe('Social');
+  });
+
+  it('POST /api/events/quick-create returns 400 without title', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/quick-create').send({});
+    expect(res.status).toBe(400);
+  });
+
+  it('POST /api/events/quick-create trims whitespace', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/quick-create').send({
+      title: '  Trimmed Title  ',
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.data.title).toBe('Trimmed Title');
+  });
 });

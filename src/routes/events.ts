@@ -417,6 +417,45 @@ export function createEventsRouter(
     }
   });
 
+  router.post('/quick-create', (req, res, next) => {
+    try {
+      const { title, date, category } = req.body as {
+        title?: string; date?: string; category?: string;
+      };
+
+      if (!title || typeof title !== 'string' || title.trim().length === 0) {
+        return res.status(400).json({ error: 'title is required' });
+      }
+
+      // Auto-generate sensible defaults
+      const nextWeek = new Date();
+      nextWeek.setDate(nextWeek.getDate() + 7);
+      nextWeek.setHours(19, 0, 0, 0);
+
+      let startTime: string;
+      if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        startTime = `${date}T19:00:00+00:00`;
+      } else {
+        startTime = nextWeek.toISOString();
+      }
+
+      const event = store.create({
+        title: title.trim(),
+        description: '',
+        start_time: startTime,
+        venue: 'TBD',
+        price: 0,
+        capacity: 50,
+        duration_minutes: 120,
+        category,
+      });
+
+      res.status(201).json({ data: event });
+    } catch (err) {
+      next(err);
+    }
+  });
+
   router.post('/import/json', (req, res, next) => {
     try {
       const { events: importEvents } = req.body as { events?: Array<{

@@ -49,6 +49,35 @@ describe('database', () => {
     expect(colNames).toContain('sync_status');
   });
 
+  it('creates event_notes table (migration v10)', () => {
+    db = createDatabase(':memory:');
+    const tables = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+    ).all() as { name: string }[];
+    expect(tables.map(t => t.name)).toContain('event_notes');
+
+    // Verify columns
+    const cols = db.prepare("PRAGMA table_info(event_notes)").all() as { name: string }[];
+    const colNames = cols.map(c => c.name);
+    expect(colNames).toContain('id');
+    expect(colNames).toContain('event_id');
+    expect(colNames).toContain('content');
+    expect(colNames).toContain('author');
+    expect(colNames).toContain('created_at');
+  });
+
+  it('events table has category column (migration v9)', () => {
+    db = createDatabase(':memory:');
+    const cols = db.prepare("PRAGMA table_info(events)").all() as { name: string }[];
+    expect(cols.map(c => c.name)).toContain('category');
+  });
+
+  it('user_version is at least 10 after all migrations', () => {
+    db = createDatabase(':memory:');
+    const version = db.pragma('user_version', { simple: true }) as number;
+    expect(version).toBeGreaterThanOrEqual(10);
+  });
+
   it('re-running migrations on existing database does not throw', () => {
     db = createDatabase(':memory:');
     // Simulate calling createDatabase again on the same DB path by calling migrations indirectly

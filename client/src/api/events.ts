@@ -249,6 +249,19 @@ export async function importEventsFromJson(
   return json(res);
 }
 
+export async function quickCreateEvent(
+  title: string,
+  options?: { date?: string; category?: string },
+): Promise<SocialiseEvent> {
+  const res = await fetch(`${BASE}/events/quick-create`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, ...options }),
+  });
+  const body = await json<{ data: SocialiseEvent }>(res);
+  return body.data;
+}
+
 export function getEventsJsonExportUrl(params?: { status?: string; upcoming?: boolean }): string {
   const qs = new URLSearchParams();
   if (params?.status) qs.set('status', params.status);
