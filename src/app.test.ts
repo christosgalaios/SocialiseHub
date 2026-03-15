@@ -827,7 +827,7 @@ describe('App', () => {
     const res = await request(app).get('/api/events/stats');
     expect(res.status).toBe(200);
     expect(res.body.data.total).toBe(0);
-    expect(res.body.data.byStatus).toEqual({ draft: 0, published: 0, cancelled: 0 });
+    expect(res.body.data.byStatus).toEqual({ draft: 0, published: 0, cancelled: 0, archived: 0 });
     expect(res.body.data.bySyncStatus).toEqual({ synced: 0, modified: 0, local_only: 0 });
     expect(res.body.data.byCategory).toEqual({});
     expect(res.body.data.upcoming).toBe(0);
@@ -2237,5 +2237,96 @@ describe('App', () => {
     const res = await request(app).get('/api/events/calendar?month=2030-06');
     expect(res.status).toBe(200);
     expect(res.body.totalEvents).toBe(1);
+  });
+
+  // ── Stats include archived count ────────────────────────
+
+  it('GET /api/events/stats includes archived count', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Stats Archive Test', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    await request(app).post('/api/events/batch/archive').send({ ids: [created.body.data.id] });
+
+    const res = await request(app).get('/api/events/stats');
+    expect(res.status).toBe(200);
+    expect(res.body.data.byStatus.archived).toBe(1);
+    expect(res.body.data.byStatus.draft).toBe(0);
+  });
+
+  // ── Edge cases ──────────────────────────────────────────
+
+  it('PATCH /api/events/batch/status supports archived status', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Batch Archive', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const res = await request(app).patch('/api/events/batch/status').send({
+      ids: [created.body.data.id], status: 'archived',
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.updated).toBe(1);
+  });
+
+  it('GET /api/events/:id returns archived event directly', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Direct Get Archived', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const id = created.body.data.id;
+    await request(app).post('/api/events/batch/archive').send({ ids: [id] });
+
+    // Individual GET should still return it
+    const res = await request(app).get(`/api/events/${id}`);
+    expect(res.status).toBe(200);
+    expect(res.body.data.status).toBe('archived');
+  });
+
+  it('PUT /api/events/:id can update archived event', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'Editable Archived', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    const id = created.body.data.id;
+    await request(app).post('/api/events/batch/archive').send({ ids: [id] });
+
+    const res = await request(app).put(`/api/events/${id}`).send({ title: 'Updated While Archived' });
+    expect(res.status).toBe(200);
+    expect(res.body.data.title).toBe('Updated While Archived');
+  });
+
+  it('POST /api/events/import/json preserves category field', async () => {
+    const app = createTestApp();
+    const res = await request(app).post('/api/events/import/json').send({
+      events: [
+        { title: 'Categorized Import', start_time: '2030-01-01T19:00:00Z', category: 'Comedy' },
+      ],
+    });
+    expect(res.status).toBe(201);
+    expect(res.body.imported).toBe(1);
+
+    // Verify category was preserved
+    const listRes = await request(app).get('/api/events?category=comedy');
+    expect(listRes.body.data).toHaveLength(1);
+    expect(listRes.body.data[0].category).toBe('Comedy');
+  });
+
+  it('GET /api/events/export/csv excludes archived by default', async () => {
+    const app = createTestApp();
+    const created = await request(app).post('/api/events').send({
+      title: 'CSV Archive Test', description: 'Test',
+      start_time: '2030-01-01T19:00:00Z', venue: 'V', price: 5, capacity: 20,
+    });
+    await request(app).post('/api/events/batch/archive').send({ ids: [created.body.data.id] });
+
+    const res = await request(app).get('/api/events/export/csv');
+    expect(res.status).toBe(200);
+    // Should only have the header row, no data rows
+    const lines = res.text.split('\n');
+    expect(lines).toHaveLength(1); // just header
   });
 });

@@ -272,7 +272,7 @@ export function createEventsRouter(
   router.get('/stats', (_req, res, next) => {
     try {
       const events = store.getAll();
-      const byStatus: Record<string, number> = { draft: 0, published: 0, cancelled: 0 };
+      const byStatus: Record<string, number> = { draft: 0, published: 0, cancelled: 0, archived: 0 };
       const bySyncStatus: Record<string, number> = { synced: 0, modified: 0, local_only: 0 };
       const byCategory: Record<string, number> = {};
       const byVenue: Record<string, number> = {};
